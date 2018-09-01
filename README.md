@@ -5,3 +5,4 @@ Based on [earlier version in Python](https://github.com/makatony/hiveAI), which 
 
 Just a toy project.
 
+Thanks for Florence Poirrel for the awesome drawings, for the upcoming GUI.
