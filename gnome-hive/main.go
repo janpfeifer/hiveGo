@@ -26,7 +26,10 @@ var flag_resources = flag.String("resources", "/home/janpf/src/go/src/github.com
 const APP_ID = "com.github.janpfeifer.hiveGo.gnome-hive"
 
 // Board in use. It will always be set.
-var board *Board
+var (
+	board   *Board
+	started bool // Starts as false, and set to true once a game is running.
+)
 
 func main() {
 	flag.Parse()
@@ -41,4 +44,12 @@ func main() {
 	createMainWindow()
 	mainWindow.ShowAll()
 	gtk.Main()
+}
+
+func newGame() {
+	board = NewBoard()
+	board.MaxMoves = *flag_maxMoves
+	board.BuildDerived()
+	started = true
+	mainWindow.QueueDraw()
 }

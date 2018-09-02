@@ -269,6 +269,15 @@ func (b *Board) UsedLimits() (min_x, max_x, min_y, max_y int8) {
 	return
 }
 
+// OccupiedPositions returns all the positions used.
+func (b *Board) OccupiedPositions() (poss []Pos) {
+	poss = make([]Pos, 0, len(b.board))
+	for pos := range b.board {
+		poss = append(poss, pos)
+	}
+	return poss
+}
+
 // Neighbours returns the 6 neighbour positions of the reference position. It
 // returns a newly allocated slice.
 //

@@ -14,6 +14,15 @@ var (
 	pieceBaseSurfaces [NUM_PLAYERS]*cairo.Surface
 )
 
+// Standard face size.
+const standardFace = 33.0
+
+var (
+	// Current zoom factor and translation (resulting from dragging board).
+	zoomFactor     = 1.0
+	shiftX, shiftY = 0.0, 0.0
+)
+
 func loadImageResources() {
 	// Load each piece drawing.
 	for ii := 1; ii < NUM_PIECE_TYPES; ii++ {
@@ -42,29 +51,20 @@ func drawMainBoard(da *gtk.DrawingArea, cr *cairo.Context) {
 	cr.Save()
 	defer cr.Restore()
 
+	drawBackground(da, cr, 244./256., 231./256., 210./256., true)
+	if !started {
+		drawFullSurface(da, cr, pieceSurfaces[3])
+		return
+	}
+
 	allocation := da.GetAllocation()
 	width, height := float64(allocation.GetWidth()), float64(allocation.GetHeight())
+	xc, yc := width/2.0+shiftX, height/2.0+shiftY
+	face := standardFace * zoomFactor
 
-	surface := pieceSurfaces[3]
-	imgWidth, imgHeight := float64(surface.GetWidth()), float64(surface.GetHeight())
+	for _, pos := range board.OccupiedPositions() {
 
-	// Scale image such that it fits within window (but don't up-scale).
-	sx, sy := width/imgWidth, height/imgHeight
-	if sx > 1.0 {
-		sx = 1.0
 	}
-	if sy < sx {
-		sx = sy
-	} else {
-		sy = sx
-	}
-	adjImgWidth, adjImgHeight := imgWidth*sx, imgHeight*sy
-
-	// Paint image at center.
-	cr.Scale(sx, sy)
-	cr.SetSourceSurface(pieceSurfaces[3], (width-adjImgWidth)/2.0/sx, (height-adjImgHeight)/2.0/sy)
-	cr.Paint()
-
 	// const unitSize = 20.0
 	// cr.SetSourceRGB(0, 0, 0)
 	// cr.Rectangle(400+x*unitSize, 200+y*unitSize, unitSize, unitSize)
@@ -80,10 +80,12 @@ func drawOffBoardArea(da *gtk.DrawingArea, cr *cairo.Context, player uint8) {
 	xc, yc := width/2.0, height/2.0
 
 	// Background
-	drawBackground(da, cr, 0.8, 0.8, 0.8)
+	drawBackground(da, cr, 0.8, 0.8, 0.8, true)
+	if started && board.NextPlayer == player {
+		drawBackground(da, cr, 0.6, 1.0, 0.6, false)
+	}
 
 	// OffBoardArea face size is fixed.
-	const face = 33.0
 
 	// Spacing between each available piece.
 	const spacing = 3 * face
@@ -96,7 +98,7 @@ func drawOffBoardArea(da *gtk.DrawingArea, cr *cairo.Context, player uint8) {
 		}
 		x, y := xc+(float64(piece)-3.0)*spacing, yc
 		for ii := 0; ii < int(count); ii++ {
-			drawPieceAndBase(da, cr, player, Piece(piece), face, x+3.0*float64(ii), y-3.0*float64(ii))
+			drawPieceAndBase(da, cr, player, Piece(piece), standardFace, x+3.0*float64(ii), y-3.0*float64(ii))
 		}
 	}
 
@@ -113,7 +115,7 @@ func hexHeight(face float64) float64 {
 	return 0.866 * face // sqrt(3)/2 * face
 }
 
-func drawBackground(da *gtk.DrawingArea, cr *cairo.Context, r, g, b float64) {
+func drawBackground(da *gtk.DrawingArea, cr *cairo.Context, r, g, b float64, fill bool) {
 	cr.Save()
 	defer cr.Restore()
 
@@ -121,7 +123,12 @@ func drawBackground(da *gtk.DrawingArea, cr *cairo.Context, r, g, b float64) {
 	width, height := float64(allocation.GetWidth()), float64(allocation.GetHeight())
 	cr.SetSourceRGB(r, g, b)
 	cr.Rectangle(0.0, 0.0, width, height)
-	cr.FillPreserve()
+	if fill {
+		cr.FillPreserve()
+	} else {
+		cr.SetLineWidth(3.0)
+		cr.StrokePreserve()
+	}
 }
 
 // drawHexagon will draw it with the given face length centered at xc, yc.
@@ -179,5 +186,31 @@ func drawPieceSurface(da *gtk.DrawingArea, cr *cairo.Context, surface *cairo.Sur
 
 	// Finally paint it.
 	cr.SetSourceSurface(surface, tgtX, tgtY)
+	cr.Paint()
+}
+
+func drawFullSurface(da *gtk.DrawingArea, cr *cairo.Context, surface *cairo.Surface) {
+	cr.Save()
+	defer cr.Restore()
+
+	allocation := da.GetAllocation()
+	width, height := float64(allocation.GetWidth()), float64(allocation.GetHeight())
+	imgWidth, imgHeight := float64(surface.GetWidth()), float64(surface.GetHeight())
+
+	// Scale image such that it fits within window (but don't up-scale).
+	sx, sy := width/imgWidth, height/imgHeight
+	if sx > 1.0 {
+		sx = 1.0
+	}
+	if sy < sx {
+		sx = sy
+	} else {
+		sy = sx
+	}
+	adjImgWidth, adjImgHeight := imgWidth*sx, imgHeight*sy
+
+	// Paint image at center.
+	cr.Scale(sx, sy)
+	cr.SetSourceSurface(pieceSurfaces[3], (width-adjImgWidth)/2.0/sx, (height-adjImgHeight)/2.0/sy)
 	cr.Paint()
 }
