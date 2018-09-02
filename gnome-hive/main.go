@@ -60,4 +60,6 @@ func newGame() {
 	board.StackPiece(Pos{1, -1}, 1, SPIDER)
 	started = true
 	mainWindow.QueueDraw()
+	zoomFactor = 1.
+	shiftX, shiftY = 0., 0.
 }

@@ -94,6 +94,7 @@ func drawMainBoard(da *gtk.DrawingArea, cr *cairo.Context) {
 		}
 
 	}
+	cr.Clip()
 	// const unitSize = 20.0
 	// cr.SetSourceRGB(0, 0, 0)
 	// cr.Rectangle(400+x*unitSize, 200+y*unitSize, unitSize, unitSize)
@@ -153,7 +154,7 @@ func drawBackground(da *gtk.DrawingArea, cr *cairo.Context, r, g, b float64, fil
 	if fill {
 		cr.FillPreserve()
 	} else {
-		cr.SetLineWidth(3.0)
+		cr.SetLineWidth(5.0)
 		cr.StrokePreserve()
 	}
 }
@@ -214,6 +215,7 @@ func drawPieceSurface(da *gtk.DrawingArea, cr *cairo.Context, surface *cairo.Sur
 	// Finally paint it.
 	cr.SetSourceSurface(surface, tgtX, tgtY)
 	cr.Paint()
+	cr.Clip()
 }
 
 func drawFullSurface(da *gtk.DrawingArea, cr *cairo.Context, surface *cairo.Surface) {

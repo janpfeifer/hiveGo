@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/gotk3/gotk3/cairo"
+	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 	// . "github.com/janpfeifer/hiveGo/state"
@@ -17,6 +18,12 @@ var (
 	mainDrawing     *gtk.DrawingArea
 	offBoardDrawing [2]*gtk.DrawingArea
 	cairoCtx        *cairo.Context
+)
+
+var (
+	// Dragging postion: values valid after button down.
+	isDragging   = false
+	dragX, dragY float64
 )
 
 // Creates the main window.
@@ -56,6 +63,57 @@ func createMainWindow() {
 		log.Fatal("Unable to create DrawingArea:", err)
 	}
 	mainDrawing.Connect("draw", drawMainBoard)
+	mainDrawing.AddEvents(int(
+		gdk.BUTTON_PRESS_MASK | gdk.BUTTON_RELEASE_MASK | gdk.POINTER_MOTION_MASK |
+			gdk.SCROLL_MASK))
+	mainDrawing.Connect("configure-event", func(da *gtk.DrawingArea, ev *gdk.Event) bool {
+		// Resize means redrawing full window.
+		mainWindow.QueueDraw()
+		return false
+	})
+	mainDrawing.Connect("button-press-event", func(da *gtk.DrawingArea, ev *gdk.Event) bool {
+		evB := &gdk.EventButton{ev}
+		if evB.Button() != 1 {
+			return false
+		}
+		isDragging = true
+		dragX, dragY = evB.X(), evB.Y()
+		return true
+	})
+	mainDrawing.Connect("button-release-event", func(da *gtk.DrawingArea, ev *gdk.Event) bool {
+		evB := &gdk.EventButton{ev}
+		if evB.Button() != 1 {
+			return false
+		}
+		isDragging = false
+		return true
+	})
+	mainDrawing.Connect("motion-notify-event", func(da *gtk.DrawingArea, ev *gdk.Event) bool {
+		evM := &gdk.EventMotion{ev}
+		x, y := evM.MotionVal()
+		if !isDragging {
+			return false
+		}
+		deltaX, deltaY := x-dragX, y-dragY
+		dragX, dragY = x, y
+		shiftX += deltaX
+		shiftY += deltaY
+		mainWindow.QueueDraw()
+		return true
+	})
+	mainDrawing.Connect("scroll-event", func(da *gtk.DrawingArea, ev *gdk.Event) bool {
+		evS := &gdk.EventScroll{ev}
+		dir := evS.Direction()
+		if dir == gdk.SCROLL_UP {
+			zoomFactor *= 1.2
+		} else if dir == gdk.SCROLL_DOWN {
+			zoomFactor /= 1.2
+		} else {
+			return false
+		}
+		mainWindow.QueueDraw()
+		return true
+	})
 
 	// Assemble main window area.
 	box, err := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 3)
