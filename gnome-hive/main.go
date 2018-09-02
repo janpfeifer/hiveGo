@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/gotk3/gotk3/gtk"
 	. "github.com/janpfeifer/hiveGo/state"
@@ -20,7 +21,8 @@ var flag_maxMoves = flag.Int(
 	"max_moves", 200, "Max moves before game is assumed to be a draw.")
 
 // TODO: Find out automatically where resources are installed.
-var flag_resources = flag.String("resources", "/home/janpf/src/go/src/github.com/janpfeifer/hiveGo/images",
+var flag_resources = flag.String("resources",
+	fmt.Sprintf("/home/%s/src/go/src/github.com/janpfeifer/hiveGo/images", os.Getenv("USER")),
 	"Directory with resources")
 
 const APP_ID = "com.github.janpfeifer.hiveGo.gnome-hive"
@@ -50,6 +52,12 @@ func newGame() {
 	board = NewBoard()
 	board.MaxMoves = *flag_maxMoves
 	board.BuildDerived()
+	board.StackPiece(Pos{0, 0}, 0, QUEEN)
+	board.StackPiece(Pos{0, 1}, 1, GRASSHOPPER)
+	board.StackPiece(Pos{0, 0}, 0, BEETLE)
+	board.StackPiece(Pos{0, 0}, 1, BEETLE)
+	board.StackPiece(Pos{0, 0}, 0, BEETLE)
+	board.StackPiece(Pos{1, -1}, 1, SPIDER)
 	started = true
 	mainWindow.QueueDraw()
 }

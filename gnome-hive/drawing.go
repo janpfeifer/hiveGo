@@ -61,8 +61,37 @@ func drawMainBoard(da *gtk.DrawingArea, cr *cairo.Context) {
 	width, height := float64(allocation.GetWidth()), float64(allocation.GetHeight())
 	xc, yc := width/2.0+shiftX, height/2.0+shiftY
 	face := standardFace * zoomFactor
+	hexWidth := 1.5 * face
+	hexHeight := 2. * hexTriangleHeight(face)
 
-	for _, pos := range board.OccupiedPositions() {
+	poss := board.OccupiedPositions()
+	PosSort(poss)
+	for _, pos := range poss {
+		x = xc + float64(pos.X())*hexWidth
+		y = yc + float64(pos.Y())*hexHeight
+		if pos.X()%2 != 0 {
+			y += hexTriangleHeight(face)
+		}
+		player, piece, stacked := board.PieceAt(pos)
+		if !stacked {
+			drawPieceAndBase(da, cr, player, piece, face, x, y)
+		} else {
+			stack := board.StackAt(pos)
+			count := int(stack.CountPieces())
+			for ii := 0; ii < count; ii++ {
+				player, piece = stack.PieceAt(uint8(count - ii - 1))
+				drawPieceAndBase(da, cr, player, piece, face, x, y)
+				x += 3.0 * zoomFactor
+				y -= 3.0 * zoomFactor
+			}
+			// Draw small icons of pieces under the stack.
+			for ii := 0; ii < count-1; ii++ {
+				idx := uint8(count - ii - 1)
+				player, piece = stack.PieceAt(idx)
+				drawPieceAndBase(da, cr, player, piece, face/5.0,
+					x+(float64(ii)-2)*0.25*face, y+0.75*hexTriangleHeight(face))
+			}
+		}
 
 	}
 	// const unitSize = 20.0
@@ -85,10 +114,8 @@ func drawOffBoardArea(da *gtk.DrawingArea, cr *cairo.Context, player uint8) {
 		drawBackground(da, cr, 0.6, 1.0, 0.6, false)
 	}
 
-	// OffBoardArea face size is fixed.
-
 	// Spacing between each available piece.
-	const spacing = 3 * face
+	const spacing = 3.0 * standardFace
 
 	// Loop over the piece types
 	for piece := 1; piece < NUM_PIECE_TYPES; piece++ {
@@ -110,8 +137,8 @@ func drawOffBoardArea(da *gtk.DrawingArea, cr *cairo.Context, player uint8) {
 	//
 }
 
-// hexHeight returns the height of the triangles that make up for an hexagon, given the face lenght.
-func hexHeight(face float64) float64 {
+// hexTriangleHeight returns the height of the triangles that make up for an hexagon, given the face lenght.
+func hexTriangleHeight(face float64) float64 {
 	return 0.866 * face // sqrt(3)/2 * face
 }
 
@@ -133,7 +160,7 @@ func drawBackground(da *gtk.DrawingArea, cr *cairo.Context, r, g, b float64, fil
 
 // drawHexagon will draw it with the given face length centered at xc, yc.
 func drawHexagon(da *gtk.DrawingArea, cr *cairo.Context, face, xc, yc float64) {
-	height := hexHeight(face)
+	height := hexTriangleHeight(face)
 
 	// Start on left corner and move clockwise.
 	cr.MoveTo(xc-face, yc)
@@ -164,7 +191,7 @@ func drawPieceSurface(da *gtk.DrawingArea, cr *cairo.Context, surface *cairo.Sur
 	defer cr.Restore()
 
 	imgWidth, imgHeight := float64(surface.GetWidth()), float64(surface.GetHeight())
-	tgtWidth, tgtHeigth := 2.*face, 2.*hexHeight(face)
+	tgtWidth, tgtHeigth := 2.*face, 2.*hexTriangleHeight(face)
 
 	// Scale image such that it fits within 2xface width, and 2xface height (but don't up-scale).
 	sx, sy := tgtWidth/imgWidth, tgtHeigth/imgHeight

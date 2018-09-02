@@ -106,7 +106,7 @@ func createHeaderWithMenu(win *gtk.Window) {
 
 	aNewGame := glib.SimpleActionNew("new_game", nil)
 	aNewGame.Connect("activate", func() {
-		log.Printf("win.new_game activated!")
+		newGame()
 	})
 
 	actG := glib.SimpleActionGroupNew()
@@ -124,7 +124,7 @@ func createAccelGroup(win *gtk.Window) {
 	accelG.Connect(key, mods, gtk.ACCEL_VISIBLE, func() { mainWindow.Close() })
 	key, mods = gtk.AcceleratorParse("<Control>N")
 	accelG.Connect(key, mods, gtk.ACCEL_VISIBLE, func() {
-		log.Printf("win.new_game activated!")
+		newGame()
 	})
 	win.AddAccelGroup(accelG)
 }
