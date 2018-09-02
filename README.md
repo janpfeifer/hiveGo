@@ -18,6 +18,11 @@ Hopefully this should work on linux box with Go properly installed:
 
 In the works.
 
+```
+    go get github/janpfeifer/hiveGo
+    go install github/janpfeifer/hiveGo/gnome-hive && gnome-hive
+```
+
 ## Note
 
 Thanks for Florence Poirrel for the awesome drawings, for the upcoming GUI.
