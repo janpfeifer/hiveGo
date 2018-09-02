@@ -250,6 +250,11 @@ func (b *Board) IsValid(action Action) bool {
 // endGame checks for end games and will return true for each of the players if they
 // managed to sorround the opponents queen.
 func (b *Board) endGame() (wins [2]bool) {
+	if b.MoveNumber > b.MaxMoves {
+		// After MaxMoves is reached, the game is considered a draw.
+		wins = [2]bool{true, true}
+		return
+	}
 	wins = [2]bool{false, false}
 	for pos, stack := range b.board {
 		if isQueen, player := stack.HasQueen(); isQueen {

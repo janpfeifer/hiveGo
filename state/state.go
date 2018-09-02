@@ -18,20 +18,21 @@ const (
 	SPIDER
 )
 
+const (
+	NUM_PLAYERS     = 2
+	NUM_NEIGHBOURS  = 6
+	NUM_PIECE_TYPES = 6 // Includes the "NO_PIECE" type.
+)
+
 var (
-	PieceLetters  = [6]string{"-", "A", "B", "G", "Q", "S"}
+	PieceLetters  = [NUM_PIECE_TYPES]string{"-", "A", "B", "G", "Q", "S"}
 	LetterToPiece = map[string]Piece{"A": ANT, "B": BEETLE, "G": GRASSHOPPER, "Q": QUEEN, "S": SPIDER}
-	PieceNames    = [6]string{
+	PieceNames    = [NUM_PIECE_TYPES]string{
 		"None", "Ant", "Beetle", "Grasshopper", "Queen", "Spider",
 	}
 
 	// Pieces enumerates all the pieces, skipping the "NO_PIECE".
 	Pieces = [5]Piece{ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER}
-)
-
-const (
-	NUM_PLAYERS    = 2
-	NUM_NEIGHBOURS = 6
 )
 
 var INITIAL_AVAILABILITY = Availability{3, 2, 3, 1, 2}
