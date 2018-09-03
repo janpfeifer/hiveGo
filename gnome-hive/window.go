@@ -22,9 +22,14 @@ var (
 
 var (
 	// Dragging postion: values valid after button down.
-	isDragging   = false
-	dragX, dragY float64
+	isDragging    = false
+	dragStartTime uint32
+	dragX, dragY  float64
 )
+
+// Amount of time below which a button press is considered a click.
+// After that it is consider a click-and-hold (or drag).
+const CLICK_MAX_TIME_MS = 500
 
 // Creates the main window.
 func createMainWindow() {
@@ -51,6 +56,7 @@ func createMainWindow() {
 			log.Fatal("Unable to create DrawingArea:", err)
 		}
 		offBoardDrawing[ii].SetSizeRequest(800, 100)
+		offBoardDrawing[ii].AddEvents(int(gdk.BUTTON_PRESS_MASK))
 		iiCopy := ii
 		offBoardDrawing[ii].Connect("draw", func(da *gtk.DrawingArea, cr *cairo.Context) {
 			drawOffBoardArea(da, cr, uint8(iiCopy))
@@ -84,6 +90,7 @@ func createMainWindow() {
 			return false
 		}
 		isDragging = true
+		dragStartTime = evB.Time()
 		dragX, dragY = evB.X(), evB.Y()
 		return true
 	})
@@ -91,6 +98,9 @@ func createMainWindow() {
 		evB := &gdk.EventButton{ev}
 		if evB.Button() != 1 {
 			return false
+		}
+		if evB.Time()-dragStartTime <= CLICK_MAX_TIME_MS {
+			log.Printf("Click at (%f, %f)", dragX, dragY)
 		}
 		isDragging = false
 		return true
@@ -101,6 +111,7 @@ func createMainWindow() {
 		if !isDragging {
 			return false
 		}
+		// TODO: check that CLICK_MAX_TIME_MS has elapsed before starting drag.
 		deltaX, deltaY := x-dragX, y-dragY
 		dragX, dragY = x, y
 		shiftX += deltaX
