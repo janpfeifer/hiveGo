@@ -55,6 +55,13 @@ func createMainWindow() {
 		offBoardDrawing[ii].Connect("draw", func(da *gtk.DrawingArea, cr *cairo.Context) {
 			drawOffBoardArea(da, cr, uint8(iiCopy))
 		})
+		offBoardDrawing[ii].Connect("button-release-event", func(da *gtk.DrawingArea, ev *gdk.Event) bool {
+			evB := &gdk.EventButton{ev}
+			if evB.Button() != 1 {
+				return false
+			}
+			return true
+		})
 	}
 
 	// Main drawing area for board.
@@ -68,7 +75,7 @@ func createMainWindow() {
 			gdk.SCROLL_MASK))
 	mainDrawing.Connect("configure-event", func(da *gtk.DrawingArea, ev *gdk.Event) bool {
 		// Resize means redrawing full window.
-		mainWindow.QueueDraw()
+		mainDrawing.QueueDraw()
 		return false
 	})
 	mainDrawing.Connect("button-press-event", func(da *gtk.DrawingArea, ev *gdk.Event) bool {
@@ -98,7 +105,7 @@ func createMainWindow() {
 		dragX, dragY = x, y
 		shiftX += deltaX
 		shiftY += deltaY
-		mainWindow.QueueDraw()
+		mainDrawing.QueueDraw()
 		return true
 	})
 	mainDrawing.Connect("scroll-event", func(da *gtk.DrawingArea, ev *gdk.Event) bool {
@@ -111,7 +118,7 @@ func createMainWindow() {
 		} else {
 			return false
 		}
-		mainWindow.QueueDraw()
+		mainDrawing.QueueDraw()
 		return true
 	})
 
