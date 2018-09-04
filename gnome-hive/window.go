@@ -8,7 +8,7 @@ import (
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
-	// . "github.com/janpfeifer/hiveGo/state"
+	. "github.com/janpfeifer/hiveGo/state"
 )
 
 var _ = fmt.Printf
@@ -57,14 +57,39 @@ func createMainWindow() {
 		}
 		offBoardDrawing[ii].SetSizeRequest(800, 100)
 		offBoardDrawing[ii].AddEvents(int(gdk.BUTTON_PRESS_MASK))
-		iiCopy := ii
+
+		player := uint8(ii)
 		offBoardDrawing[ii].Connect("draw", func(da *gtk.DrawingArea, cr *cairo.Context) {
-			drawOffBoardArea(da, cr, uint8(iiCopy))
+			drawOffBoardArea(da, cr, player)
 		})
-		offBoardDrawing[ii].Connect("button-release-event", func(da *gtk.DrawingArea, ev *gdk.Event) bool {
+		offBoardDrawing[ii].Connect("button-press-event", func(da *gtk.DrawingArea, ev *gdk.Event) bool {
 			evB := &gdk.EventButton{ev}
 			if evB.Button() != 1 {
+				// We are only interested in the primary button.
 				return false
+			}
+			if !started || finished {
+				return false
+			}
+			if hasSelectedPiece {
+				hasSelectedPiece = false
+				mainWindow.QueueDraw() // Needs redrawing.
+			}
+			if player != board.NextPlayer {
+				// Not this players turn, so nothing to select. Just in case, de-seleect.
+				if selectedOffBoardPiece != NO_PIECE {
+					selectedOffBoardPiece = NO_PIECE
+					mainWindow.QueueDraw() // Needs redrawing.
+				}
+				return true
+			}
+
+			// Check where was the click:
+			x, y := evB.X(), evB.Y()
+			piece := offBoardPositionToPiece(da, x, y)
+			if piece != selectedOffBoardPiece {
+				selectedOffBoardPiece = piece
+				mainWindow.QueueDraw()
 			}
 			return true
 		})
@@ -99,10 +124,17 @@ func createMainWindow() {
 		if evB.Button() != 1 {
 			return false
 		}
-		if evB.Time()-dragStartTime <= CLICK_MAX_TIME_MS {
-			log.Printf("Click at (%f, %f)", dragX, dragY)
-		}
 		isDragging = false
+		if evB.Time()-dragStartTime <= CLICK_MAX_TIME_MS {
+			if !started {
+				newGame()
+				return true
+			}
+			if !finished {
+				mainBoardClick(mainDrawing, evB.X(), evB.Y())
+			}
+			return true
+		}
 		return true
 	})
 	mainDrawing.Connect("motion-notify-event", func(da *gtk.DrawingArea, ev *gdk.Event) bool {
@@ -118,6 +150,7 @@ func createMainWindow() {
 		shiftY += deltaY
 		mainDrawing.QueueDraw()
 		return true
+
 	})
 	mainDrawing.Connect("scroll-event", func(da *gtk.DrawingArea, ev *gdk.Event) bool {
 		evS := &gdk.EventScroll{ev}
@@ -146,10 +179,6 @@ func createMainWindow() {
 	// Set the default window size.
 	win.SetDefaultSize(800, 600)
 }
-
-var (
-	x, y float64
-)
 
 func createHeaderWithMenu(win *gtk.Window) {
 	// Create a header bar.
@@ -203,4 +232,68 @@ func createAccelGroup(win *gtk.Window) {
 		newGame()
 	})
 	win.AddAccelGroup(accelG)
+}
+
+func mainBoardClick(da *gtk.DrawingArea, x, y float64) {
+	dp := newDrawingParams(mainDrawing)
+	pos := dp.XYToPos(x, y)
+	if selectedOffBoardPiece != NO_PIECE {
+		if _, ok := placementPositions()[pos]; ok {
+			// Placement action selected, execute it.
+			for _, action := range board.Derived.Actions {
+				if !action.Move && action.Piece == selectedOffBoardPiece && action.TargetPos == pos {
+					executeAction(action)
+					return
+				}
+			}
+			selectedOffBoardPiece = NO_PIECE
+			return
+		} else {
+			selectedOffBoardPiece = NO_PIECE
+			mainWindow.QueueDraw()
+		}
+	}
+
+	if hasSelectedPiece {
+		for _, action := range board.Derived.Actions {
+			if action.Move && action.SourcePos == selectedPiecePos {
+				if action.TargetPos == pos {
+					executeAction(action)
+					return
+				}
+			}
+		}
+
+		// If clicked somewhere else, deselect current piece and continue (maybe it will
+		// select another piece).
+		hasSelectedPiece = false
+		mainWindow.QueueDraw()
+	}
+
+	// Check if a piece has been selected.
+	if _, ok := moveSourcePositions()[pos]; ok {
+		hasSelectedPiece = true
+		selectedPiecePos = pos
+		mainWindow.QueueDraw()
+	}
+}
+
+func placementPositions() (posMap map[Pos]bool) {
+	posMap = make(map[Pos]bool)
+	for _, action := range board.Derived.Actions {
+		if !action.Move {
+			posMap[action.TargetPos] = true
+		}
+	}
+	return
+}
+
+func moveSourcePositions() (posMap map[Pos]bool) {
+	posMap = make(map[Pos]bool)
+	for _, action := range board.Derived.Actions {
+		if action.Move {
+			posMap[action.SourcePos] = true
+		}
+	}
+	return
 }

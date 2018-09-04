@@ -67,7 +67,7 @@ func (b *Board) placementPositions() (placements map[Pos]bool) {
 		placements[Pos{0, 0}] = true
 		return
 	}
-	if len(b.board) == 1 {
+	if len(b.board) == 1 && b.CountAt(Pos{0, 0}) == 1 {
 		for _, pos := range (Pos{0, 0}.Neighbours()) {
 			placements[pos] = true
 		}
@@ -220,18 +220,21 @@ func (b *Board) addMoveActions(actions []Action) []Action {
 //
 // It DOES NOT CHECK that the action is valid (it can be useful for testing),
 // and leaves that to the UI to handle.
+//
+// If Piece = NO_PIECE, it's assumed to be a pass-action.
 func (b *Board) Act(action Action) (newB *Board) {
 	newB = b.Copy()
-	if !action.Move {
-		// Placement
-		newB.StackPiece(action.TargetPos, newB.NextPlayer, action.Piece)
-		newB.SetAvailable(newB.NextPlayer, action.Piece,
-			newB.Available(newB.NextPlayer, action.Piece)-1)
-	} else {
-		player, piece := newB.PopPiece(action.SourcePos)
-		newB.StackPiece(action.TargetPos, player, piece)
+	if action.Piece != NO_PIECE {
+		if !action.Move {
+			// Placement
+			newB.StackPiece(action.TargetPos, newB.NextPlayer, action.Piece)
+			newB.SetAvailable(newB.NextPlayer, action.Piece,
+				newB.Available(newB.NextPlayer, action.Piece)-1)
+		} else {
+			player, piece := newB.PopPiece(action.SourcePos)
+			newB.StackPiece(action.TargetPos, player, piece)
+		}
 	}
-
 	newB.NextPlayer = 1 - newB.NextPlayer
 	newB.MoveNumber++
 	return

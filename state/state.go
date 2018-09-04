@@ -243,7 +243,13 @@ func (b *Board) StackPiece(pos Pos, player uint8, piece Piece) {
 
 // PopPiece pops the piece at the given location, and returns it.
 func (b *Board) PopPiece(pos Pos) (player uint8, piece Piece) {
-	b.board[pos], player, piece = b.board[pos].PopPiece()
+	var stack EncodedStack
+	stack, player, piece = b.board[pos].PopPiece()
+	if stack != 0 {
+		b.board[pos] = stack
+	} else {
+		delete(b.board, pos)
+	}
 	return
 }
 

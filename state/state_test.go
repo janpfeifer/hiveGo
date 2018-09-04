@@ -21,6 +21,7 @@ func buildBoard(layout []PieceLayout) (b *Board) {
 	b = NewBoard()
 	for _, p := range layout {
 		b.StackPiece(p.pos, p.player, p.piece)
+		b.SetAvailable(p.player, p.piece, b.Available(p.player, p.piece)-1)
 	}
 	return
 }
@@ -299,4 +300,15 @@ func TestAct(t *testing.T) {
 			player, PieceNames[piece], stacked, count)
 	}
 	// printBoard(board)
+
+	// Test situation where there are no action possible.
+	layout = []PieceLayout{
+		{Pos{0, 0}, 0, ANT},
+		{Pos{0, 0}, 1, BEETLE},
+	}
+	board = buildBoard(layout)
+	board.BuildDerived()
+	if len(board.Derived.Actions) != 0 {
+		t.Errorf("Expected no action available, got %v", board.Derived.Actions)
+	}
 }

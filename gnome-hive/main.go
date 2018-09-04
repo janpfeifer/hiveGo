@@ -29,8 +29,9 @@ const APP_ID = "com.github.janpfeifer.hiveGo.gnome-hive"
 
 // Board in use. It will always be set.
 var (
-	board   *Board
-	started bool // Starts as false, and set to true once a game is running.
+	board    *Board
+	started  bool // Starts as false, and set to true once a game is running.
+	finished bool
 )
 
 func main() {
@@ -52,14 +53,25 @@ func newGame() {
 	board = NewBoard()
 	board.MaxMoves = *flag_maxMoves
 	board.BuildDerived()
-	board.StackPiece(Pos{0, 0}, 0, QUEEN)
-	board.StackPiece(Pos{0, 1}, 1, GRASSHOPPER)
-	board.StackPiece(Pos{0, 0}, 0, BEETLE)
-	board.StackPiece(Pos{0, 0}, 1, BEETLE)
-	board.StackPiece(Pos{0, 0}, 0, BEETLE)
-	board.StackPiece(Pos{1, -1}, 1, SPIDER)
 	started = true
-	mainWindow.QueueDraw()
+	finished = false
 	zoomFactor = 1.
 	shiftX, shiftY = 0., 0.
+	mainWindow.QueueDraw()
+}
+
+func executeAction(action Action) {
+	board = board.Act(action)
+	board.BuildDerived()
+	if len(board.Derived.Actions) == 0 {
+		// Player has no available moves, skip.
+		board = board.Act(Action{Piece: NO_PIECE})
+		board.BuildDerived()
+	}
+	if board.Derived.Wins[0] || board.Derived.Wins[1] {
+		finished = true
+	}
+	selectedOffBoardPiece = NO_PIECE
+	hasSelectedPiece = false
+	mainWindow.QueueDraw()
 }

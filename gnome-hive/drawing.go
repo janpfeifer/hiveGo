@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 
 	"github.com/gotk3/gotk3/cairo"
 	"github.com/gotk3/gotk3/gtk"
@@ -21,6 +22,13 @@ var (
 	// Current zoom factor and translation (resulting from dragging board).
 	zoomFactor     = 1.0
 	shiftX, shiftY = 0.0, 0.0
+
+	// Currently selected off-board piece (NO_PIECE if nothing is selected)
+	selectedOffBoardPiece = NO_PIECE
+
+	// Currently selected piece to move.
+	hasSelectedPiece = false
+	selectedPiecePos Pos
 )
 
 func loadImageResources() {
@@ -47,44 +55,79 @@ func loadImageResources() {
 	}
 }
 
+// Parameters used to draw the main board.
+type drawingParams struct {
+	width, height       float64
+	face                float64
+	xc, yc              float64
+	hexWidth, hexHeight float64
+}
+
+func newDrawingParams(da *gtk.DrawingArea) (dp *drawingParams) {
+	allocation := da.GetAllocation()
+	dp = &drawingParams{
+		width:  float64(allocation.GetWidth()),
+		height: float64(allocation.GetHeight()),
+		face:   standardFace * zoomFactor,
+	}
+	dp.xc, dp.yc = dp.width/2.0+shiftX, dp.height/2.0+shiftY
+	dp.hexWidth = 1.5 * dp.face
+	dp.hexHeight = 2. * hexTriangleHeight(dp.face)
+	return
+}
+
+func (dp *drawingParams) posToXY(pos Pos, stackCount int) (x, y float64) {
+	x = dp.xc + float64(pos.X())*dp.hexWidth
+	y = dp.yc + float64(pos.Y())*dp.hexHeight
+	if pos.X()%2 != 0 {
+		y += hexTriangleHeight(dp.face)
+	}
+	x += float64(stackCount) * 3.0 * zoomFactor
+	y -= float64(stackCount) * 3.0 * zoomFactor
+	return
+}
+
+func (dp *drawingParams) XYToPos(x, y float64) Pos {
+	x -= dp.xc
+	y -= dp.yc
+	posX := int8(math.Round(x / dp.hexWidth))
+	if posX%2 != 0 {
+		y -= hexTriangleHeight(dp.face)
+	}
+	posY := int8(math.Round(y / dp.hexHeight))
+	return Pos{posX, posY}
+}
+
 func drawMainBoard(da *gtk.DrawingArea, cr *cairo.Context) {
 	cr.Save()
 	defer cr.Restore()
 
-	drawBackground(da, cr, 244./256., 231./256., 210./256., true)
+	dp := newDrawingParams(da)
+	drawBackground(da, cr, 244./256., 231./256., 210./256., true, 0.0)
 	if !started {
 		drawFullSurface(da, cr, pieceSurfaces[3])
 		return
 	}
 
-	allocation := da.GetAllocation()
-	width, height := float64(allocation.GetWidth()), float64(allocation.GetHeight())
-	xc, yc := width/2.0+shiftX, height/2.0+shiftY
+	// Draw pieces on the board.
 	face := standardFace * zoomFactor
-	hexWidth := 1.5 * face
-	hexHeight := 2. * hexTriangleHeight(face)
-
 	poss := board.OccupiedPositions()
 	PosSort(poss)
 	for _, pos := range poss {
-		x = xc + float64(pos.X())*hexWidth
-		y = yc + float64(pos.Y())*hexHeight
-		if pos.X()%2 != 0 {
-			y += hexTriangleHeight(face)
-		}
 		player, piece, stacked := board.PieceAt(pos)
 		if !stacked {
+			x, y := dp.posToXY(pos, 0)
 			drawPieceAndBase(da, cr, player, piece, face, x, y)
 		} else {
 			stack := board.StackAt(pos)
 			count := int(stack.CountPieces())
 			for ii := 0; ii < count; ii++ {
 				player, piece = stack.PieceAt(uint8(count - ii - 1))
+				x, y := dp.posToXY(pos, ii)
 				drawPieceAndBase(da, cr, player, piece, face, x, y)
-				x += 3.0 * zoomFactor
-				y -= 3.0 * zoomFactor
 			}
 			// Draw small icons of pieces under the stack.
+			x, y := dp.posToXY(pos, count-1)
 			for ii := 0; ii < count-1; ii++ {
 				idx := uint8(count - ii - 1)
 				player, piece = stack.PieceAt(idx)
@@ -94,29 +137,60 @@ func drawMainBoard(da *gtk.DrawingArea, cr *cairo.Context) {
 		}
 
 	}
+
+	// Draw placement candidates.
+	if selectedOffBoardPiece != NO_PIECE {
+		drawPlacementPositions(da, cr, dp)
+	}
+
+	// Draw piece selected to move.
+	if hasSelectedPiece {
+		drawMovePositions(da, cr, dp)
+	}
+
 	cr.Clip()
-	// const unitSize = 20.0
-	// cr.SetSourceRGB(0, 0, 0)
-	// cr.Rectangle(400+x*unitSize, 200+y*unitSize, unitSize, unitSize)
-	// cr.Fill()
+}
+
+func drawPlacementPositions(da *gtk.DrawingArea, cr *cairo.Context, dp *drawingParams) {
+	posMap := placementPositions()
+	for pos := range posMap {
+		drawHexagonBoardTarget(da, cr, dp, pos)
+	}
+}
+
+func drawMovePositions(da *gtk.DrawingArea, cr *cairo.Context, dp *drawingParams) {
+	drawHexagonBoardSelection(da, cr, dp, selectedPiecePos)
+	for _, action := range board.Derived.Actions {
+		if action.Move && action.SourcePos == selectedPiecePos {
+			drawHexagonBoardTarget(da, cr, dp, action.TargetPos)
+		}
+	}
+}
+
+var rainbowColors = [][3]float64{
+	{255. / 255., 0, 0},
+	{255. / 255., 127. / 255., 0},
+	{255. / 255., 255. / 255., 0},
+	{0, 255. / 255., 0},
+	{0, 0, 255. / 255.},
+	{75. / 255., 0, 130. / 255.},
+	{148. / 255., 0, 211. / 255.},
 }
 
 func drawOffBoardArea(da *gtk.DrawingArea, cr *cairo.Context, player uint8) {
 	cr.Save()
 	defer cr.Restore()
 
-	allocation := da.GetAllocation()
-	width, height := float64(allocation.GetWidth()), float64(allocation.GetHeight())
-	xc, yc := width/2.0, height/2.0
-
 	// Background
-	drawBackground(da, cr, 0.8, 0.8, 0.8, true)
+	drawBackground(da, cr, 0.8, 0.8, 0.8, true, 0.0)
 	if started && board.NextPlayer == player {
-		drawBackground(da, cr, 0.6, 1.0, 0.6, false)
+		drawBackground(da, cr, 0.6, 1.0, 0.6, false, 5.0)
 	}
-
-	// Spacing between each available piece.
-	const spacing = 3.0 * standardFace
+	if finished && board.Derived.Wins[player] {
+		for ii, color := range rainbowColors {
+			drawBackground(da, cr, color[0], color[1], color[2], false, float64(len(rainbowColors)-ii)*5.0)
+		}
+	}
 
 	// Loop over the piece types
 	for piece := 1; piece < NUM_PIECE_TYPES; piece++ {
@@ -124,18 +198,40 @@ func drawOffBoardArea(da *gtk.DrawingArea, cr *cairo.Context, player uint8) {
 		if count == 0 {
 			continue
 		}
-		x, y := xc+(float64(piece)-3.0)*spacing, yc
+		x, y := offBoardPieceToPosition(da, Piece(piece))
 		for ii := 0; ii < int(count); ii++ {
-			drawPieceAndBase(da, cr, player, Piece(piece), standardFace, x+3.0*float64(ii), y-3.0*float64(ii))
+			adjX, adjY := x+3.0*float64(ii), y-3.0*float64(ii)
+			drawPieceAndBase(da, cr, player, Piece(piece), standardFace, adjX, adjY)
+			if ii == int(count)-1 && player == board.NextPlayer && Piece(piece) == selectedOffBoardPiece {
+				drawHexagonSelection(da, cr, standardFace, adjX, adjY)
+			}
 		}
 	}
 
-	// Draw hexagons
-	// cr.SetLineWidth(1.5)
-	// cr.SetLineJoin(cairo.LINE_JOIN_ROUND)
-	// cr.SetSourceRGB(0.1, 0.4, 0.1)
-	// drawHexagon(da, cr, face, xc, yc)
-	//
+	cr.Clip()
+}
+
+func offBoardPieceToPosition(da *gtk.DrawingArea, piece Piece) (x, y float64) {
+	allocation := da.GetAllocation()
+	width, height := float64(allocation.GetWidth()), float64(allocation.GetHeight())
+	xc, yc := width/2.0, height/2.0
+
+	// Spacing between each available piece.
+	const spacing = 3.0 * standardFace
+	x, y = xc+(float64(piece)-3.0)*spacing, yc
+	return
+}
+
+func offBoardPositionToPiece(da *gtk.DrawingArea, x, y float64) (piece Piece) {
+	for ii := 1; ii < NUM_PIECE_TYPES; ii++ {
+		piece = Piece(ii)
+		pX, pY := offBoardPieceToPosition(da, piece)
+		if math.Abs(x-pX) < standardFace && math.Abs(y-pY) < hexTriangleHeight(standardFace) {
+			return
+		}
+	}
+	piece = NO_PIECE
+	return
 }
 
 // hexTriangleHeight returns the height of the triangles that make up for an hexagon, given the face lenght.
@@ -143,7 +239,7 @@ func hexTriangleHeight(face float64) float64 {
 	return 0.866 * face // sqrt(3)/2 * face
 }
 
-func drawBackground(da *gtk.DrawingArea, cr *cairo.Context, r, g, b float64, fill bool) {
+func drawBackground(da *gtk.DrawingArea, cr *cairo.Context, r, g, b float64, fill bool, lineWidth float64) {
 	cr.Save()
 	defer cr.Restore()
 
@@ -154,7 +250,7 @@ func drawBackground(da *gtk.DrawingArea, cr *cairo.Context, r, g, b float64, fil
 	if fill {
 		cr.FillPreserve()
 	} else {
-		cr.SetLineWidth(5.0)
+		cr.SetLineWidth(lineWidth)
 		cr.StrokePreserve()
 	}
 }
@@ -172,6 +268,47 @@ func drawHexagon(da *gtk.DrawingArea, cr *cairo.Context, face, xc, yc float64) {
 	cr.LineTo(xc-face/2.0, yc+height)
 	cr.LineTo(xc-face, yc)
 	cr.Stroke()
+}
+
+func drawHexagonBoardTarget(da *gtk.DrawingArea, cr *cairo.Context, dp *drawingParams, pos Pos) {
+	cr.Save()
+	defer cr.Restore()
+
+	cr.SetLineWidth(3.5)
+	cr.SetLineJoin(cairo.LINE_JOIN_ROUND)
+	cr.SetSourceRGB(0.204, 0.914, 0.169)
+	drawHexagonBoard(da, cr, dp, pos)
+}
+
+func drawHexagonBoardSelection(da *gtk.DrawingArea, cr *cairo.Context, dp *drawingParams, pos Pos) {
+	cr.Save()
+	defer cr.Restore()
+
+	cr.SetLineWidth(5.0)
+	cr.SetLineJoin(cairo.LINE_JOIN_ROUND)
+	cr.SetSourceRGB(0.38, 0.114, 0.549)
+	drawHexagonBoard(da, cr, dp, pos)
+}
+
+func drawHexagonBoard(da *gtk.DrawingArea, cr *cairo.Context, dp *drawingParams, pos Pos) {
+	stack := board.StackAt(pos)
+	count := int(stack.CountPieces())
+	if count > 0 {
+		count = count - 1
+	}
+	x, y := dp.posToXY(pos, count)
+	drawHexagon(da, cr, dp.face, x, y)
+}
+
+// drawHexagonSelection draws the hexagon with the colors for piece selection.
+func drawHexagonSelection(da *gtk.DrawingArea, cr *cairo.Context, face, xc, yc float64) {
+	cr.Save()
+	defer cr.Restore()
+
+	cr.SetLineWidth(5.0)
+	cr.SetLineJoin(cairo.LINE_JOIN_ROUND)
+	cr.SetSourceRGB(0.38, 0.114, 0.549)
+	drawHexagon(da, cr, standardFace, xc, yc)
 }
 
 func drawPieceAndBase(da *gtk.DrawingArea, cr *cairo.Context, player uint8, piece Piece, face, xc, yc float64) {
