@@ -180,6 +180,7 @@ func NewBoard() *Board {
 		MaxMoves:   1000,
 		NextPlayer: 0,
 	}
+	board.BuildDerived()
 	return board
 }
 
@@ -193,6 +194,10 @@ func (b *Board) Copy() *Board {
 		newB.board[pos] = stack
 	}
 	return newB
+}
+
+func (b *Board) OpponentPlayer() uint8 {
+	return 1 - b.NextPlayer
 }
 
 // Available returns how many pieces of the given type are avaiable for the given player.

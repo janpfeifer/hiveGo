@@ -49,15 +49,23 @@ func NewUI(color bool, clearScreen bool) *UI {
 	}
 }
 
-func (ui *UI) Run(board *Board) error {
+func (ui *UI) Run(board *Board) (*Board, error) {
 	for true {
-		board.BuildDerived()
+		if len(board.Derived.Actions) == 0 {
+			// Nothing to play, skip (by playing NO_PIECE)
+			fmt.Println()
+			ui.printPlayer(board)
+			fmt.Println(" has no available actions, skipping.")
+			fmt.Println()
+			board = board.Act(Action{Piece: NO_PIECE})
+		}
+
 		d := board.Derived
 		if d.Wins[0] || d.Wins[1] {
 			if d.Wins[0] && d.Wins[1] {
 				fmt.Printf("\n\n%s*** DRAW: Both queens were sorrounded! ***%s\n\n",
 					ui.blinkStart(), ui.colorEnd())
-				return nil
+				return board, nil
 			}
 			player := uint8(0)
 			if d.Wins[1] {
@@ -65,7 +73,7 @@ func (ui *UI) Run(board *Board) error {
 			}
 			fmt.Printf("\n\n%s*** PLAYER %d WINS!! Congratulations! ***%s\n\n",
 				ui.colorStart(player, QUEEN), player, ui.colorEnd())
-			return nil
+			return board, nil
 		}
 		for true {
 			ui.Print(board)
@@ -75,13 +83,13 @@ func (ui *UI) Run(board *Board) error {
 			}
 			if err != nil {
 				log.Printf("Run() failed: %s", err)
-				return err
+				return board, err
 			}
 			board = board.Act(action)
 			break
 		}
 	}
-	return nil
+	return board, nil
 }
 
 func (ui *UI) ReadCommand(b *Board) (action Action, err error) {
@@ -151,8 +159,11 @@ func (ui *UI) ReadCommand(b *Board) (action Action, err error) {
 			}
 			_, action.Piece, _ = b.PieceAt(action.SourcePos)
 			if !b.IsValid(action) {
-				fmt.Printf("Moving %s from %s to %s is valid.\n",
+				fmt.Printf("Moving %s from %s to %s is not valid.\n",
 					action.Piece, action.SourcePos, action.TargetPos)
+				if b.Available(b.NextPlayer, QUEEN) != 0 {
+					fmt.Printf("One can only start moving pieces once the Queen is on the board.\n")
+				}
 				continue
 			}
 			err = nil

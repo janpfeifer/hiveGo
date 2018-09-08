@@ -29,7 +29,7 @@ var (
 
 // Amount of time below which a button press is considered a click.
 // After that it is consider a click-and-hold (or drag).
-const CLICK_MAX_TIME_MS = 500
+const CLICK_MAX_TIME_MS = 250
 
 // Creates the main window.
 func createMainWindow() {
@@ -87,6 +87,22 @@ func createMainWindow() {
 			// Check where was the click:
 			x, y := evB.X(), evB.Y()
 			piece := offBoardPositionToPiece(da, x, y)
+			if piece != NO_PIECE {
+				pieceAvailable := false
+				for _, action := range board.Derived.Actions {
+					if !action.Move && action.Piece == piece {
+						pieceAvailable = true
+						break
+					}
+				}
+				if !pieceAvailable {
+					// If piece not available or not allowed to be placed,
+					// set it to NO_PIECE
+					piece = NO_PIECE
+				}
+			}
+
+			// If piece selection updated, redraw.
 			if piece != selectedOffBoardPiece {
 				selectedOffBoardPiece = piece
 				mainWindow.QueueDraw()
@@ -138,10 +154,14 @@ func createMainWindow() {
 		return true
 	})
 	mainDrawing.Connect("motion-notify-event", func(da *gtk.DrawingArea, ev *gdk.Event) bool {
-		evM := &gdk.EventMotion{ev}
-		x, y := evM.MotionVal()
+		evM := gdk.EventMotionNewFromEvent(ev)
 		if !isDragging {
 			return false
+		}
+		x, y := evM.MotionVal()
+		time := evM.Time()
+		if time-dragStartTime < CLICK_MAX_TIME_MS {
+			return true
 		}
 		// TODO: check that CLICK_MAX_TIME_MS has elapsed before starting drag.
 		deltaX, deltaY := x-dragX, y-dragY

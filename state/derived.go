@@ -12,11 +12,11 @@ var _ = fmt.Printf
 // Derived holds information that is generated from the Board state.
 type Derived struct {
 	// Information about both players.
-	NumPiecesOnBoard    [2]uint8
-	NumPiecesFreeToMove [2]uint8
+	NumPiecesOnBoard    [NUM_PLAYERS]uint8
+	Wins                [NUM_PLAYERS]bool // If both players win, it is a draw.
+	NumSurroundingQueen [NUM_PLAYERS]uint8
 
 	// Information only about the next player to move (NextPlayer)
-	Wins               [2]bool // If both players win, it is a draw.
 	PlacementPositions map[Pos]bool
 	RemovablePieces    map[Pos]bool
 	Actions            []Action
@@ -49,7 +49,7 @@ func (b *Board) BuildDerived() {
 		}
 	}
 	derived.Actions = b.validActions()
-	derived.Wins = b.endGame()
+	derived.Wins, derived.NumSurroundingQueen = b.endGame()
 }
 
 // ValidActions returns the list of valid actions for the NextPlayer.
@@ -97,8 +97,7 @@ func (b *Board) placementPositions() (placements map[Pos]bool) {
 
 // addPlacementActions adds valid placement actions to the given
 // actions slice.
-func (b *Board) addPlacementActions(actions []Action) []Action {
-	player := b.NextPlayer
+func (b *Board) addPlacementActions(player uint8, actions []Action) []Action {
 	derived := b.Derived
 	mustPlaceQueen := b.Available(player, QUEEN) > 0 && derived.NumPiecesOnBoard[player] >= 3
 
@@ -180,11 +179,16 @@ func (b *Board) IsRemovable(pos Pos) bool {
 }
 
 // addMoveActions add valid move actions to the given actions slice
-func (b *Board) addMoveActions(actions []Action) []Action {
+func (b *Board) addMoveActions(player uint8, actions []Action) []Action {
+	if b.Available(player, QUEEN) != 0 {
+		// Queen not yet in the game, can't move.
+		return actions
+	}
+
 	d := b.Derived
 	for srcPos, piecesStack := range b.board {
-		player, piece := piecesStack.Top()
-		if player != b.NextPlayer {
+		piecePlayer, piece := piecesStack.Top()
+		if player != piecePlayer {
 			// We are only interested in the current player.
 			continue
 		}
@@ -222,6 +226,8 @@ func (b *Board) addMoveActions(actions []Action) []Action {
 // and leaves that to the UI to handle.
 //
 // If Piece = NO_PIECE, it's assumed to be a pass-action.
+//
+// It also updates the derived information by calling `BuildDerived()`.
 func (b *Board) Act(action Action) (newB *Board) {
 	newB = b.Copy()
 	if action.Piece != NO_PIECE {
@@ -237,6 +243,7 @@ func (b *Board) Act(action Action) (newB *Board) {
 	}
 	newB.NextPlayer = 1 - newB.NextPlayer
 	newB.MoveNumber++
+	newB.BuildDerived()
 	return
 }
 
@@ -251,8 +258,9 @@ func (b *Board) IsValid(action Action) bool {
 }
 
 // endGame checks for end games and will return true for each of the players if they
-// managed to sorround the opponents queen.
-func (b *Board) endGame() (wins [2]bool) {
+// managed to sorround the opponents queen. Returns also the number of pieces surrounding
+// each queen.
+func (b *Board) endGame() (wins [2]bool, surrounding [2]uint8) {
 	if b.MoveNumber > b.MaxMoves {
 		// After MaxMoves is reached, the game is considered a draw.
 		wins = [2]bool{true, true}
@@ -261,7 +269,9 @@ func (b *Board) endGame() (wins [2]bool) {
 	wins = [2]bool{false, false}
 	for pos, stack := range b.board {
 		if isQueen, player := stack.HasQueen(); isQueen {
-			if len(b.OccupiedNeighbours(pos)) == 6 {
+			// Convert player to "NextPlayer"/"Opponent"
+			surrounding[player] = uint8(len(b.OccupiedNeighbours(pos)))
+			if surrounding[player] == 6 {
 				// If player's queen is sorrounded, other player wins (or draws).
 				wins[1-player] = true
 			}

@@ -62,11 +62,9 @@ func newGame() {
 
 func executeAction(action Action) {
 	board = board.Act(action)
-	board.BuildDerived()
 	if len(board.Derived.Actions) == 0 {
 		// Player has no available moves, skip.
 		board = board.Act(Action{Piece: NO_PIECE})
-		board.BuildDerived()
 	}
 	if board.Derived.Wins[0] || board.Derived.Wins[1] {
 		finished = true

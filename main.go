@@ -35,6 +35,9 @@ func main() {
 	// }
 
 	ui := ascii_ui.NewUI(true, false)
-	ui.Run(board)
+	_, err := ui.Run(board)
+	if err != nil {
+		log.Fatalf("Failed to run match: %v", err)
+	}
 	// ui.Print(board)
 }
