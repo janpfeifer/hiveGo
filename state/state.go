@@ -16,23 +16,24 @@ const (
 	GRASSHOPPER
 	QUEEN
 	SPIDER
+	LAST_PIECE_TYPE
 )
 
 const (
 	NUM_PLAYERS     = 2
 	NUM_NEIGHBOURS  = 6
-	NUM_PIECE_TYPES = 6 // Includes the "NO_PIECE" type.
+	NUM_PIECE_TYPES = LAST_PIECE_TYPE - 1 // Includes the "NO_PIECE" type.
 )
 
 var (
-	PieceLetters  = [NUM_PIECE_TYPES]string{"-", "A", "B", "G", "Q", "S"}
+	PieceLetters  = [LAST_PIECE_TYPE]string{"-", "A", "B", "G", "Q", "S"}
 	LetterToPiece = map[string]Piece{"A": ANT, "B": BEETLE, "G": GRASSHOPPER, "Q": QUEEN, "S": SPIDER}
-	PieceNames    = [NUM_PIECE_TYPES]string{
+	PieceNames    = [LAST_PIECE_TYPE]string{
 		"None", "Ant", "Beetle", "Grasshopper", "Queen", "Spider",
 	}
 
 	// Pieces enumerates all the pieces, skipping the "NO_PIECE".
-	Pieces = [5]Piece{ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER}
+	Pieces = [NUM_PIECE_TYPES]Piece{ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER}
 )
 
 var INITIAL_AVAILABILITY = Availability{3, 2, 3, 1, 2}
@@ -339,24 +340,23 @@ func (b *Board) EmptyNeighbours(pos Pos) (poss []Pos) {
 	return
 }
 
+func (b *Board) PlayerNeighbours(player uint8, pos Pos) (poss []Pos) {
+	poss = pos.Neighbours()
+	poss = FilterPositions(poss, func(p Pos) bool {
+		posPlayer, piece, _ := b.PieceAt(p)
+		return piece != NO_PIECE && player == posPlayer
+	})
+	return
+}
+
 // FriendlyNeighbours will return the slice of neighbouring positions occupied by pieces
 // of the b.NextPlayer.
 func (b *Board) FriendlyNeighbours(pos Pos) (poss []Pos) {
-	poss = pos.Neighbours()
-	poss = FilterPositions(poss, func(p Pos) bool {
-		player, piece, _ := b.PieceAt(p)
-		return piece != NO_PIECE && player == b.NextPlayer
-	})
-	return
+	return b.PlayerNeighbours(b.NextPlayer, pos)
 }
 
 // OpponentNeighbours will return the slice of neighbouring positions occupied by opponents
 // of the b.NextPlayer.
 func (b *Board) OpponentNeighbours(pos Pos) (poss []Pos) {
-	poss = pos.Neighbours()
-	poss = FilterPositions(poss, func(p Pos) bool {
-		player, piece, _ := b.PieceAt(p)
-		return piece != NO_PIECE && player != b.NextPlayer
-	})
-	return
+	return b.PlayerNeighbours(b.OpponentPlayer(), pos)
 }

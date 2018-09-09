@@ -10,6 +10,21 @@ import (
 
 var _ = log.Printf
 
+type alphaBetaSearcher struct {
+	maxDepth int
+}
+
+// Search implements the Searcher interface.
+func (ab *alphaBetaSearcher) Search(b *Board, scorer ai.BatchScorer) (
+	action Action, board *Board, score float64) {
+	return AlphaBeta(b, scorer, ab.maxDepth)
+}
+
+// NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPrunning.
+func NewAlphaBetaSearcher(maxDepth int) Searcher {
+	return &alphaBetaSearcher{maxDepth: maxDepth}
+}
+
 // Alpha Beta Pruning algorithm
 // See: wikipedia.org/wiki/Alpha-beta_pruning
 //
@@ -49,15 +64,17 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 		newB := board.Act(action)
 
 		// Use standard end game scores if game is finished.
-		isEnd, score := EndGameScore(newB)
+		isEnd, score := ai.EndGameScore(newB)
 		if !isEnd {
 			if maxDepth == 1 {
 				score = scorer.Score(newB)
 			} else {
 				// Runs alphaBeta for opponent player, so the alpha/beta are reversed.
 				_, _, score = alphaBetaRecursive(newB, scorer, maxDepth-1, beta, bestScore)
-				score = -score // Score for this player is the reverse of the score for
 			}
+			// Score for player that started the move is the reverse of the score
+			// of the opponent player (the one playing in newB)
+			score = -score
 		}
 
 		// Update best score.
@@ -76,7 +93,3 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 
 	return
 }
-
-//    randomness: Set to 0 to always take the action that maximizes the expected value (no
-//      exploration). Otherwise works as divisor for the scores: larger values means more
-//      randomness (exploration), smaller values means less randomness (exploitation).

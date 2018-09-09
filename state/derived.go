@@ -13,13 +13,13 @@ var _ = fmt.Printf
 type Derived struct {
 	// Information about both players.
 	NumPiecesOnBoard    [NUM_PLAYERS]uint8
-	Wins                [NUM_PLAYERS]bool // If both players win, it is a draw.
 	NumSurroundingQueen [NUM_PLAYERS]uint8
+	PlacementPositions  [NUM_PLAYERS]map[Pos]bool
+	Wins                [NUM_PLAYERS]bool // If both players win, it is a draw.
 
-	// Information only about the next player to move (NextPlayer)
-	PlacementPositions map[Pos]bool
-	RemovablePieces    map[Pos]bool
-	Actions            []Action
+	// Generic information only about the next player to move (NextPlayer)
+	RemovablePieces map[Pos]bool
+	Actions         []Action
 }
 
 // Action describe a placement or a move. If `piece` is given, `posSource` can be
@@ -36,32 +36,33 @@ func (b *Board) BuildDerived() {
 	b.Derived = &Derived{}
 	derived := b.Derived
 
-	// Count of pieces.
-	for p := 0; p < 2; p++ {
+	// Per player info.
+	for p := uint8(0); p < NUM_PLAYERS; p++ {
 		derived.NumPiecesOnBoard[p] = TOTAL_PIECES_PER_PLAYER - b.available[p].Count()
+		derived.PlacementPositions[p] = b.placementPositions(p)
 	}
 
-	derived.PlacementPositions = b.placementPositions()
 	derived.RemovablePieces = make(map[Pos]bool)
 	for pos, _ := range b.board {
 		if b.IsRemovable(pos) {
 			derived.RemovablePieces[pos] = true
 		}
 	}
-	derived.Actions = b.validActions()
+	derived.Actions = b.ValidActions(b.NextPlayer)
 	derived.Wins, derived.NumSurroundingQueen = b.endGame()
 }
 
-// ValidActions returns the list of valid actions for the NextPlayer.
-func (b *Board) validActions() (actions []Action) {
+// ValidActions returns the list of valid actions for given player.
+// For the NextPlayer the list of actions is pre-cached in Derived.
+func (b *Board) ValidActions(player uint8) (actions []Action) {
 	actions = make([]Action, 0, 25)
-	actions = b.addPlacementActions(actions)
-	actions = b.addMoveActions(actions)
+	actions = b.addPlacementActions(player, actions)
+	actions = b.addMoveActions(player, actions)
 	return
 }
 
 // placementPositions enumerate placement positions.
-func (b *Board) placementPositions() (placements map[Pos]bool) {
+func (b *Board) placementPositions(player uint8) (placements map[Pos]bool) {
 	placements = make(map[Pos]bool)
 	if len(b.board) == 0 {
 		placements[Pos{0, 0}] = true
@@ -77,8 +78,8 @@ func (b *Board) placementPositions() (placements map[Pos]bool) {
 	// Enumerate all empty positions next to friendly pieces.
 	candidates := make(map[Pos]bool)
 	for pos, stacked := range b.board {
-		player, _ := stacked.Top()
-		if player != b.NextPlayer {
+		posPlayer, _ := stacked.Top()
+		if posPlayer != player {
 			continue
 		}
 		for _, nPos := range b.EmptyNeighbours(pos) {
@@ -101,7 +102,7 @@ func (b *Board) addPlacementActions(player uint8, actions []Action) []Action {
 	derived := b.Derived
 	mustPlaceQueen := b.Available(player, QUEEN) > 0 && derived.NumPiecesOnBoard[player] >= 3
 
-	for pos, _ := range derived.PlacementPositions {
+	for pos, _ := range derived.PlacementPositions[player] {
 		if mustPlaceQueen {
 			actions = append(actions, Action{Move: false, Piece: QUEEN, TargetPos: pos})
 		} else {
@@ -278,4 +279,8 @@ func (b *Board) endGame() (wins [2]bool, surrounding [2]uint8) {
 		}
 	}
 	return
+}
+
+func (b *Board) IsFinished() bool {
+	return b.Derived.Wins[0] || b.Derived.Wins[1]
 }

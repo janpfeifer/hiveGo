@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	pieceSurfaces     [NUM_PIECE_TYPES]*cairo.Surface
+	pieceSurfaces     [LAST_PIECE_TYPE]*cairo.Surface
 	pieceBaseSurfaces [NUM_PLAYERS]*cairo.Surface
 )
 
@@ -33,7 +33,7 @@ var (
 
 func loadImageResources() {
 	// Load each piece drawing.
-	for ii := 1; ii < NUM_PIECE_TYPES; ii++ {
+	for ii := Piece(1); ii < LAST_PIECE_TYPE; ii++ {
 		surface, err := cairo.NewSurfaceFromPNG(fmt.Sprintf("%s/%s.png",
 			*flag_resources, PieceNames[ii]))
 		if err != nil {
@@ -193,16 +193,16 @@ func drawOffBoardArea(da *gtk.DrawingArea, cr *cairo.Context, player uint8) {
 	}
 
 	// Loop over the piece types
-	for piece := 1; piece < NUM_PIECE_TYPES; piece++ {
-		count := board.Available(player, Piece(piece))
+	for piece := Piece(1); piece < LAST_PIECE_TYPE; piece++ {
+		count := board.Available(player, piece)
 		if count == 0 {
 			continue
 		}
-		x, y := offBoardPieceToPosition(da, Piece(piece))
+		x, y := offBoardPieceToPosition(da, piece)
 		for ii := 0; ii < int(count); ii++ {
 			adjX, adjY := x+3.0*float64(ii), y-3.0*float64(ii)
-			drawPieceAndBase(da, cr, player, Piece(piece), standardFace, adjX, adjY)
-			if ii == int(count)-1 && player == board.NextPlayer && Piece(piece) == selectedOffBoardPiece {
+			drawPieceAndBase(da, cr, player, piece, standardFace, adjX, adjY)
+			if ii == int(count)-1 && player == board.NextPlayer && piece == selectedOffBoardPiece {
 				drawHexagonSelection(da, cr, standardFace, adjX, adjY)
 			}
 		}
@@ -223,8 +223,7 @@ func offBoardPieceToPosition(da *gtk.DrawingArea, piece Piece) (x, y float64) {
 }
 
 func offBoardPositionToPiece(da *gtk.DrawingArea, x, y float64) (piece Piece) {
-	for ii := 1; ii < NUM_PIECE_TYPES; ii++ {
-		piece = Piece(ii)
+	for piece = Piece(1); piece < LAST_PIECE_TYPE; piece++ {
 		pX, pY := offBoardPieceToPosition(da, piece)
 		if math.Abs(x-pX) < standardFace && math.Abs(y-pY) < hexTriangleHeight(standardFace) {
 			return

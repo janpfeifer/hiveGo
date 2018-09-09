@@ -5,7 +5,7 @@ import (
 )
 
 // Scorer scores: the convention is that victory/defeat are assigned to
-// +100 and -100 respectivelly. Values used on a softmax when used to
+// +10 and -10 respectivelly. Values used on a softmax when used to
 // determine probabilistic moves.
 type Scorer interface {
 	Score(board *Board) float64
@@ -44,8 +44,8 @@ func EndGameScore(b *Board) (isEnd bool, score float64) {
 			return true, 0
 		}
 		// Current player wins.
-		return true, 100.0
+		return true, 10.0
 	}
 	// Opponent player wins.
-	return true, -100.0
+	return true, -10.0
 }
