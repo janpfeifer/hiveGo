@@ -20,11 +20,11 @@ type BatchScorer interface {
 }
 
 // Trivial implementation of a BatchScorer, wity no efficiency gains.
-type WrapperBatchScorer struct {
+type BatchScorerWrapper struct {
 	Scorer
 }
 
-func (s WrapperBatchScorer) BatchScore(boards []*Board) []float64 {
+func (s BatchScorerWrapper) BatchScore(boards []*Board) []float64 {
 	scores := make([]float64, len(boards))
 	for ii, board := range boards {
 		scores[ii] = s.Score(board)
@@ -38,11 +38,10 @@ func EndGameScore(b *Board) (isEnd bool, score float64) {
 	if !b.Derived.Wins[0] && !b.Derived.Wins[0] {
 		return false, 0
 	}
-	if b.Derived.Wins[0] {
-		if b.Derived.Wins[1] {
-			// Draw.
-			return true, 0
-		}
+	if b.Derived.Wins[0] && b.Derived.Wins[1] {
+		return true, 0
+	}
+	if b.Derived.Wins[b.NextPlayer] {
 		// Current player wins.
 		return true, 10.0
 	}

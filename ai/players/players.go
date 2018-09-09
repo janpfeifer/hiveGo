@@ -16,11 +16,24 @@ type Player interface {
 	Play(b *Board) Action
 }
 
-type searcherScorePlayer struct {
-	searcher search.Searcher
-	scorer   ai.Scorer
+type SearcherScorePlayer struct {
+	Searcher search.Searcher
+	Scorer   ai.BatchScorer
 }
 
-func NewAIPlayer() Player {
+func (p *SearcherScorePlayer) Play(b *Board) Action {
+	action, board, score := p.Searcher.Search(b, p.Scorer)
+	log.Printf("AI playing %v, score=%.3f", action, score)
+	log.Printf("Features:")
+	ai.PrettyPrintFeatures(ai.FeatureVector(board))
+	return action
+}
+
+func NewAIPlayer() *SearcherScorePlayer {
+	alphaBeta := search.NewAlphaBetaSearcher(3)
+	return &SearcherScorePlayer{
+		Searcher: alphaBeta, // search.NewRandomizedSearcher(alphaBeta, 1.0),
+		Scorer:   ai.BatchScorerWrapper{ai.ManualV0},
+	}
 	return nil
 }

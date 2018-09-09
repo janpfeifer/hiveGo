@@ -1,6 +1,7 @@
 package search
 
 import (
+	"fmt"
 	"log"
 	"math"
 
@@ -9,6 +10,7 @@ import (
 )
 
 var _ = log.Printf
+var _ = fmt.Printf
 
 type alphaBetaSearcher struct {
 	maxDepth int
@@ -40,7 +42,7 @@ func NewAlphaBetaSearcher(maxDepth int) Searcher {
 func AlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int) (
 	bestAction Action, bestBoard *Board, bestScore float64) {
 	alpha := -math.MaxFloat64
-	beta := math.MaxFloat64
+	beta := -math.MaxFloat64
 	return alphaBetaRecursive(board, scorer, maxDepth, alpha, beta)
 }
 
@@ -72,10 +74,12 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 				// Runs alphaBeta for opponent player, so the alpha/beta are reversed.
 				_, _, score = alphaBetaRecursive(newB, scorer, maxDepth-1, beta, bestScore)
 			}
-			// Score for player that started the move is the reverse of the score
-			// of the opponent player (the one playing in newB)
-			score = -score
 		}
+
+		// Score for player that started the move is the reverse of the score
+		// of the opponent player (the one playing in newB)
+		score = -score
+		// fmt.Printf("  Move #%d: action %s, score(player=%d)=%.3f\n", newB.MoveNumber, action, board.NextPlayer, score)
 
 		// Update best score.
 		if score > bestScore {
@@ -85,7 +89,7 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 		}
 
 		// Prune.
-		if bestScore >= beta {
+		if bestScore >= -beta {
 			// The opponent will never take this path, so we can prune it.
 			return
 		}

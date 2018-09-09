@@ -34,6 +34,7 @@ var (
 	started   bool // Starts as false, and set to true once a game is running.
 	finished  bool
 	aiPlayers = [2]players.Player{nil, nil}
+	nextIsAI  bool
 )
 
 func main() {
@@ -77,43 +78,36 @@ func newGame() {
 	finished = false
 	zoomFactor = 1.
 	shiftX, shiftY = 0., 0.
+	mainWindow.QueueDraw()
 
 	// AI starts playing ?
 	if aiPlayers[board.NextPlayer] != nil {
 		action := aiPlayers[board.NextPlayer].Play(board)
-		board = board.Act(action)
+		executeAction(action)
 	}
-
-	// Redraw.
-	mainWindow.QueueDraw()
 }
 
 func executeAction(action Action) {
 	board = board.Act(action)
-	for !board.IsFinished() {
-		switch {
-		case len(board.Derived.Actions) == 0:
-			{
-				// Player has no available moves, skip.
-				board = board.Act(Action{Piece: NO_PIECE})
-				if len(board.Derived.Actions) == 0 {
-					log.Fatal("No moves avaialble to either players !?")
-				}
-				continue
-			}
-		case aiPlayers[board.NextPlayer] != nil:
-			{
-				action = aiPlayers[board.NextPlayer].Play(board)
-				board = board.Act(action)
-			}
-		default:
-			{
-				break
-			}
+	if len(board.Derived.Actions) == 0 {
+		// Player has no available moves, skip.
+		log.Printf("No action available, automatic action.")
+		board = board.Act(Action{Piece: NO_PIECE})
+		if len(board.Derived.Actions) == 0 {
+			log.Fatal("No moves avaialble to either players !?")
 		}
 	}
+
 	finished = board.IsFinished()
 	selectedOffBoardPiece = NO_PIECE
 	hasSelectedPiece = false
+	nextIsAI = !finished && aiPlayers[board.NextPlayer] != nil
+	if nextIsAI {
+		// Start AI thinking on a separate thread.
+		go func() {
+			action = aiPlayers[board.NextPlayer].Play(board)
+			executeAction(action)
+		}()
+	}
 	mainWindow.QueueDraw()
 }

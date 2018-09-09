@@ -26,10 +26,9 @@ type randomizedSearcher struct {
 }
 
 // Search implements the Searcher interface.
-func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (
-	action Action, board *Board, score float64) {
+func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (Action, *Board, float64) {
 	// If there are no valid actions, create the "pass" action
-	actions := board.Derived.Actions
+	actions := b.Derived.Actions
 	if len(actions) == 0 {
 		actions = append(actions, Action{Piece: NO_PIECE})
 	}
@@ -37,7 +36,7 @@ func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (
 	newBoards := make([]*Board, len(actions))
 
 	for ii, action := range actions {
-		newBoards[ii] = board.Act(action)
+		newBoards[ii] = b.Act(action)
 		if isEnd, score := ai.EndGameScore(newBoards[ii]); isEnd {
 			// End game is treated differently.
 			if score > 0.0 {
@@ -71,14 +70,15 @@ func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (
 
 	// Select from probabilities.
 	chance := rand.Float64()
+	log.Printf("chance=%f, scores=%v, probabilities=%v", chance, scores, probabilities)
 	for ii, value := range probabilities {
 		if chance <= value {
 			return actions[ii], newBoards[ii], scores[ii]
 		}
 		chance -= value
 	}
-	log.Fatal("Nothing selected!?")
-	return
+	log.Fatalf("Nothing selected!? final chance=%f", chance)
+	return Action{}, nil, 0.0
 }
 
 func softmax(values []float64) (probs []float64) {

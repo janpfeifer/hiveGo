@@ -7,7 +7,9 @@ var _ = fmt.Printf
 // EmptyAndConnectedNeighbours returns neighbouring positions that are empty but still connected to
 // the graph.
 //
-// It also checks that piece is not "squeezing" through two other pieces.
+// It also checks that piece is not "squeezing" through two other pieces, or that it moves
+// loosing touch to pieces -- that is, the intersection of neighboring pieces before and after
+// the move must be non-empty.
 //
 // Args:
 //   srcPos: from where this move starts.
@@ -37,27 +39,17 @@ func (b *Board) EmptyAndConnectedNeighbours(srcPos, originalPos Pos, invalid map
 			// Target destination must be empty.
 			continue
 		}
-		if occupied[(ii+1)%NUM_NEIGHBOURS] && occupied[(ii-1+NUM_NEIGHBOURS)%NUM_NEIGHBOURS] {
+		positionLeftOfMoveOccupied := occupied[(ii+1)%NUM_NEIGHBOURS]
+		positionRightOfMoveOccupied := occupied[(ii-1+NUM_NEIGHBOURS)%NUM_NEIGHBOURS]
+		if positionLeftOfMoveOccupied && positionRightOfMoveOccupied {
 			// Squeeze between two pieces is not allowed.
 			continue
 		}
-
-		isConnected := false
-		for _, connectedPos := range tgtPos.Neighbours() {
-			if connectedPos == srcPos || connectedPos == originalPos {
-				// srcPos and originalPos will be presumably empty is the piece moves to tgtPos.
-				continue
-			}
-			if b.HasPiece(connectedPos) {
-				// All good, tgtPos is connected to hive, we only need one position.
-				isConnected = true
-				break
-			}
-		}
-		if !isConnected {
+		if !positionLeftOfMoveOccupied && !positionRightOfMoveOccupied {
+			// But at least one of the two positions in between the source and target positions
+			// must be occupied.
 			continue
 		}
-
 		poss = append(poss, tgtPos)
 	}
 	return

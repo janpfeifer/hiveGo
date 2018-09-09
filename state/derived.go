@@ -31,6 +31,17 @@ type Action struct {
 	SourcePos, TargetPos Pos
 }
 
+func (a Action) String() string {
+	if a.Piece == NO_PIECE {
+		return "SkipAction"
+	}
+	if a.Move {
+		return fmt.Sprintf("Move %s: %s->%s", PieceLetters[a.Piece], a.SourcePos, a.TargetPos)
+	} else {
+		return fmt.Sprintf("Place %s in %s", PieceLetters[a.Piece], a.TargetPos)
+	}
+}
+
 // BuildDerived rebuilds information derived from the board.
 func (b *Board) BuildDerived() {
 	b.Derived = &Derived{}

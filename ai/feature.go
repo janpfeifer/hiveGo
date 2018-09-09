@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"fmt"
 	"log"
 
 	. "github.com/janpfeifer/hiveGo/state"
@@ -83,6 +84,19 @@ func FeatureVector(b *Board) (f []float64) {
 		AllFeatures[ii].Setter(b, &AllFeatures[ii], f)
 	}
 	return
+}
+
+func PrettyPrintFeatures(f []float64) {
+	for ii := range AllFeatures {
+		def := &AllFeatures[ii]
+		fmt.Printf("\t%s: ", def.Name)
+		if def.Dim == 1 {
+			fmt.Printf("%.2f", f[def.VecIndex])
+		} else {
+			fmt.Printf("%v", f[def.VecIndex:def.VecIndex+def.Dim])
+		}
+		fmt.Println()
+	}
 }
 
 func fNumOffBoard(b *Board, def *FeatureDef, f []float64) {

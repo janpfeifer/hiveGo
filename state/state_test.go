@@ -123,7 +123,6 @@ func TestSpiderMoves(t *testing.T) {
 	}
 	board := buildBoard(layout)
 	board.BuildDerived()
-	// printBoard(board)
 
 	// Spider at (1,0) should be locked in place (it would break the hive)
 	spiderMoves := listMovesForPiece(board, SPIDER, Pos{1, 0})
@@ -132,14 +131,15 @@ func TestSpiderMoves(t *testing.T) {
 	}
 
 	// Spider at (1,1) is free to move.
-	want := []Pos{{3, 0}, {0, 3}, {0, 4}}
+	want := []Pos{{3, 0}, {0, 3}}
 	spiderMoves = listMovesForPiece(board, SPIDER, Pos{1, 1})
 	if !reflect.DeepEqual(want, spiderMoves) {
 		t.Errorf("Wanted Spider moves to be %v, got %v", want, spiderMoves)
 	}
 
 	// Spider at (-1, 3)
-	want = []Pos{{-2, 1}, {0, 2}, {1, 2}, {2, 2}}
+	want = []Pos{{-2, 1}, {1, 2}}
+	printBoard(board)
 	spiderMoves = listMovesForPiece(board, SPIDER, Pos{-1, 3})
 	if !reflect.DeepEqual(want, spiderMoves) {
 		t.Errorf("Wanted Spider moves to be %v, got %v", want, spiderMoves)

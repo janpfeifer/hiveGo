@@ -75,7 +75,7 @@ func createMainWindow() {
 				hasSelectedPiece = false
 				mainWindow.QueueDraw() // Needs redrawing.
 			}
-			if player != board.NextPlayer {
+			if player != board.NextPlayer || nextIsAI {
 				// Not this players turn, so nothing to select. Just in case, de-seleect.
 				if selectedOffBoardPiece != NO_PIECE {
 					selectedOffBoardPiece = NO_PIECE
@@ -255,6 +255,9 @@ func createAccelGroup(win *gtk.Window) {
 }
 
 func mainBoardClick(da *gtk.DrawingArea, x, y float64) {
+	if nextIsAI {
+		return
+	}
 	dp := newDrawingParams(mainDrawing)
 	pos := dp.XYToPos(x, y)
 	if selectedOffBoardPiece != NO_PIECE {
