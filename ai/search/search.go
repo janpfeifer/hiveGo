@@ -4,6 +4,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"sort"
 
 	"github.com/janpfeifer/hiveGo/ai"
 	. "github.com/janpfeifer/hiveGo/state"
@@ -25,9 +26,11 @@ type randomizedSearcher struct {
 	randomness float64
 }
 
-// Search implements the Searcher interface.
-func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (Action, *Board, float64) {
-	// If there are no valid actions, create the "pass" action
+// ScoredActions enumerates each of the available actions, along with the boards
+// where actions were taken and with the score for current b.NextPlayer -- not the
+// next action's NextPlayer. It wil return early if any of the actions lead to
+// b.NextPlayer winning.
+func ScoredActions(b *Board, scorer ai.BatchScorer) ([]Action, []*Board, []float64) {
 	actions := b.Derived.Actions
 	if len(actions) == 0 {
 		actions = append(actions, Action{Piece: NO_PIECE})
@@ -35,17 +38,68 @@ func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (Action, *
 	scores := make([]float64, len(actions))
 	newBoards := make([]*Board, len(actions))
 
+	// Pre-score actions that lead to end-game.
+	boardsToScore := make([]*Board, 0, len(actions))
 	for ii, action := range actions {
 		newBoards[ii] = b.Act(action)
 		if isEnd, score := ai.EndGameScore(newBoards[ii]); isEnd {
 			// End game is treated differently.
+			score = -score // Score for b.NextPlayer, not newBoards[ii].NextPlayer
 			if score > 0.0 {
-				// Player wins, take action (non-randomized)
-				return action, newBoards[ii], score
+				// Player wins, return only the winning action.
+				return []Action{action}, []*Board{newBoards[ii]}, []float64{score}
 			}
 			scores[ii] = score
 		} else {
+			boardsToScore = append(boardsToScore, newBoards[ii])
+		}
+	}
+
+	if len(boardsToScore) > 0 {
+		// Score other boards.
+		// TODO: Use "Principal Variation" to estimate the score.
+		scored := scorer.BatchScore(boardsToScore)
+		scoredIdx := 0
+		for ii := range scores {
+			if !newBoards[ii].IsFinished() {
+				scores[ii] = -scored[scoredIdx] // Score for b.NextPlayer, not newBoards[ii].NextPlayer
+				scoredIdx++
+			}
+		}
+	}
+
+	return actions, newBoards, scores
+}
+
+func SortActionsBoardsScores(actions []Action, boards []*Board, scores []float64) {
+	s := &ScoresToSort{actions, boards, scores}
+	sort.Sort(s)
+}
+
+// ScoreToSort provide a way to sort actions/boards/scores.
+type ScoresToSort struct {
+	actions []Action
+	boards  []*Board
+	scores  []float64
+}
+
+func (s *ScoresToSort) Swap(i, j int) {
+	s.actions[i], s.actions[j] = s.actions[j], s.actions[i]
+	s.boards[i], s.boards[j] = s.boards[j], s.boards[i]
+	s.scores[i], s.scores[j] = s.scores[j], s.scores[i]
+}
+func (s *ScoresToSort) Len() int           { return len(s.scores) }
+func (s *ScoresToSort) Less(i, j int) bool { return s.scores[i] > s.scores[j] }
+
+// Search implements the Searcher interface.
+func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (Action, *Board, float64) {
+	// If there are no valid actions, create the "pass" action
+	actions, newBoards, scores := ScoredActions(b, scorer)
+
+	for ii := range actions {
+		if !newBoards[ii].IsFinished() {
 			_, _, scores[ii] = rs.searcher.Search(newBoards[ii], scorer)
+			scores[ii] = -scores[ii]
 		}
 	}
 
@@ -70,7 +124,7 @@ func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (Action, *
 
 	// Select from probabilities.
 	chance := rand.Float64()
-	log.Printf("chance=%f, scores=%v, probabilities=%v", chance, scores, probabilities)
+	// log.Printf("chance=%f, scores=%v, probabilities=%v", chance, scores, probabilities)
 	for ii, value := range probabilities {
 		if chance <= value {
 			return actions[ii], newBoards[ii], scores[ii]

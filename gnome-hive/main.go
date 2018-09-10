@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/janpfeifer/hiveGo/ai/players"
 	. "github.com/janpfeifer/hiveGo/state"
@@ -13,18 +14,20 @@ import (
 
 var _ = fmt.Printf
 
-var flag_players = [2]*string{
-	flag.String("p0", "hotseat", "First player: hotseat, online, ai"),
-	flag.String("p1", "hotseat", "Second player: hotseat, online, ai"),
-}
-var flag_aiUI = flag.Bool("ai_ui", true, "Shows UI even for ai vs ai game.")
-var flag_maxMoves = flag.Int(
-	"max_moves", 200, "Max moves before game is assumed to be a draw.")
+var (
+	flag_players = [2]*string{
+		flag.String("p0", "hotseat", "First player: hotseat, ai"),
+		flag.String("p1", "hotseat", "Second player: hotseat, ai"),
+	}
+	flag_aiConfig = flag.String("ai", "", "Configuration string for the AI.")
+	flag_maxMoves = flag.Int(
+		"max_moves", 200, "Max moves before game is assumed to be a draw.")
 
-// TODO: Find out automatically where resources are installed.
-var flag_resources = flag.String("resources",
-	fmt.Sprintf("/home/%s/src/go/src/github.com/janpfeifer/hiveGo/images", os.Getenv("USER")),
-	"Directory with resources")
+	// TODO: find directory automatically basaed on GOPATH.
+	flag_resources = flag.String("resources",
+		fmt.Sprintf("/home/%s/src/go/src/github.com/janpfeifer/hiveGo/images", os.Getenv("USER")),
+		"Directory with resources")
+)
 
 const APP_ID = "com.github.janpfeifer.hiveGo.gnome-hive"
 
@@ -67,7 +70,7 @@ func newGame() {
 		case *flag_players[ii] == "hotseat":
 			continue
 		case *flag_players[ii] == "ai":
-			aiPlayers[ii] = players.NewAIPlayer()
+			aiPlayers[ii] = players.NewAIPlayer(*flag_aiConfig)
 		default:
 			log.Fatalf("Unknown player type --p%d=%s", ii, *flag_players[ii])
 		}
@@ -106,7 +109,7 @@ func executeAction(action Action) {
 		// Start AI thinking on a separate thread.
 		go func() {
 			action = aiPlayers[board.NextPlayer].Play(board)
-			executeAction(action)
+			glib.IdleAdd(func() { executeAction(action) })
 		}()
 	}
 	mainWindow.QueueDraw()

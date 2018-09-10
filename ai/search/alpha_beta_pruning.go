@@ -30,6 +30,8 @@ func NewAlphaBetaSearcher(maxDepth int) Searcher {
 // Alpha Beta Pruning algorithm
 // See: wikipedia.org/wiki/Alpha-beta_pruning
 //
+// TODO: Iterative deepening, princiapal variation estimation of scores.
+//
 // Args:
 //    board: current board
 //    scorer: batch scores boards.
@@ -49,47 +51,31 @@ func AlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int) (
 func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha, beta float64) (
 	bestAction Action, bestBoard *Board, bestScore float64) {
 
+	// If there are no valid actions, create the "pass" action
+	actions, newBoards, scores := ScoredActions(board, scorer)
+	if len(actions) == 1 && newBoards[0].IsFinished() {
+		return actions[0], newBoards[0], scores[0]
+	}
+	SortActionsBoardsScores(actions, newBoards, scores)
+
 	// The score to beat is the current "alpha" (best live score for current player)
 	bestScore = alpha
 	bestBoard = nil
 	bestAction = Action{}
 
-	// If there are no valid actions, create the "pass" action
-	actions := board.Derived.Actions
-	if len(actions) == 0 {
-		actions = append(actions, Action{Piece: NO_PIECE})
-	}
-
 	// TODO: Sort actions according the expected score.
-	for _, action := range actions {
-		// Execute action and evaluate expected score of taking it.
-		newB := board.Act(action)
-
-		// Use standard end game scores if game is finished.
-		isEnd, score := ai.EndGameScore(newB)
-		if !isEnd {
-			if maxDepth == 1 {
-				score = scorer.Score(newB)
-			} else {
-				// Runs alphaBeta for opponent player, so the alpha/beta are reversed.
-				_, _, score = alphaBetaRecursive(newB, scorer, maxDepth-1, beta, bestScore)
-			}
-		} else {
-			if isEnd && newB.Derived.Wins[board.NextPlayer] && !newB.Derived.Wins[board.OpponentPlayer()] {
-				// Winning action, shortcut and take it.
-				return action, newB, -score
-			}
+	for ii := range actions {
+		if maxDepth > 1 && !newBoards[ii].IsFinished() {
+			// Runs alphaBeta for opponent player, so the alpha/beta are reversed.
+			_, _, score := alphaBetaRecursive(newBoards[ii], scorer, maxDepth-1, beta, bestScore)
+			scores[ii] = -score
 		}
 
-		// Score for player that started the move is the reverse of the score
-		// of the opponent player (the one playing in newB)
-		score = -score
-
 		// Update best score.
-		if score > bestScore {
-			bestScore = score
-			bestAction = action
-			bestBoard = newB
+		if scores[ii] > bestScore {
+			bestScore = scores[ii]
+			bestAction = actions[ii]
+			bestBoard = newBoards[ii]
 		}
 
 		// Prune.

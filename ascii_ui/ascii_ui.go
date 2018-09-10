@@ -59,20 +59,8 @@ func (ui *UI) Run(board *Board) (*Board, error) {
 			fmt.Println()
 			board = board.Act(Action{Piece: NO_PIECE})
 		}
-
-		d := board.Derived
-		if d.Wins[0] || d.Wins[1] {
-			if d.Wins[0] && d.Wins[1] {
-				fmt.Printf("\n\n%s*** DRAW: Both queens were sorrounded! ***%s\n\n",
-					ui.blinkStart(), ui.colorEnd())
-				return board, nil
-			}
-			player := uint8(0)
-			if d.Wins[1] {
-				player = 1
-			}
-			fmt.Printf("\n\n%s*** PLAYER %d WINS!! Congratulations! ***%s\n\n",
-				ui.colorStart(player, QUEEN), player, ui.colorEnd())
+		if board.IsFinished() {
+			ui.PrintWinner(board)
 			return board, nil
 		}
 		for true {
@@ -90,6 +78,21 @@ func (ui *UI) Run(board *Board) (*Board, error) {
 		}
 	}
 	return board, nil
+}
+
+func (ui *UI) PrintWinner(b *Board) {
+	d := b.Derived
+	if d.Wins[0] && d.Wins[1] {
+		fmt.Printf("\n\n%s*** DRAW: Both queens were sorrounded! ***%s\n\n",
+			ui.blinkStart(), ui.colorEnd())
+	} else {
+		player := uint8(0)
+		if d.Wins[1] {
+			player = 1
+		}
+		fmt.Printf("\n\n%s*** PLAYER %d WINS!! Congratulations! ***%s\n\n",
+			ui.colorStart(player, QUEEN), player, ui.colorEnd())
+	}
 }
 
 func (ui *UI) ReadCommand(b *Board) (action Action, err error) {
