@@ -23,7 +23,7 @@ type SearcherScorePlayer struct {
 
 func (p *SearcherScorePlayer) Play(b *Board) Action {
 	action, board, score := p.Searcher.Search(b, p.Scorer)
-	log.Printf("AI playing %v, score=%.3f", action, score)
+	log.Printf("Move #%d: AI playing %v, score=%.3f", b.MoveNumber, action, score)
 	log.Printf("Features:")
 	ai.PrettyPrintFeatures(ai.FeatureVector(board))
 	return action
@@ -33,7 +33,7 @@ func NewAIPlayer() *SearcherScorePlayer {
 	alphaBeta := search.NewAlphaBetaSearcher(3)
 	return &SearcherScorePlayer{
 		Searcher: alphaBeta, // search.NewRandomizedSearcher(alphaBeta, 1.0),
-		Scorer:   ai.BatchScorerWrapper{ai.ManualV0},
+		Scorer:   ai.ManualV0,
 	}
 	return nil
 }

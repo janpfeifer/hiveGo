@@ -29,7 +29,7 @@ func (w LinearScorer) Score(b *Board) float64 {
 }
 
 var (
-	ManualV0 = LinearScorer{
+	ManualV0 = BatchScorerWrapper{LinearScorer{
 		// Pieces order: ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER
 		// F_NUM_OFFBOARD
 		-0.1, -0.05, -0.03, -0.4, -0.02,
@@ -43,5 +43,5 @@ var (
 		-0.2, -0.1, -0.08, -0.2, -0.08,
 		// Bias
 		0.0,
-	}
+	}}
 )

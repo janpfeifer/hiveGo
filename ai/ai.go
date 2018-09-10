@@ -35,7 +35,7 @@ func (s BatchScorerWrapper) BatchScore(boards []*Board) []float64 {
 // Returns weather it's the end of the game, and the hard-coded score of a win/loss/draw
 // for the current player if it is finished.
 func EndGameScore(b *Board) (isEnd bool, score float64) {
-	if !b.Derived.Wins[0] && !b.Derived.Wins[0] {
+	if !b.Derived.Wins[0] && !b.Derived.Wins[1] {
 		return false, 0
 	}
 	if b.Derived.Wins[0] && b.Derived.Wins[1] {

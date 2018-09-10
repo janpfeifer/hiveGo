@@ -74,12 +74,16 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 				// Runs alphaBeta for opponent player, so the alpha/beta are reversed.
 				_, _, score = alphaBetaRecursive(newB, scorer, maxDepth-1, beta, bestScore)
 			}
+		} else {
+			if isEnd && newB.Derived.Wins[board.NextPlayer] && !newB.Derived.Wins[board.OpponentPlayer()] {
+				// Winning action, shortcut and take it.
+				return action, newB, -score
+			}
 		}
 
 		// Score for player that started the move is the reverse of the score
 		// of the opponent player (the one playing in newB)
 		score = -score
-		// fmt.Printf("  Move #%d: action %s, score(player=%d)=%.3f\n", newB.MoveNumber, action, board.NextPlayer, score)
 
 		// Update best score.
 		if score > bestScore {
