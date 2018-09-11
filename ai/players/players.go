@@ -5,6 +5,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/janpfeifer/hiveGo/ai"
 	"github.com/janpfeifer/hiveGo/ai/search"
@@ -21,16 +22,21 @@ type Player interface {
 // SearcherScorePlayer is a standard set up for an AI: a searcher and
 // a scorer. It implements the Player interface.
 type SearcherScorePlayer struct {
-	Searcher search.Searcher
-	Scorer   ai.BatchScorer
+	Searcher     search.Searcher
+	Scorer       ai.BatchScorer
+	LinearScorer ai.LinearScorer
+	ModelFile    string
 }
 
 // Play implements the Player interface: it chooses an action given a Board.
 func (p *SearcherScorePlayer) Play(b *Board) Action {
-	action, _, _ := p.Searcher.Search(b, p.Scorer)
+	action, _, score := p.Searcher.Search(b, p.Scorer)
 	// log.Printf("Move #%d: AI playing %v, score=%.3f", b.MoveNumber, action, score)
 	// log.Printf("Features:")
 	// ai.PrettyPrintFeatures(ai.FeatureVector(board))
+	if p.ModelFile != "" {
+		p.LinearScorer.Learn(b, score)
+	}
 	return action
 }
 
@@ -64,13 +70,44 @@ func NewAIPlayer(config string) *SearcherScorePlayer {
 	// Configure searcher.
 	var searcher search.Searcher
 	var err error
-	max_depth := -1
+	maxDepth := -1
+	var maxTime time.Duration
+	randomness := 0.
 	if value, ok := params["max_depth"]; ok {
 		delete(params, "max_depth")
-		max_depth, err = strconv.Atoi(value)
+		maxDepth, err = strconv.Atoi(value)
 		if err != nil {
-			log.Panicf("Invalid AI value '%s' for ab_depth: %s", value, err)
+			log.Panicf("Invalid AI value '%s' for max_depth: %s", value, err)
 		}
+	}
+	if value, ok := params["randomness"]; ok {
+		delete(params, "randomness")
+		randomness, err = strconv.ParseFloat(value, 64)
+		if err != nil || randomness <= 0.0 {
+			log.Panicf("Invalid AI value '%s' for randomness: %s", value, err)
+		}
+	}
+	if value, ok := params["max_time"]; ok {
+		delete(params, "max_time")
+		secs, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			log.Panicf("Invalid AI value '%s' for max_time: %s", value, err)
+		}
+		maxTime = time.Microsecond * time.Duration(1e6*secs)
+	}
+
+	if _, ok := params["mcts"]; ok {
+		delete(params, "mcts")
+		if maxDepth < 0 {
+			maxDepth = 8
+		}
+		if maxTime == 0 {
+			maxTime = 5 * time.Second
+		}
+		if randomness == 0.0 {
+			randomness = 1.0
+		}
+		searcher = search.NewMonteCarloTreeSearcher(maxDepth, maxTime, randomness)
 	}
 	if _, ok := params["ab"]; ok {
 		delete(params, "ab")
@@ -78,22 +115,33 @@ func NewAIPlayer(config string) *SearcherScorePlayer {
 		searcher = nil
 	}
 	if searcher == nil {
-		if max_depth < 0 {
-			max_depth = 3
+		if maxDepth < 0 {
+			maxDepth = 3
 		}
-		searcher = search.NewAlphaBetaSearcher(max_depth)
+		searcher = search.NewAlphaBetaSearcher(maxDepth)
+		if randomness > 0.0 {
+			// Randomized searcher.
+			searcher = search.NewRandomizedSearcher(searcher, randomness)
+		}
 	}
 
-	// Randomized searcher.
-	if value, ok := params["randomness"]; ok {
-		delete(params, "randomness")
-		randomness, err := strconv.ParseFloat(value, 64)
-		if err != nil || randomness <= 0.0 {
-			log.Panicf("Invalid AI value '%s' for randomness: %s", value, err)
-		}
-		searcher = search.NewRandomizedSearcher(searcher, randomness)
+	// Scorer
+	train := false
+	modelFile := ""
+	if value, ok := params["model_file"]; ok {
+		modelFile = value
+		delete(params, "model_file")
+	}
+	if _, ok := params["train"]; ok {
+		delete(params, "train")
+		train = true
+	}
+	model := ai.NewLinearScorerFromFile(modelFile)
+	if !train {
+		modelFile = "" // Prevent training.
 	}
 
+	// Check that all parameters were processed.
 	if len(params) > 0 {
 		for key, value := range params {
 			log.Printf("Unknown parameter setting '%s=%s'", key, value)
@@ -102,7 +150,9 @@ func NewAIPlayer(config string) *SearcherScorePlayer {
 	}
 
 	return &SearcherScorePlayer{
-		Searcher: searcher,
-		Scorer:   ai.ManualV0,
+		Searcher:     searcher,
+		Scorer:       model,
+		LinearScorer: model,
+		ModelFile:    modelFile,
 	}
 }

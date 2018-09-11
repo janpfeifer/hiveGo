@@ -25,7 +25,7 @@ var (
 		"than one, starting position is alternated.")
 	flag_print = flag.Bool("print", false, "Print board at the end of the match.")
 
-	players = [2]ai_players.Player{nil, nil}
+	players = [2]*ai_players.SearcherScorePlayer{nil, nil}
 )
 
 func main() {
@@ -52,6 +52,7 @@ func main() {
 
 			// Run match.
 			for !board.IsFinished() {
+				log.Printf("\n\nMatch %d: turn %d\n\n", match, board.MoveNumber)
 				if len(board.Derived.Actions) == 0 {
 					// Auto-play skip move.
 					board = board.Act(Action{Piece: NO_PIECE})
@@ -63,6 +64,16 @@ func main() {
 				action := reorderedPlayers[board.NextPlayer].Play(board)
 				board = board.Act(action)
 			}
+
+			// Save model after learning.
+			for ii := 0; ii < 2; ii++ {
+				if players[ii].ModelFile != "" {
+					players[ii].LinearScorer.Save(players[ii].ModelFile)
+				}
+			}
+
+			log.Printf("\n\nMatch %d: finished at turn %d\n\n", match, board.MoveNumber)
+
 			results <- board
 			swapped <- ii%2 == 1
 		}(ii)
