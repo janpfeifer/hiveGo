@@ -16,6 +16,7 @@ type Derived struct {
 	NumSurroundingQueen [NUM_PLAYERS]uint8
 	PlacementPositions  [NUM_PLAYERS]map[Pos]bool
 	Wins                [NUM_PLAYERS]bool // If both players win, it is a draw.
+	QueenPos            [NUM_PLAYERS]Pos  // Only valid if queen is actually in the board.
 
 	// Generic information only about the next player to move (NextPlayer)
 	RemovablePieces map[Pos]bool
@@ -60,7 +61,7 @@ func (b *Board) BuildDerived() {
 		}
 	}
 	derived.Actions = b.ValidActions(b.NextPlayer)
-	derived.Wins, derived.NumSurroundingQueen = b.endGame()
+	derived.Wins, derived.NumSurroundingQueen, derived.QueenPos = b.endGame()
 }
 
 // ValidActions returns the list of valid actions for given player.
@@ -272,16 +273,17 @@ func (b *Board) IsValid(action Action) bool {
 // endGame checks for end games and will return true for each of the players if they
 // managed to sorround the opponents queen. Returns also the number of pieces surrounding
 // each queen.
-func (b *Board) endGame() (wins [2]bool, surrounding [2]uint8) {
+func (b *Board) endGame() (wins [NUM_PLAYERS]bool, surrounding [NUM_PLAYERS]uint8, queenPos [NUM_PLAYERS]Pos) {
 	if b.MoveNumber > b.MaxMoves {
 		// After MaxMoves is reached, the game is considered a draw.
-		wins = [2]bool{true, true}
+		wins = [NUM_PLAYERS]bool{true, true}
 		return
 	}
-	wins = [2]bool{false, false}
+	wins = [NUM_PLAYERS]bool{false, false}
 	for pos, stack := range b.board {
 		if isQueen, player := stack.HasQueen(); isQueen {
 			// Convert player to "NextPlayer"/"Opponent"
+			queenPos[player] = pos
 			surrounding[player] = uint8(len(b.OccupiedNeighbours(pos)))
 			if surrounding[player] == 6 {
 				// If player's queen is sorrounded, other player wins (or draws).

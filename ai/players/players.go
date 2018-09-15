@@ -128,9 +128,9 @@ func NewAIPlayer(config string) *SearcherScorePlayer {
 	// Scorer
 	train := false
 	modelFile := ""
-	if value, ok := params["model_file"]; ok {
+	if value, ok := params["model"]; ok {
 		modelFile = value
-		delete(params, "model_file")
+		delete(params, "model")
 	}
 	if _, ok := params["train"]; ok {
 		delete(params, "train")

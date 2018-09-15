@@ -178,7 +178,10 @@ var (
 		// F_OPP_NUM_CAN_MOVE
 		0.05, -0.17, 0.13, 0.26, 0.02,
 
-		// Bias
+		// F_NUM_THREATENING_MOVES
+		0., 0.,
+
+		// Bias: *Must always be last*
 		-0.79,
 	}
 )
