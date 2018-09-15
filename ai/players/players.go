@@ -16,7 +16,8 @@ var _ = log.Printf
 
 // Player is anything that is able to play the game.
 type Player interface {
-	Play(b *Board) Action
+	// Play returns the action chosen, the next board position and the associated score predicted.
+	Play(b *Board) (action Action, board *Board, score float64)
 }
 
 // SearcherScorePlayer is a standard set up for an AI: a searcher and
@@ -29,15 +30,15 @@ type SearcherScorePlayer struct {
 }
 
 // Play implements the Player interface: it chooses an action given a Board.
-func (p *SearcherScorePlayer) Play(b *Board) Action {
-	action, _, score := p.Searcher.Search(b, p.Scorer)
+func (p *SearcherScorePlayer) Play(b *Board) (action Action, board *Board, score float64) {
+	action, board, score = p.Searcher.Search(b, p.Scorer)
 	// log.Printf("Move #%d: AI playing %v, score=%.3f", b.MoveNumber, action, score)
 	// log.Printf("Features:")
 	// ai.PrettyPrintFeatures(ai.FeatureVector(board))
 	if p.ModelFile != "" {
 		p.LinearScorer.Learn(b, score)
 	}
-	return action
+	return
 }
 
 // NewAIPlayer creates a new AI player given the configuration string.

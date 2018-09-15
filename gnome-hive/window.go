@@ -221,6 +221,7 @@ func createHeaderWithMenu(win *gtk.Window) {
 	}
 	menu.Append("New Game - ctrl+N", "win.new_game")
 	menu.Append("Quit - ctrl+Q", "win.quit")
+	menu.Append("Undo - ctrl+Z", "win.undo")
 	mbtn.SetMenuModel(&menu.MenuModel)
 	header.PackStart(mbtn)
 	win.SetTitlebar(header)
@@ -234,9 +235,15 @@ func createHeaderWithMenu(win *gtk.Window) {
 		newGame()
 	})
 
+	aUndo := glib.SimpleActionNew("undo", nil)
+	aUndo.Connect("activate", func() {
+		undoAction()
+	})
+
 	actG := glib.SimpleActionGroupNew()
 	actG.AddAction(aQuit)
 	actG.AddAction(aNewGame)
+	actG.AddAction(aUndo)
 	win.InsertActionGroup("win", actG)
 }
 
@@ -250,6 +257,10 @@ func createAccelGroup(win *gtk.Window) {
 	key, mods = gtk.AcceleratorParse("<Control>N")
 	accelG.Connect(key, mods, gtk.ACCEL_VISIBLE, func() {
 		newGame()
+	})
+	key, mods = gtk.AcceleratorParse("<Control>Z")
+	accelG.Connect(key, mods, gtk.ACCEL_VISIBLE, func() {
+		undoAction()
 	})
 	win.AddAccelGroup(accelG)
 }

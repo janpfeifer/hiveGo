@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
@@ -24,9 +25,11 @@ var (
 		"max_moves", 200, "Max moves before game is assumed to be a draw.")
 
 	// TODO: find directory automatically basaed on GOPATH.
-	flag_resources = flag.String("resources",
-		fmt.Sprintf("/home/%s/src/go/src/github.com/janpfeifer/hiveGo/images", os.Getenv("USER")),
-		"Directory with resources")
+	flag_resources = flag.String("resources", "", "Directory with resources. "+
+		"If empty it will try to search in GOPATH for the directory.")
+
+	// Sequence of boards that make up for the game. Used for undo-ing actions.
+	gameSeq []*Board
 )
 
 const APP_ID = "com.github.janpfeifer.hiveGo.gnome-hive"
@@ -40,11 +43,37 @@ var (
 	nextIsAI  bool
 )
 
+func findResourcesDir() {
+	if *flag_resources != "" {
+		return
+	}
+	for _, p := range strings.Split(os.Getenv("GOPATH"), ":") {
+		if p == "" {
+			continue
+		}
+		p = p + "/src/github.com/janpfeifer/hiveGo/images"
+		log.Printf("Looking at %s", p)
+		s, err := os.Stat(p)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if s.IsDir() {
+			log.Printf("Found image resources in '%s'", p)
+			*flag_resources = p
+			return
+		}
+	}
+	log.Fatal("Can't find location of image resources using ${GOPATH}, please " +
+		"set it with --resources")
+	return
+}
+
 func main() {
 	flag.Parse()
 	if *flag_maxMoves <= 0 {
 		log.Fatalf("Invalid --max_moves=%d", *flag_maxMoves)
 	}
+	findResourcesDir()
 
 	// Build initial board: it is used only for drawing available pieces,
 	board = NewBoard()
@@ -63,6 +92,8 @@ func newGame() {
 	board = NewBoard()
 	board.MaxMoves = *flag_maxMoves
 	board.BuildDerived()
+	gameSeq := make([]*Board, 0, *flag_maxMoves)
+	gameSeq = append(gameSeq, board)
 
 	// Create players:
 	for ii := 0; ii < 2; ii++ {
@@ -85,30 +116,49 @@ func newGame() {
 
 	// AI starts playing ?
 	if aiPlayers[board.NextPlayer] != nil {
-		action := aiPlayers[board.NextPlayer].Play(board)
+		action, _, _ := aiPlayers[board.NextPlayer].Play(board)
 		executeAction(action)
 	}
 }
 
 func executeAction(action Action) {
 	board = board.Act(action)
-	if len(board.Derived.Actions) == 0 {
+	gameSeq = append(gameSeq, board)
+	finished = board.IsFinished()
+	if !finished && len(board.Derived.Actions) == 0 {
 		// Player has no available moves, skip.
 		log.Printf("No action available, automatic action.")
-		board = board.Act(Action{Piece: NO_PIECE})
-		if len(board.Derived.Actions) == 0 {
+		if action.Piece == NO_PIECE {
+			// Two skip actions in a row.
 			log.Fatal("No moves avaialble to either players !?")
 		}
+		// Recurse to a skip action.
+		executeAction(Action{Piece: NO_PIECE})
+		return
 	}
+	followAction()
+}
 
-	finished = board.IsFinished()
+func undoAction() {
+	// Can't undo until it's human turn. TODO: add support for interrupting
+	// AI.
+	if nextIsAI || finished || len(gameSeq) < 2 {
+		return
+	}
+	gameSeq = gameSeq[0 : len(gameSeq)-2]
+	board = gameSeq[len(gameSeq)-1]
+	followAction()
+}
+
+// Setting that come after executing an action.
+func followAction() {
 	selectedOffBoardPiece = NO_PIECE
 	hasSelectedPiece = false
 	nextIsAI = !finished && aiPlayers[board.NextPlayer] != nil
 	if nextIsAI {
 		// Start AI thinking on a separate thread.
 		go func() {
-			action = aiPlayers[board.NextPlayer].Play(board)
+			action, _, _ := aiPlayers[board.NextPlayer].Play(board)
 			glib.IdleAdd(func() { executeAction(action) })
 		}()
 	}

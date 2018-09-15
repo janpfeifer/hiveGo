@@ -297,3 +297,7 @@ func (b *Board) endGame() (wins [NUM_PLAYERS]bool, surrounding [NUM_PLAYERS]uint
 func (b *Board) IsFinished() bool {
 	return b.Derived.Wins[0] || b.Derived.Wins[1]
 }
+
+func (b *Board) Draw() bool {
+	return b.IsFinished() && b.Derived.Wins[0] == b.Derived.Wins[1]
+}

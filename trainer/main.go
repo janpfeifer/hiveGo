@@ -20,7 +20,7 @@ var (
 	}
 
 	flag_maxMoves = flag.Int(
-		"max_moves", 200, "Max moves before game is assumed to be a draw.")
+		"max_moves", 100, "Max moves before game is assumed to be a draw.")
 
 	flag_repeats = flag.Int("repeats", 1, "Number of times to repeat the game. If larger "+
 		"than one, starting position is alternated.")
@@ -28,6 +28,75 @@ var (
 
 	players = [2]*ai_players.SearcherScorePlayer{nil, nil}
 )
+
+// Results and if the players were swapped.
+type Match struct {
+	// Wether p0/p1 swapped positions in this match.
+	swapped bool
+
+	// Match actions, alternating players.
+	actions []Action
+
+	// All board states of the game: 1 more than the number of actions.
+	boards []*Board
+
+	// Scores for each board position. Can either be calculated during
+	// the match, or re-genarated when re-loading a match.
+	scores []float64
+}
+
+func (m *Match) FinalBoard() *Board { return m.boards[len(m.boards)-1] }
+
+func runMatch(matchNum int) *Match {
+	swapped := (matchNum%2 == 1)
+	board := NewBoard()
+	board.MaxMoves = *flag_maxMoves
+	match := &Match{swapped: swapped, boards: []*Board{board}}
+	reorderedPlayers := players
+	if swapped {
+		reorderedPlayers[0], reorderedPlayers[1] = players[1], players[0]
+	}
+
+	// Run match.
+	for !board.IsFinished() {
+		log.Printf("\n\nMatch %d: turn %d\n\n", matchNum, board.MoveNumber)
+		var action Action
+		var nextBoard *Board
+		score := 0.0
+		if len(board.Derived.Actions) == 0 {
+			// Auto-play skip move.
+			action = Action{Piece: NO_PIECE}
+			nextBoard = board.Act(action)
+			if len(board.Derived.Actions) == 0 {
+				log.Panicf("No moves to either side!?\n\n%v\n", board)
+			}
+		} else {
+			action, nextBoard, score = reorderedPlayers[board.NextPlayer].Play(board)
+		}
+		match.actions = append(match.actions, action)
+		match.boards = append(match.boards, nextBoard)
+		match.scores = append(match.scores, score)
+	}
+	log.Printf("\n\nMatch %d: finished at turn %d\n\n",
+		matchNum, match.FinalBoard().MoveNumber)
+
+	return match
+}
+
+// runMatches run --repeat number of matches, and write the resulting matches
+// to the given channel.
+func runMatches(results chan<- *Match) {
+	// Run at most GOMAXPROCS simultaneously.
+	semaphore := make(chan bool, runtime.GOMAXPROCS(0))
+	for ii := 0; ii < *flag_repeats; ii++ {
+		semaphore <- true
+		go func(matchNum int) {
+			match := runMatch(matchNum)
+			<-semaphore
+			results <- match
+		}(ii)
+	}
+}
 
 func main() {
 	flag.Parse()
@@ -39,65 +108,22 @@ func main() {
 		players[ii] = ai_players.NewAIPlayer(*flag_players[ii])
 	}
 
-	// Results and if the players were swapped.
-	type MatchResult struct {
-		board   *Board
-		swapped bool
-	}
-	results := make(chan MatchResult)
-	semaphore := make(chan bool, runtime.GOMAXPROCS(0))
-	for ii := 0; ii < *flag_repeats; ii++ {
-		semaphore <- true
-		go func(match int) {
-			board := NewBoard()
-			board.MaxMoves = *flag_maxMoves
-			reorderedPlayers := players
-			swapped := ii%2 == 1
-			if swapped {
-				reorderedPlayers[0], reorderedPlayers[1] = players[1], players[0]
-			}
-
-			// Run match.
-			for !board.IsFinished() {
-				log.Printf("\n\nMatch %d: turn %d\n\n", match, board.MoveNumber)
-				if len(board.Derived.Actions) == 0 {
-					// Auto-play skip move.
-					board = board.Act(Action{Piece: NO_PIECE})
-					if len(board.Derived.Actions) == 0 {
-						ui.PrintBoard(board)
-						log.Panicf("No moves to either side!?")
-					}
-				}
-				action := reorderedPlayers[board.NextPlayer].Play(board)
-				board = board.Act(action)
-			}
-
-			// Save model after learning.
-			for ii := 0; ii < 2; ii++ {
-				if players[ii].ModelFile != "" {
-					players[ii].LinearScorer.Save(players[ii].ModelFile)
-				}
-			}
-
-			log.Printf("\n\nMatch %d: finished at turn %d\n\n", match, board.MoveNumber)
-
-			<-semaphore
-			results <- MatchResult{board, swapped}
-		}(ii)
-	}
+	// Run/load matches.
+	results := make(chan *Match)
+	runMatches(results)
 
 	// Read results.
 	totalWins := [3]int{0, 0, 0}
 	totalMoves := 0
 	for ii := 0; ii < *flag_repeats; ii++ {
-		result := <-results
-		board := result.board
+		match := <-results
+		board := match.FinalBoard()
 		wins := board.Derived.Wins
-		if result.swapped {
+		if match.swapped {
 			wins[0], wins[1] = wins[1], wins[0]
 		}
 		if *flag_print {
-			if result.swapped {
+			if match.swapped {
 				fmt.Printf("*** Players swapped positions at this match! ***\n")
 			}
 			ui.PrintBoard(board)
@@ -105,7 +131,7 @@ func main() {
 			fmt.Println()
 			fmt.Println()
 		}
-		if wins[0] == wins[1] {
+		if board.Draw() {
 			totalWins[2]++
 		} else if wins[0] {
 			totalWins[0]++
