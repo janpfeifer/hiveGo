@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"runtime"
 
 	ai_players "github.com/janpfeifer/hiveGo/ai/players"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
@@ -39,14 +40,20 @@ func main() {
 	}
 
 	// Results and if the players were swapped.
-	results := make(chan *Board, 1)
-	swapped := make(chan bool, 1)
+	type MatchResult struct {
+		board   *Board
+		swapped bool
+	}
+	results := make(chan MatchResult)
+	semaphore := make(chan bool, runtime.GOMAXPROCS(0))
 	for ii := 0; ii < *flag_repeats; ii++ {
+		semaphore <- true
 		go func(match int) {
 			board := NewBoard()
 			board.MaxMoves = *flag_maxMoves
 			reorderedPlayers := players
-			if ii%2 == 1 {
+			swapped := ii%2 == 1
+			if swapped {
 				reorderedPlayers[0], reorderedPlayers[1] = players[1], players[0]
 			}
 
@@ -74,8 +81,8 @@ func main() {
 
 			log.Printf("\n\nMatch %d: finished at turn %d\n\n", match, board.MoveNumber)
 
-			results <- board
-			swapped <- ii%2 == 1
+			<-semaphore
+			results <- MatchResult{board, swapped}
 		}(ii)
 	}
 
@@ -83,12 +90,16 @@ func main() {
 	totalWins := [3]int{0, 0, 0}
 	totalMoves := 0
 	for ii := 0; ii < *flag_repeats; ii++ {
-		board := <-results
+		result := <-results
+		board := result.board
 		wins := board.Derived.Wins
-		if <-swapped {
+		if result.swapped {
 			wins[0], wins[1] = wins[1], wins[0]
 		}
 		if *flag_print {
+			if result.swapped {
+				fmt.Printf("*** Players swapped positions at this match! ***\n")
+			}
 			ui.PrintBoard(board)
 			ui.PrintWinner(board)
 			fmt.Println()
