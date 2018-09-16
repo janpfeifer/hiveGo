@@ -22,6 +22,11 @@ func (ab *alphaBetaSearcher) Search(b *Board, scorer ai.BatchScorer) (
 	return AlphaBeta(b, scorer, ab.maxDepth)
 }
 
+func (ab *alphaBetaSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float64) {
+	log.Panicf("ScoreMatch not implemented for AlphaBetaSearcher")
+	return
+}
+
 // NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPrunning.
 func NewAlphaBetaSearcher(maxDepth int) Searcher {
 	return &alphaBetaSearcher{maxDepth: maxDepth}

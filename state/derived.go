@@ -301,3 +301,11 @@ func (b *Board) IsFinished() bool {
 func (b *Board) Draw() bool {
 	return b.IsFinished() && b.Derived.Wins[0] == b.Derived.Wins[1]
 }
+
+func (b *Board) Winner() uint8 {
+	if b.Derived.Wins[0] {
+		return 0
+	} else {
+		return 1
+	}
+}

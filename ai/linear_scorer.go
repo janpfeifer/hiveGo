@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/golang/glog"
 	. "github.com/janpfeifer/hiveGo/state"
 )
 
@@ -19,12 +20,11 @@ var _ = log.Printf
 // on the feature set.
 type LinearScorer []float64
 
-func (w LinearScorer) UnlimitedScore(b *Board) float64 {
+func (w LinearScorer) UnlimitedScore(features []float64) float64 {
 	// Sum start with bias.
 	sum := w[len(w)-1]
 
 	// Dot product of weights and features.
-	features := FeatureVector(b)
 	if len(w)-1 != len(features) {
 		log.Fatalf("Features dimension is %d, but weights dimension is %d (+1 bias)",
 			len(features), len(w)-1)
@@ -36,10 +36,12 @@ func (w LinearScorer) UnlimitedScore(b *Board) float64 {
 }
 
 func (w LinearScorer) Score(b *Board) float64 {
-	sum := w.UnlimitedScore(b)
-	if math.Abs(sum) > 9.8 {
-		sum /= math.Abs(sum)
-		sum *= 9.8
+	features := FeatureVector(b)
+	sum := w.UnlimitedScore(features)
+	if sum > 9.8 {
+		sum = 9.8
+	} else if sum < -9.8 {
+		sum = -9.8
 	}
 	return sum
 }
@@ -53,11 +55,17 @@ func (w LinearScorer) BatchScore(boards []*Board) []float64 {
 }
 
 func (w LinearScorer) String() string {
-	parts := make([]string, len(w))
-	for ii, value := range w {
-		parts[ii] = fmt.Sprintf("%.2f", value)
+	parts := make([]string, len(w)+2*(len(AllFeatures)+1))
+	for _, fDef := range AllFeatures {
+		parts = append(parts, fmt.Sprintf("\n\t// %s -> %d\n\t", fDef.Name, fDef.Dim))
+		for _, value := range w[fDef.VecIndex : fDef.VecIndex+fDef.Dim] {
+			parts = append(parts, fmt.Sprintf("%.4f, ", value))
+		}
+		parts = append(parts, "\n")
 	}
-	return fmt.Sprintf("[%s]", strings.Join(parts, ", "))
+	parts = append(parts, fmt.Sprintf("\n\t// Bias -> 1\n\t"))
+	parts = append(parts, fmt.Sprintf("%.4f,\n", w[len(w)-1]))
+	return strings.Join(parts, "")
 }
 
 var (
@@ -65,41 +73,56 @@ var (
 	muLinearModels     sync.Mutex
 )
 
-func (w LinearScorer) Learn(b *Board, label float64) {
-	// Loss = Sqr(label - score)
-	// dLoss/dw_i = 2*(label-score)*x_i
-	// dLoss/b = 2*(label-score)
-	score := w.UnlimitedScore(b)
-	features := FeatureVector(b)
-
-	log.Printf("Features: %v\n", features)
-	log.Printf("  score=%.2f, label=%.2f\n", score, label)
-	log.Printf("  w_t  =%s\n", w)
-
-	muLinearModels.Lock()
-	defer muLinearModels.Unlock()
-
-	const learningRate = 0.005
-	c := learningRate * 2 * (label - score)
-	for ii, feature := range features {
-		dw := c * feature
-		if math.Abs(dw) > 1.0 {
-			dw /= math.Abs(dw)
+func (w LinearScorer) Learn(learningRate float64, examples []LabeledExample) float64 {
+	//log.Printf("  w_t  =%s\n", w)
+	grad := make([]float64, AllFeaturesDim+1)
+	totalLoss := 0.0
+	for _, example := range examples {
+		// Loss = Sqr(label - score)
+		// dLoss/dw_i = 2*(label-score)*x_i
+		// dLoss/b = 2*(label-score)
+		score := w.UnlimitedScore(example.Features)
+		loss := example.Label - score
+		loss = loss * loss
+		totalLoss += loss
+		c := learningRate * 2 * (example.Label - score)
+		for ii, feature := range example.Features {
+			grad[ii] += c * feature
 		}
-		w[ii] += dw
+		grad[len(grad)-1] += c
 	}
-	db := c
-	if math.Abs(db) >= 1.0 {
-		db = db / math.Abs(db)
-	}
-	w[len(w)-1] += c
+	totalLoss /= float64(len(examples))
+	totalLoss = math.Sqrt(totalLoss)
+	//log.Printf("Root Mean Squared Loss=%.2f", totalLoss)
 
-	// Regularization.
-	for ii := range w {
-		w[ii] -= 1e-5 * w[ii]
+	// Sum gradient and regularization.
+	for ii := range grad {
+		grad[ii] /= float64(len(examples))
 	}
+	clip(grad, 0.1)
+	for ii := range grad {
+		w[ii] += grad[ii] // 1e-2*w[ii]
+	}
+	//log.Printf("  w_t+1=%s\n", w)
+	return totalLoss
+}
 
-	log.Printf("  w_t+1=%s\n", w)
+func length(vec []float64) float64 {
+	total := 0.0
+	for _, value := range vec {
+		total += value * value
+	}
+	return math.Sqrt(total)
+}
+
+func clip(vec []float64, max float64) {
+	l := length(vec)
+	if l > max {
+		ratio := max / l
+		for ii := range vec {
+			vec[ii] *= ratio
+		}
+	}
 }
 
 func check(err error) {
@@ -134,16 +157,16 @@ func NewLinearScorerFromFile(file string) (w LinearScorer) {
 	defer muLinearModels.Unlock()
 
 	if cached, ok := cacheLinearScorers[file]; ok {
-		log.Printf("Using cache for model '%s'", file)
+		glog.Infof("Using cache for model '%s'", file)
 		return cached
 	}
 	defer func() { cacheLinearScorers[file] = w }()
 
-	w = make(LinearScorer, len(ManualV0))
+	w = make(LinearScorer, len(TrainedBest))
 	_, err := os.Stat(file)
 	if os.IsNotExist(err) {
-		// Make fresh copy of ManualV0
-		copy(w, ManualV0)
+		// Make fresh copy of TrainedBest
+		copy(w, TrainedBest)
 		return
 	}
 
@@ -163,7 +186,7 @@ func NewLinearScorerFromFile(file string) (w LinearScorer) {
 
 var (
 	// Values actually trained with LinearScorer.Learn.
-	ManualV0 = LinearScorer{
+	TrainedV0 = LinearScorer{
 		// Pieces order: ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER
 		// F_NUM_OFFBOARD
 		-0.43, 0.04, -0.52, -2.02, -0.64,
@@ -174,14 +197,74 @@ var (
 		-3.15, 3.86,
 
 		// F_NUM_CAN_MOVE
-		0.75, 0.57, -0.07, 1.14, 0.07,
+		0.75, 0.0, 0.57, 0.0, -0.07, 0.0, 1.14, 0.0, 0.07, 0.0,
 		// F_OPP_NUM_CAN_MOVE
-		0.05, -0.17, 0.13, 0.26, 0.02,
+		0.05, 0.0, -0.17, 0.0, 0.13, 0.0, 0.26, 0.0, 0.02, 0.0,
 
 		// F_NUM_THREATENING_MOVES
 		0., 0.,
 
+		// F_NUM_TO_DRAW
+		0.,
+
 		// Bias: *Must always be last*
 		-0.79,
 	}
+
+	TrainedV1 = LinearScorer{
+		// Pieces order: ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER
+		// F_NUM_OFFBOARD
+		0.04304, 0.03418, 0.04503, -1.863, 0.0392,
+		// F_OPP_NUM_OFFBOARD
+		0.05537, 0.03768, 0.04703, 1.868, 0.03902,
+
+		// F_NUM_SURROUNDING_QUEEN / F_OPP_NUM_SURROUNDING_QUEEN
+		-3.112, 3.422,
+
+		// F_NUM_CAN_MOVE
+		0.6302, 0.0, 0.4997, 0.0, -0.1359, 0.0, 1.115, 0.0, 0.0436, 0.0,
+
+		// F_OPP_NUM_CAN_MOVE
+		-0.001016, 0.0, -0.2178, 0.0, 0.05738, 0.0, 0.2827, 0.0, -0.01102, 0.0,
+
+		// F_NUM_THREATENING_MOVES
+		-0.1299, -0.04499,
+
+		// F_NUM_TO_DRAW
+		0.00944,
+
+		// Bias: *Must always be last*
+		-0.8161,
+	}
+
+	TrainedV2 = LinearScorer{
+		// NumOffboard -> 5
+		0.0478, 0.0347, 0.0363, -1.8630, 0.0398,
+
+		// OppNumOffboard -> 5
+		0.0517, 0.0387, 0.0552, 1.8680, 0.0389,
+
+		// NumSurroundingQueen -> 1
+		-3.0623,
+
+		// OppNumSurroundingQueen -> 1
+		3.3846,
+
+		// NumCanMove -> 10
+		0.6057, 0.0089, 0.4903, -0.0054, -0.1189, 0.0112, 1.1000, -0.0150, 0.0449, 0.0010,
+
+		// OppNumCanMove -> 10
+		0.0142, -0.0096, -0.2109, 0.0017, 0.0484, -0.0102, 0.2916, 0.0089, -0.0049, 0.0007,
+
+		// NumThreateningMoves -> 2
+		-0.1047, -0.0051,
+
+		// MovesToDraw -> 1
+		0.0027,
+
+		// Bias -> 1
+		-0.8170,
+	}
+
+	TrainedBest = TrainedV2
 )

@@ -19,6 +19,10 @@ type Searcher interface {
 	// along with the updated Board (after taking the action) and
 	// the expected score of taking that action.
 	Search(b *Board, scorer ai.BatchScorer) (action Action, board *Board, score float64)
+
+	// ScoreMatch will score the board at each board position, starting from the current one,
+	// and following each one of the actions. In the end, len(scores) == len(actions)+1.
+	ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float64)
 }
 
 type randomizedSearcher struct {
@@ -40,19 +44,34 @@ func ScoredActions(b *Board, scorer ai.BatchScorer) ([]Action, []*Board, []float
 
 	// Pre-score actions that lead to end-game.
 	boardsToScore := make([]*Board, 0, len(actions))
+	hasWinning := 0
 	for ii, action := range actions {
 		newBoards[ii] = b.Act(action)
 		if isEnd, score := ai.EndGameScore(newBoards[ii]); isEnd {
 			// End game is treated differently.
 			score = -score // Score for b.NextPlayer, not newBoards[ii].NextPlayer
 			if score > 0.0 {
-				// Player wins, return only the winning action.
-				return []Action{action}, []*Board{newBoards[ii]}, []float64{score}
+				hasWinning++
 			}
 			scores[ii] = score
 		} else {
 			boardsToScore = append(boardsToScore, newBoards[ii])
 		}
+	}
+
+	// Player wins, return only the winning actions.
+	if hasWinning > 0 {
+		revisedActions := make([]Action, 0, hasWinning)
+		revisedBoards := make([]*Board, 0, hasWinning)
+		revisedScores := make([]float64, 0, hasWinning)
+		for ii, action := range actions {
+			if newBoards[ii].IsFinished() && scores[ii] > 0 {
+				revisedActions = append(revisedActions, action)
+				revisedBoards = append(revisedBoards, newBoards[ii])
+				revisedScores = append(revisedScores, scores[ii])
+			}
+		}
+		return revisedActions, revisedBoards, revisedScores
 	}
 
 	if len(boardsToScore) > 0 {
@@ -133,6 +152,11 @@ func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (Action, *
 	}
 	log.Fatalf("Nothing selected!? final chance=%f", chance)
 	return Action{}, nil, 0.0
+}
+
+func (rs *randomizedSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float64) {
+	log.Panicf("ScoreMatch not implemented for RandomizedSearcher")
+	return
 }
 
 func softmax(values []float64) (probs []float64) {

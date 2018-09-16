@@ -35,9 +35,6 @@ func (p *SearcherScorePlayer) Play(b *Board) (action Action, board *Board, score
 	// log.Printf("Move #%d: AI playing %v, score=%.3f", b.MoveNumber, action, score)
 	// log.Printf("Features:")
 	// ai.PrettyPrintFeatures(ai.FeatureVector(board))
-	if p.ModelFile != "" {
-		p.LinearScorer.Learn(b, score)
-	}
 	return
 }
 
@@ -127,20 +124,12 @@ func NewAIPlayer(config string) *SearcherScorePlayer {
 	}
 
 	// Scorer
-	train := false
 	modelFile := ""
 	if value, ok := params["model"]; ok {
 		modelFile = value
 		delete(params, "model")
 	}
-	if _, ok := params["train"]; ok {
-		delete(params, "train")
-		train = true
-	}
 	model := ai.NewLinearScorerFromFile(modelFile)
-	if !train {
-		modelFile = "" // Prevent training.
-	}
 
 	// Check that all parameters were processed.
 	if len(params) > 0 {
