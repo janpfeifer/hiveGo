@@ -6,5 +6,11 @@ model.txt
 model.txt~
 model2.txt
 cpu.prof
+tf_model.pb
+tf_model.checkpoint.data-00000-of-00001
+tf_model.checkpoint.data-00000-of-00001~
+tf_model.checkpoint.index
+tf_model.checkpoint.index~
+
 
 

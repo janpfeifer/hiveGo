@@ -13,7 +13,7 @@ type FeatureId int
 // FeatureSetter is the signarure of a feature setter. f is the slice where to store the
 // results.
 // fId is the id of the
-type FeatureSetter func(b *Board, def *FeatureDef, f []float64)
+type FeatureSetter func(b *Board, def *FeatureDef, f []float32)
 
 const (
 	// How many pieces are offboard, per piece type.
@@ -93,25 +93,25 @@ func init() {
 
 // LabeledExample can be used for training.
 type LabeledExample struct {
-	Features []float64
-	Label    float64
+	Features []float32
+	Label    float32
 }
 
-func MakeLabeledExample(board *Board, label float64) LabeledExample {
+func MakeLabeledExample(board *Board, label float32) LabeledExample {
 	return LabeledExample{FeatureVector(board), label}
 }
 
 // FeatureVector calculates the feature vector, of length AllFeaturesDim, for the given
 // board.
-func FeatureVector(b *Board) (f []float64) {
-	f = make([]float64, AllFeaturesDim)
+func FeatureVector(b *Board) (f []float32) {
+	f = make([]float32, AllFeaturesDim)
 	for ii := range AllFeatures {
 		AllFeatures[ii].Setter(b, &AllFeatures[ii], f)
 	}
 	return
 }
 
-func PrettyPrintFeatures(f []float64) {
+func PrettyPrintFeatures(f []float32) {
 	for ii := range AllFeatures {
 		def := &AllFeatures[ii]
 		fmt.Printf("\t%s: ", def.Name)
@@ -124,27 +124,27 @@ func PrettyPrintFeatures(f []float64) {
 	}
 }
 
-func fNumOffBoard(b *Board, def *FeatureDef, f []float64) {
+func fNumOffBoard(b *Board, def *FeatureDef, f []float32) {
 	idx := def.VecIndex
 	player := b.NextPlayer
 	if def.FId == F_OPP_NUM_OFFBOARD {
 		player = b.OpponentPlayer()
 	}
 	for _, piece := range Pieces {
-		f[idx+int(piece)-1] = float64(b.Available(player, piece))
+		f[idx+int(piece)-1] = float32(b.Available(player, piece))
 	}
 }
 
-func fNumSurroundingQueen(b *Board, def *FeatureDef, f []float64) {
+func fNumSurroundingQueen(b *Board, def *FeatureDef, f []float32) {
 	idx := def.VecIndex
 	player := b.NextPlayer
 	if def.FId == F_OPP_NUM_SURROUNDING_QUEEN {
 		player = b.OpponentPlayer()
 	}
-	f[idx] = float64(b.Derived.NumSurroundingQueen[player])
+	f[idx] = float32(b.Derived.NumSurroundingQueen[player])
 }
 
-func fNumCanMove(b *Board, def *FeatureDef, f []float64) {
+func fNumCanMove(b *Board, def *FeatureDef, f []float32) {
 	idx := def.VecIndex
 	actions := b.Derived.Actions
 	player := b.NextPlayer
@@ -171,8 +171,8 @@ func fNumCanMove(b *Board, def *FeatureDef, f []float64) {
 		}
 	}
 	for _, piece := range Pieces {
-		f[idx+2*(int(piece)-1)] = float64(counts[piece])
-		f[idx+1+2*(int(piece)-1)] = float64(countsNotQueenNeighbours[piece])
+		f[idx+2*(int(piece)-1)] = float32(counts[piece])
+		f[idx+1+2*(int(piece)-1)] = float32(countsNotQueenNeighbours[piece])
 	}
 }
 
@@ -185,7 +185,7 @@ func posInSlice(slice []Pos, p Pos) bool {
 	return false
 }
 
-func fNumThreateningMoves(b *Board, def *FeatureDef, f []float64) {
+func fNumThreateningMoves(b *Board, def *FeatureDef, f []float32) {
 	idx := def.VecIndex
 	f[idx] = 0
 	f[idx+1] = 0
@@ -215,7 +215,7 @@ func fNumThreateningMoves(b *Board, def *FeatureDef, f []float64) {
 	}
 }
 
-func fNumToDraw(b *Board, def *FeatureDef, f []float64) {
+func fNumToDraw(b *Board, def *FeatureDef, f []float32) {
 	idx := def.VecIndex
-	f[idx] = float64(b.MaxMoves - b.MoveNumber + 1)
+	f[idx] = float32(b.MaxMoves - b.MoveNumber + 1)
 }

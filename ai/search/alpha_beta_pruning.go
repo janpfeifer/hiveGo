@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 
+	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
 	. "github.com/janpfeifer/hiveGo/state"
 )
@@ -18,11 +19,11 @@ type alphaBetaSearcher struct {
 
 // Search implements the Searcher interface.
 func (ab *alphaBetaSearcher) Search(b *Board, scorer ai.BatchScorer) (
-	action Action, board *Board, score float64) {
+	action Action, board *Board, score float32) {
 	return AlphaBeta(b, scorer, ab.maxDepth)
 }
 
-func (ab *alphaBetaSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float64) {
+func (ab *alphaBetaSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float32) {
 	log.Panicf("ScoreMatch not implemented for AlphaBetaSearcher")
 	return
 }
@@ -47,14 +48,16 @@ func NewAlphaBetaSearcher(maxDepth int) Searcher {
 //    bestBoard: Board after taking bestAction.
 //    bestScore: score of taking betAction
 func AlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int) (
-	bestAction Action, bestBoard *Board, bestScore float64) {
-	alpha := -math.MaxFloat64
-	beta := -math.MaxFloat64
-	return alphaBetaRecursive(board, scorer, maxDepth, alpha, beta)
+	bestAction Action, bestBoard *Board, bestScore float32) {
+	alpha := float32(-math.MaxFloat32)
+	beta := float32(-math.MaxFloat32)
+	bestAction, bestBoard, bestScore = alphaBetaRecursive(board, scorer, maxDepth, alpha, beta)
+	glog.V(1).Infof("Estimated best score: %.2f", bestScore)
+	return
 }
 
-func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha, beta float64) (
-	bestAction Action, bestBoard *Board, bestScore float64) {
+func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha, beta float32) (
+	bestAction Action, bestBoard *Board, bestScore float32) {
 
 	// If there are no valid actions, create the "pass" action
 	actions, newBoards, scores := ScoredActions(board, scorer)

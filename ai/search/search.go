@@ -18,28 +18,28 @@ type Searcher interface {
 	// Search returns the next action to take on the given board,
 	// along with the updated Board (after taking the action) and
 	// the expected score of taking that action.
-	Search(b *Board, scorer ai.BatchScorer) (action Action, board *Board, score float64)
+	Search(b *Board, scorer ai.BatchScorer) (action Action, board *Board, score float32)
 
 	// ScoreMatch will score the board at each board position, starting from the current one,
 	// and following each one of the actions. In the end, len(scores) == len(actions)+1.
-	ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float64)
+	ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float32)
 }
 
 type randomizedSearcher struct {
 	searcher   Searcher
-	randomness float64
+	randomness float32
 }
 
 // ScoredActions enumerates each of the available actions, along with the boards
 // where actions were taken and with the score for current b.NextPlayer -- not the
 // next action's NextPlayer. It wil return early if any of the actions lead to
 // b.NextPlayer winning.
-func ScoredActions(b *Board, scorer ai.BatchScorer) ([]Action, []*Board, []float64) {
+func ScoredActions(b *Board, scorer ai.BatchScorer) ([]Action, []*Board, []float32) {
 	actions := b.Derived.Actions
 	if len(actions) == 0 {
 		actions = append(actions, Action{Piece: NO_PIECE})
 	}
-	scores := make([]float64, len(actions))
+	scores := make([]float32, len(actions))
 	newBoards := make([]*Board, len(actions))
 
 	// Pre-score actions that lead to end-game.
@@ -63,7 +63,7 @@ func ScoredActions(b *Board, scorer ai.BatchScorer) ([]Action, []*Board, []float
 	if hasWinning > 0 {
 		revisedActions := make([]Action, 0, hasWinning)
 		revisedBoards := make([]*Board, 0, hasWinning)
-		revisedScores := make([]float64, 0, hasWinning)
+		revisedScores := make([]float32, 0, hasWinning)
 		for ii, action := range actions {
 			if newBoards[ii].IsFinished() && scores[ii] > 0 {
 				revisedActions = append(revisedActions, action)
@@ -90,7 +90,7 @@ func ScoredActions(b *Board, scorer ai.BatchScorer) ([]Action, []*Board, []float
 	return actions, newBoards, scores
 }
 
-func SortActionsBoardsScores(actions []Action, boards []*Board, scores []float64) {
+func SortActionsBoardsScores(actions []Action, boards []*Board, scores []float32) {
 	s := &ScoresToSort{actions, boards, scores}
 	sort.Sort(s)
 }
@@ -99,7 +99,7 @@ func SortActionsBoardsScores(actions []Action, boards []*Board, scores []float64
 type ScoresToSort struct {
 	actions []Action
 	boards  []*Board
-	scores  []float64
+	scores  []float32
 }
 
 func (s *ScoresToSort) Swap(i, j int) {
@@ -111,7 +111,7 @@ func (s *ScoresToSort) Len() int           { return len(s.scores) }
 func (s *ScoresToSort) Less(i, j int) bool { return s.scores[i] > s.scores[j] }
 
 // Search implements the Searcher interface.
-func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (Action, *Board, float64) {
+func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (Action, *Board, float32) {
 	// If there are no valid actions, create the "pass" action
 	actions, newBoards, scores := ScoredActions(b, scorer)
 
@@ -135,14 +135,14 @@ func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (Action, *
 	}
 
 	// Calculate probability for each action.
-	probabilities := make([]float64, len(scores))
+	probabilities := make([]float32, len(scores))
 	for ii, score := range scores {
 		probabilities[ii] = score / rs.randomness
 	}
 	probabilities = softmax(probabilities)
 
 	// Select from probabilities.
-	chance := rand.Float64()
+	chance := rand.Float32()
 	// log.Printf("chance=%f, scores=%v, probabilities=%v", chance, scores, probabilities)
 	for ii, value := range probabilities {
 		if chance <= value {
@@ -154,17 +154,17 @@ func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (Action, *
 	return Action{}, nil, 0.0
 }
 
-func (rs *randomizedSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float64) {
+func (rs *randomizedSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float32) {
 	log.Panicf("ScoreMatch not implemented for RandomizedSearcher")
 	return
 }
 
-func softmax(values []float64) (probs []float64) {
-	probs = make([]float64, len(values))
-	sum := 0.0
+func softmax(values []float32) (probs []float32) {
+	probs = make([]float32, len(values))
+	sum := float32(0.0)
 	// Normalize value for numeric values (smaller exponentials)
 	for ii, value := range values {
-		probs[ii] = math.Exp(value)
+		probs[ii] = float32(math.Exp(float64(value)))
 		sum += probs[ii]
 	}
 	for ii := range probs {
@@ -180,6 +180,6 @@ func softmax(values []float64) (probs []float64) {
 //    randomness: Set to 0 to always take the action that maximizes the expected value (no
 //      exploration). Otherwise works as divisor for the scores: larger values means more
 //      randomness (exploration), smaller values means less randomness (exploitation).
-func NewRandomizedSearcher(searcher Searcher, randomness float64) Searcher {
+func NewRandomizedSearcher(searcher Searcher, randomness float32) Searcher {
 	return &randomizedSearcher{searcher: searcher, randomness: randomness}
 }

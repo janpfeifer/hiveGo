@@ -9,6 +9,7 @@ import (
 
 	"github.com/janpfeifer/hiveGo/ai"
 	"github.com/janpfeifer/hiveGo/ai/search"
+	"github.com/janpfeifer/hiveGo/ai/tensorflow"
 	. "github.com/janpfeifer/hiveGo/state"
 )
 
@@ -17,20 +18,20 @@ var _ = log.Printf
 // Player is anything that is able to play the game.
 type Player interface {
 	// Play returns the action chosen, the next board position and the associated score predicted.
-	Play(b *Board) (action Action, board *Board, score float64)
+	Play(b *Board) (action Action, board *Board, score float32)
 }
 
 // SearcherScorePlayer is a standard set up for an AI: a searcher and
 // a scorer. It implements the Player interface.
 type SearcherScorePlayer struct {
-	Searcher     search.Searcher
-	Scorer       ai.BatchScorer
-	LinearScorer ai.LinearScorer
-	ModelFile    string
+	Searcher  search.Searcher
+	Scorer    ai.BatchScorer
+	Learner   ai.LearnerScorer
+	ModelFile string
 }
 
 // Play implements the Player interface: it chooses an action given a Board.
-func (p *SearcherScorePlayer) Play(b *Board) (action Action, board *Board, score float64) {
+func (p *SearcherScorePlayer) Play(b *Board) (action Action, board *Board, score float32) {
 	action, board, score = p.Searcher.Search(b, p.Scorer)
 	// log.Printf("Move #%d: AI playing %v, score=%.3f", b.MoveNumber, action, score)
 	// log.Printf("Features:")
@@ -70,7 +71,7 @@ func NewAIPlayer(config string) *SearcherScorePlayer {
 	var err error
 	maxDepth := -1
 	var maxTime time.Duration
-	randomness := 0.
+	randomness := float32(0)
 	if value, ok := params["max_depth"]; ok {
 		delete(params, "max_depth")
 		maxDepth, err = strconv.Atoi(value)
@@ -80,7 +81,8 @@ func NewAIPlayer(config string) *SearcherScorePlayer {
 	}
 	if value, ok := params["randomness"]; ok {
 		delete(params, "randomness")
-		randomness, err = strconv.ParseFloat(value, 64)
+		f64, err := strconv.ParseFloat(value, 32)
+		randomness = float32(f64)
 		if err != nil || randomness <= 0.0 {
 			log.Panicf("Invalid AI value '%s' for randomness: %s", value, err)
 		}
@@ -124,12 +126,27 @@ func NewAIPlayer(config string) *SearcherScorePlayer {
 	}
 
 	// Scorer
+	useTF := false
+	cpu := false
 	modelFile := ""
 	if value, ok := params["model"]; ok {
 		modelFile = value
 		delete(params, "model")
 	}
-	model := ai.NewLinearScorerFromFile(modelFile)
+	if _, ok := params["tf"]; ok {
+		useTF = true
+		delete(params, "tf")
+	}
+	if _, ok := params["cpu"]; ok {
+		cpu = true
+		delete(params, "cpu")
+	}
+	var model ai.LearnerScorer
+	if useTF {
+		model = tensorflow.New(modelFile, cpu)
+	} else {
+		model = ai.NewLinearScorerFromFile(modelFile)
+	}
 
 	// Check that all parameters were processed.
 	if len(params) > 0 {
@@ -140,9 +157,9 @@ func NewAIPlayer(config string) *SearcherScorePlayer {
 	}
 
 	return &SearcherScorePlayer{
-		Searcher:     searcher,
-		Scorer:       model,
-		LinearScorer: model,
-		ModelFile:    modelFile,
+		Searcher:  searcher,
+		Scorer:    model,
+		Learner:   model,
+		ModelFile: modelFile,
 	}
 }

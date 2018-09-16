@@ -8,7 +8,7 @@ import (
 // +10 and -10 respectivelly. Values used on a softmax when used to
 // determine probabilistic moves.
 type Scorer interface {
-	Score(board *Board) float64
+	Score(board *Board) float32
 }
 
 // BatchScorer is a Scorer that also handles batches.
@@ -16,7 +16,15 @@ type BatchScorer interface {
 	Scorer
 
 	// BatchScore aggregate scoring in batches -- presumable more efficient.
-	BatchScore(boards []*Board) []float64
+	BatchScore(boards []*Board) []float32
+}
+
+type LearnerScorer interface {
+	BatchScorer
+
+	Learn(learningRate float32, examples []LabeledExample, steps int) float32
+	Save()
+	String() string
 }
 
 // Trivial implementation of a BatchScorer, wity no efficiency gains.
@@ -24,8 +32,8 @@ type BatchScorerWrapper struct {
 	Scorer
 }
 
-func (s BatchScorerWrapper) BatchScore(boards []*Board) []float64 {
-	scores := make([]float64, len(boards))
+func (s BatchScorerWrapper) BatchScore(boards []*Board) []float32 {
+	scores := make([]float32, len(boards))
 	for ii, board := range boards {
 		scores[ii] = s.Score(board)
 	}
@@ -34,7 +42,7 @@ func (s BatchScorerWrapper) BatchScore(boards []*Board) []float64 {
 
 // Returns weather it's the end of the game, and the hard-coded score of a win/loss/draw
 // for the current player if it is finished.
-func EndGameScore(b *Board) (isEnd bool, score float64) {
+func EndGameScore(b *Board) (isEnd bool, score float32) {
 	if !b.IsFinished() {
 		return false, 0
 	}

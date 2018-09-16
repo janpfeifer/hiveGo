@@ -61,7 +61,7 @@ type Match struct {
 
 	// Scores for each board position. Can either be calculated during
 	// the match, or re-genarated when re-loading a match.
-	Scores []float64
+	Scores []float32
 }
 
 func (m *Match) FinalBoard() *Board { return m.Boards[len(m.Boards)-1] }
@@ -121,7 +121,7 @@ func runMatch(matchNum int) *Match {
 		}
 		glog.V(1).Infof("\n\nMatch %d: player %d at turn %d\n\n", matchNum, player, board.MoveNumber)
 		var action Action
-		score := 0.0
+		score := float32(0)
 		if len(board.Derived.Actions) == 0 {
 			// Auto-play skip move.
 			action = Action{Piece: NO_PIECE}
@@ -146,7 +146,7 @@ func runMatch(matchNum int) *Match {
 			if swapped {
 				player = 1 - player
 			}
-			msg = fmt.Sprintf("player %d won!")
+			msg = fmt.Sprintf("player %d won!", player)
 		}
 		glog.V(1).Infof("\n\nMatch %d: finished at turn %d, %s\n\n",
 			matchNum, match.FinalBoard().MoveNumber, msg)
@@ -333,21 +333,23 @@ func main() {
 
 	// Train with examples.
 	if *flag_train {
+		b := NewBoard()
+		glog.V(1).Infof("Score of initial board: %.2f", players[0].Learner.Score(b))
+
+		const learningRate = 1e-5
 		glog.V(1).Infof("len(LabeledExamples)=%d", len(labeledExamples))
-		for ii := 0; ii < *flag_trainLoops; ii++ {
-			const learningRate = 1e-6
-			loss := players[0].LinearScorer.Learn(learningRate, labeledExamples)
-			if ii == 0 {
-				glog.Infof("  Loss after first train loop: %.2f", loss)
-			} else if ii == *flag_trainLoops-1 {
-				glog.Infof("  Loss after %dth train loop: %.2f", ii, loss)
-			}
+		loss := players[0].Learner.Learn(learningRate, labeledExamples, 0)
+		glog.Infof("  Loss before train loop: %.2f", loss)
+		if *flag_trainLoops > 0 {
+			loss = players[0].Learner.Learn(learningRate, labeledExamples, *flag_trainLoops)
+			glog.Infof("  Loss after %dth train loop: %.2f", *flag_trainLoops, loss)
 		}
 		if players[0].ModelFile != "" {
 			glog.Infof("Saving to %s", players[0].ModelFile)
-			players[0].LinearScorer.Save(players[0].ModelFile)
+			ai.LinearModelFileName = players[0].ModelFile // Hack for linear models. TODO: fix.
+			players[0].Learner.Save()
 			if glog.V(1) {
-				glog.V(1).Infof("%s", players[0].LinearScorer)
+				glog.V(1).Infof("%s", players[0].Learner)
 			}
 		}
 	}
