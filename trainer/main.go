@@ -142,7 +142,7 @@ func runMatch(matchNum int) *Match {
 		if match.FinalBoard().Draw() {
 			msg = "match was a draw!"
 		} else {
-			player = match.FinalBoard().Winner()
+			player := match.FinalBoard().Winner()
 			if swapped {
 				player = 1 - player
 			}
