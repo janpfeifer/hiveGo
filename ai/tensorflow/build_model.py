@@ -25,7 +25,8 @@ predict = tf.reshape(y_, [-1], name='output')
 loss = tf.losses.mean_squared_error(tf.reshape(label, [-1, 1]), y_)
 loss = tf.identity(loss, name='loss')
 global_step = tf.train.create_global_step()
-optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+# optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
 train_op = optimizer.minimize(loss, global_step=global_step, name='train')
 
 

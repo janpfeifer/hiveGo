@@ -23,7 +23,7 @@ func (ab *alphaBetaSearcher) Search(b *Board, scorer ai.BatchScorer) (
 	return AlphaBeta(b, scorer, ab.maxDepth)
 }
 
-func (ab *alphaBetaSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float32) {
+func (ab *alphaBetaSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action, reuse bool) (scores []float32) {
 	log.Panicf("ScoreMatch not implemented for AlphaBetaSearcher")
 	return
 }

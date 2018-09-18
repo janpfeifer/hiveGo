@@ -71,7 +71,7 @@ func NewAIPlayer(config string) *SearcherScorePlayer {
 	var err error
 	maxDepth := -1
 	var maxTime time.Duration
-	randomness := float32(0)
+	randomness := 0.0
 	if value, ok := params["max_depth"]; ok {
 		delete(params, "max_depth")
 		maxDepth, err = strconv.Atoi(value)
@@ -81,8 +81,7 @@ func NewAIPlayer(config string) *SearcherScorePlayer {
 	}
 	if value, ok := params["randomness"]; ok {
 		delete(params, "randomness")
-		f64, err := strconv.ParseFloat(value, 32)
-		randomness = float32(f64)
+		randomness, err := strconv.ParseFloat(value, 64)
 		if err != nil || randomness <= 0.0 {
 			log.Panicf("Invalid AI value '%s' for randomness: %s", value, err)
 		}
@@ -105,7 +104,9 @@ func NewAIPlayer(config string) *SearcherScorePlayer {
 			maxTime = 5 * time.Second
 		}
 		if randomness == 0.0 {
-			randomness = 1.0
+			// Number found after a few experiments. TODO: can it be improved ? Or have
+			// another model to decide this ?
+			randomness = 0.5
 		}
 		searcher = search.NewMonteCarloTreeSearcher(maxDepth, maxTime, randomness)
 	}

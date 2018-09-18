@@ -31,7 +31,7 @@ var (
 	flag_maxMoves = flag.Int(
 		"max_moves", 100, "Max moves before game is assumed to be a draw.")
 
-	flag_repeats = flag.Int("repeats", 1, "Number of times to repeat the game. If larger "+
+	flag_numMatches = flag.Int("num_matches", 1, "Number of matches to play. If larger "+
 		"than one, starting position is alternated.")
 	flag_print       = flag.Bool("print", false, "Print board at the end of the match.")
 	flag_saveMatches = flag.String("save_matches", "", "File name where to save matches.")
@@ -43,7 +43,9 @@ var (
 	flag_lastActions = flag.Int("last_actions", 0, "If set > 0, on the given number of last moves of each match are used for training.")
 	flag_train       = flag.Bool("train", false, "Set to true to train with match data.")
 	flag_trainLoops  = flag.Int("train_loops", 1, "After acquiring data for all matches, how many times to loop the training over it.")
-	flag_rescore     = flag.Bool("rescore", false, "If to rescore loaded matches.")
+	flag_rescore     = flag.Int("rescore", 0,
+		"If to rescore loaded matches. A value higher than 1 means that it will loop "+
+			"over rescoring and retraining.")
 
 	players = [2]*ai_players.SearcherScorePlayer{nil, nil}
 )
@@ -175,7 +177,7 @@ func runMatches(results chan<- *Match) {
 			if !match.FinalBoard().Draw() {
 				wins++
 				if *flag_wins {
-					done = done || (wins >= *flag_repeats)
+					done = done || (wins >= *flag_numMatches)
 				}
 			}
 			<-semaphore
@@ -185,7 +187,7 @@ func runMatches(results chan<- *Match) {
 			results <- match
 		}(ii)
 		if !*flag_wins {
-			done = done || (ii+1 >= *flag_repeats)
+			done = done || (ii+1 >= *flag_numMatches)
 		}
 	}
 	wg.Wait()
@@ -216,9 +218,6 @@ func loadMatches(results chan<- *Match) {
 	dec := gob.NewDecoder(file)
 
 	// Run at most GOMAXPROCS re-scoring simultaneously.
-	var wg sync.WaitGroup
-	semaphore := make(chan bool, runtime.GOMAXPROCS(0))
-
 	for ii := 0; true; ii++ {
 		match, err := MatchDecode(dec)
 		if err == io.EOF {
@@ -230,27 +229,8 @@ func loadMatches(results chan<- *Match) {
 		if *flag_winsOnly && !match.FinalBoard().Draw() {
 			continue
 		}
-		if *flag_rescore {
-			wg.Add(1)
-			semaphore <- true
-			go func(match *Match, matchNum int) {
-				defer wg.Done()
-				from := 0
-				if *flag_lastActions > 1 && *flag_lastActions < len(match.Actions) {
-					from = len(match.Actions) - *flag_lastActions
-				}
-				newScores := players[0].Searcher.ScoreMatch(
-					match.Boards[from], players[0].Scorer, match.Actions[from:len(match.Actions)])
-				copy(match.Scores[from:from+len(newScores)-1], newScores)
-				<-semaphore
-				results <- match
-			}(match, ii)
-		} else {
-			// If not re-scoring, just do it in the same goroutine.
-			results <- match
-		}
+		results <- match
 	}
-	wg.Wait()
 	close(results)
 }
 
@@ -267,10 +247,12 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
+	if *flag_rescore > 0 && !*flag_train {
+		log.Fatal("Flag --rescore set, but not --train. Not sure what to do.")
+	}
 	if *flag_maxMoves <= 0 {
 		log.Fatalf("Invalid --max_moves=%d", *flag_maxMoves)
 	}
-	ui := ascii_ui.NewUI(true, false)
 	for ii := 0; ii < 2; ii++ {
 		players[ii] = ai_players.NewAIPlayer(*flag_players[ii])
 	}
@@ -283,6 +265,14 @@ func main() {
 		go runMatches(results)
 	}
 
+	if *flag_rescore > 0 {
+		loopRescoreAndRetrainMatches(results)
+	} else {
+		reportMatches(results)
+	}
+}
+
+func reportMatches(matches chan *Match) {
 	// Read results.
 	totalWins := [3]int{0, 0, 0}
 	totalMoves := 0
@@ -295,7 +285,8 @@ func main() {
 
 	count := 0
 	var labeledExamples []ai.LabeledExample
-	for match := range results {
+	ui := ascii_ui.NewUI(true, false)
+	for match := range matches {
 		count++
 		if enc != nil {
 			match.Encode(enc)
@@ -333,40 +324,19 @@ func main() {
 
 	// Train with examples.
 	if *flag_train {
-		b := NewBoard()
-		glog.V(1).Infof("Score of initial board: %.2f", players[0].Learner.Score(b))
-
-		const learningRate = 1e-5
-		glog.V(1).Infof("len(LabeledExamples)=%d", len(labeledExamples))
-		loss := players[0].Learner.Learn(learningRate, labeledExamples, 0)
-		glog.Infof("  Loss before train loop: %.2f", loss)
-		if *flag_trainLoops > 0 {
-			loss = players[0].Learner.Learn(learningRate, labeledExamples, *flag_trainLoops)
-			glog.Infof("  Loss after %dth train loop: %.2f", *flag_trainLoops, loss)
-		}
-		if players[0].ModelFile != "" {
-			glog.Infof("Saving to %s", players[0].ModelFile)
-			ai.LinearModelFileName = players[0].ModelFile // Hack for linear models. TODO: fix.
-			players[0].Learner.Save()
-			if glog.V(1) {
-				glog.V(1).Infof("%s", players[0].Learner)
-			}
-		}
+		trainFromExamples(labeledExamples)
 	}
 
 	// Print totals.
-	if *flag_loadMatches == "" {
-		fmt.Printf("Total matches=%d\n", count)
-		for ii, value := range totalWins {
-			var p string
-			if ii < 2 {
-				p = fmt.Sprintf("P%d Wins", ii)
-			} else {
-				p = "Draws"
-			}
-			fmt.Printf("%s=%d\t%.1f%%\n", p, value, 100.0*float64(value)/float64(count))
+	fmt.Printf("Total matches=%d\n", count)
+	for ii, value := range totalWins {
+		var p string
+		if ii < 2 {
+			p = fmt.Sprintf("P%d Wins", ii)
+		} else {
+			p = "Draws"
 		}
-		fmt.Printf("Average number of moves=%.1f\n", float64(totalMoves)/float64(count))
+		fmt.Printf("%s=%d\t%.1f%%\n", p, value, 100.0*float64(value)/float64(count))
 	}
-
+	fmt.Printf("Average number of moves=%.1f\n", float64(totalMoves)/float64(count))
 }

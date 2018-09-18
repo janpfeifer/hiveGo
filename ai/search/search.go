@@ -22,12 +22,12 @@ type Searcher interface {
 
 	// ScoreMatch will score the board at each board position, starting from the current one,
 	// and following each one of the actions. In the end, len(scores) == len(actions)+1.
-	ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float32)
+	ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action, reuse bool) (scores []float32)
 }
 
 type randomizedSearcher struct {
 	searcher   Searcher
-	randomness float32
+	randomness float64
 }
 
 // ScoredActions enumerates each of the available actions, along with the boards
@@ -135,14 +135,14 @@ func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (Action, *
 	}
 
 	// Calculate probability for each action.
-	probabilities := make([]float32, len(scores))
+	probabilities := make([]float64, len(scores))
 	for ii, score := range scores {
-		probabilities[ii] = score / rs.randomness
+		probabilities[ii] = float64(score) / rs.randomness
 	}
 	probabilities = softmax(probabilities)
 
 	// Select from probabilities.
-	chance := rand.Float32()
+	chance := rand.Float64()
 	// log.Printf("chance=%f, scores=%v, probabilities=%v", chance, scores, probabilities)
 	for ii, value := range probabilities {
 		if chance <= value {
@@ -154,17 +154,17 @@ func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (Action, *
 	return Action{}, nil, 0.0
 }
 
-func (rs *randomizedSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float32) {
+func (rs *randomizedSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action, reuse bool) (scores []float32) {
 	log.Panicf("ScoreMatch not implemented for RandomizedSearcher")
 	return
 }
 
-func softmax(values []float32) (probs []float32) {
-	probs = make([]float32, len(values))
-	sum := float32(0.0)
+func softmax(values []float64) (probs []float64) {
+	probs = make([]float64, len(values))
+	sum := float64(0.0)
 	// Normalize value for numeric values (smaller exponentials)
 	for ii, value := range values {
-		probs[ii] = float32(math.Exp(float64(value)))
+		probs[ii] = math.Exp(float64(value))
 		sum += probs[ii]
 	}
 	for ii := range probs {
@@ -180,6 +180,6 @@ func softmax(values []float32) (probs []float32) {
 //    randomness: Set to 0 to always take the action that maximizes the expected value (no
 //      exploration). Otherwise works as divisor for the scores: larger values means more
 //      randomness (exploration), smaller values means less randomness (exploitation).
-func NewRandomizedSearcher(searcher Searcher, randomness float32) Searcher {
+func NewRandomizedSearcher(searcher Searcher, randomness float64) Searcher {
 	return &randomizedSearcher{searcher: searcher, randomness: randomness}
 }

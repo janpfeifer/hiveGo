@@ -1,16 +1,11 @@
-wins.bin
-wins.bin~
-matches.bin
-matches.bin~
-model.txt
-model.txt~
-model2.txt
+model*.*
 cpu.prof
-tf_model.pb
-tf_model.checkpoint.data-00000-of-00001
-tf_model.checkpoint.data-00000-of-00001~
-tf_model.checkpoint.index
-tf_model.checkpoint.index~
+tf_model.*
+v?.*
+matches*.bin
+matches*.bin~
+wins*.bin
+wins*.bin~
 
 
 

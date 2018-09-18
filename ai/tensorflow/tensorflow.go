@@ -18,7 +18,7 @@ type Scorer struct {
 	Basename string
 	graph    *tf.Graph
 	sess     *tf.Session
-	lock     sync.Locker
+	mu       sync.Mutex
 
 	input, label, learningRate, checkpointFile tf.Output
 	output, loss                               tf.Output
@@ -129,6 +129,8 @@ func (s *Scorer) UnlimitedBatchScore(batch [][]float32) []float32 {
 	}
 	feeds := map[tf.Output]*tf.Tensor{s.input: batchTensor}
 	fetches := []tf.Output{s.output}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	results, err := s.sess.Run(feeds, fetches, nil)
 	if err != nil {
 		log.Panicf("Prediction failed: %v", err)
@@ -195,6 +197,8 @@ func (s *Scorer) Learn(learningRate float32, examples []ai.LabeledExample, steps
 	}
 
 	// Loop over steps.
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for step := 0; step < steps; step++ {
 		if _, err = s.sess.Run(feeds, nil, []*tf.Operation{s.trainOp}); err != nil {
 			log.Panicf("TensorFlow trainOp failed: %v", err)

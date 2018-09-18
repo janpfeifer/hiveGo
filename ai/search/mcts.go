@@ -21,12 +21,15 @@ var _ = fmt.Printf
 type mctsSearcher struct {
 	maxDepth   int
 	maxTime    time.Duration
-	randomness float32
+	randomness float64
 	priorBase  float32 // How much to weight the baseScore in comparison to MC samples.
+
+	// Cache previous searches on the current tree. Reused by score match.
+	reuseCN *cacheNode
 }
 
 // NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPrunning.
-func NewMonteCarloTreeSearcher(maxDepth int, maxTime time.Duration, randomness float32) Searcher {
+func NewMonteCarloTreeSearcher(maxDepth int, maxTime time.Duration, randomness float64) Searcher {
 	return &mctsSearcher{maxDepth: maxDepth, maxTime: maxTime, randomness: randomness, priorBase: 3.0}
 }
 
@@ -38,40 +41,111 @@ type cacheNode struct {
 	baseScores   []float32 // Scores for board.NextPlayer.
 	count        []int     // How many times each of the paths have been traversed.
 	sumMCScores  []float32 // Sum of each of the traversals at the given path.
-	exponents    []float32
-	sumExponents float32
+	exponents    []float64
+	sumExponents float64
 
 	cacheNodes []*cacheNode
 }
 
-func newCacheNode(b *Board, scorer ai.BatchScorer) *cacheNode {
+func newCacheNode(b *Board, scorer ai.BatchScorer, randomness float64) *cacheNode {
 	cn := &cacheNode{board: b}
 	cn.actions, cn.newBoards, cn.baseScores = ScoredActions(b, scorer)
 	cn.count = make([]int, len(cn.actions))
 	cn.sumMCScores = make([]float32, len(cn.actions))
-	cn.exponents = make([]float32, len(cn.actions))
+	cn.exponents = make([]float64, len(cn.actions))
 	for ii, score := range cn.baseScores {
-		cn.exponents[ii] = float32(math.Exp(float64(score)))
+		cn.exponents[ii] = math.Exp(float64(score) / randomness)
 		cn.sumExponents += cn.exponents[ii]
 	}
 	cn.cacheNodes = make([]*cacheNode, len(cn.actions))
 	return cn
 }
 
+// UpdateBaseScores re-scores the boards according to a presumably updates scorer.
+// It is used by ScoreMatch with reuse=true.
+func (cn *cacheNode) UpdateBaseScores(scorer ai.BatchScorer, randomness float64) {
+	cn.baseScores = make([]float32, len(cn.actions))
+	boardsToScore := make([]*Board, 0, len(cn.newBoards))
+
+	// First score end-of-game boards.
+	for ii, board := range cn.newBoards {
+		if isEnd, score := ai.EndGameScore(board); isEnd {
+			// End game is treated differently.
+			cn.baseScores[ii] = -score
+		} else {
+			boardsToScore = append(boardsToScore, board)
+		}
+	}
+
+	// Score non-end-of-game, using scorer.
+	if len(boardsToScore) > 0 {
+		// Score other boards.
+		scored := scorer.BatchScore(boardsToScore)
+		scoredIdx := 0
+		for ii := range cn.baseScores {
+			if !cn.newBoards[ii].IsFinished() {
+				cn.baseScores[ii] = -scored[scoredIdx]
+				scoredIdx++
+			}
+		}
+	}
+
+	// Finally update the exponents.
+	cn.sumExponents = 0
+	for ii, score := range cn.baseScores {
+		cn.exponents[ii] = math.Exp(float64(score) / randomness)
+		cn.sumExponents += cn.exponents[ii]
+	}
+}
+
+// Step into the index's cacheNode under the current one. If it doesn't exist,
+// create one using the given scorer.
+func (cn *cacheNode) Step(
+	index int, scorer ai.BatchScorer, randomness float64) *cacheNode {
+	if cn.cacheNodes[index] == nil {
+		cn.cacheNodes[index] = newCacheNode(cn.newBoards[index], scorer, randomness)
+	}
+	if cn.cacheNodes[index].baseScores == nil {
+		cn.cacheNodes[index].UpdateBaseScores(scorer, randomness)
+	}
+	return cn.cacheNodes[index]
+}
+
+func (cn *cacheNode) ClearScores() {
+	cn.baseScores = nil
+	for ii := range cn.actions {
+		cn.sumMCScores[ii] = 0
+		cn.count[ii] = 0
+		cn.exponents[ii] = 0
+	}
+	cn.sumExponents = 0
+
+	for _, childCN := range cn.cacheNodes {
+		if childCN != nil {
+			childCN.ClearScores()
+		}
+	}
+}
+
 func (cn *cacheNode) Sample() int {
+	if len(cn.actions) == 0 {
+		log.Panic("Sampling from no actions available.")
+	}
 	if len(cn.actions) == 1 {
 		return 0
 	}
 	chance := rand.Float64()
 	for ii, exponent := range cn.exponents {
-		probability := float64(exponent / cn.sumExponents)
+		probability := exponent / cn.sumExponents
 		if chance <= probability {
 			return ii
 		}
 		chance -= probability
 	}
-	glog.Errorf("MCTS failed to choose any, %.3f probability mass still missing", chance)
-	return len(cn.exponents) - 1
+	if chance > 0.0001 {
+		glog.Errorf("MCTS failed to choose any, %.3f probability mass still missing", chance)
+	}
+	return len(cn.exponents) - 1 // Pick last one.
 }
 
 func (cn *cacheNode) FindAction(action Action) int {
@@ -111,7 +185,8 @@ func (cn *cacheNode) EstimatedScore(idx int, priorBase float32) float32 {
 	return estimatedScore
 }
 
-func (cn *cacheNode) Traverse(depth int, scorer ai.BatchScorer, priorBase float32) float32 {
+func (cn *cacheNode) Traverse(
+	depth int, scorer ai.BatchScorer, priorBase float32, randomness float64) float32 {
 	// Sample according to current scores.
 	ii := cn.Sample()
 	if depth == 0 || cn.newBoards[ii].IsFinished() {
@@ -120,16 +195,14 @@ func (cn *cacheNode) Traverse(depth int, scorer ai.BatchScorer, priorBase float3
 	}
 
 	// Traverse down the sampled variation.
-	if cn.cacheNodes[ii] == nil {
-		cn.cacheNodes[ii] = newCacheNode(cn.newBoards[ii], scorer)
-	}
-	sampledScore := -cn.cacheNodes[ii].Traverse(depth-1, scorer, priorBase)
+	nextCN := cn.Step(ii, scorer, randomness)
+	sampledScore := -nextCN.Traverse(depth-1, scorer, priorBase, randomness)
 
 	// Propagate back the score.
 	cn.sumMCScores[ii] += sampledScore
 	cn.count[ii]++
 	cn.sumExponents -= cn.exponents[ii]
-	cn.exponents[ii] = float32(math.Exp(float64(cn.EstimatedScore(ii, priorBase))))
+	cn.exponents[ii] = math.Exp(float64(cn.EstimatedScore(ii, priorBase)) / randomness)
 	cn.sumExponents += cn.exponents[ii]
 
 	return sampledScore
@@ -138,8 +211,8 @@ func (cn *cacheNode) Traverse(depth int, scorer ai.BatchScorer, priorBase float3
 // Search implements the Searcher interface.
 func (mcts *mctsSearcher) Search(b *Board, scorer ai.BatchScorer) (
 	action Action, board *Board, score float32) {
-	cn := newCacheNode(b, scorer)
-	mcts.updateCN(cn, scorer)
+	cn := newCacheNode(b, scorer, mcts.randomness)
+	mcts.runOnCN(cn, scorer)
 
 	if glog.V(2) {
 		for ii, action := range cn.actions {
@@ -159,14 +232,14 @@ func (mcts *mctsSearcher) Search(b *Board, scorer ai.BatchScorer) (
 	return cn.actions[bestIdx], cn.newBoards[bestIdx], bestScore
 }
 
-// updateCN runs MCTS for the given specifications on the cacheNode.
-func (mcts *mctsSearcher) updateCN(cn *cacheNode, scorer ai.BatchScorer) {
+// runMCTS runs MCTS for the given specifications on the cacheNode.
+func (mcts *mctsSearcher) runOnCN(cn *cacheNode, scorer ai.BatchScorer) {
 	// Sample while there is time.
 	if len(cn.actions) > 1 {
 		start := time.Now()
 		count := 0
 		for time.Since(start) < mcts.maxTime {
-			cn.Traverse(mcts.maxDepth, scorer, mcts.priorBase)
+			cn.Traverse(mcts.maxDepth, scorer, mcts.priorBase, mcts.randomness)
 			count++
 		}
 		glog.V(1).Infof("Samples: %d", count)
@@ -175,11 +248,24 @@ func (mcts *mctsSearcher) updateCN(cn *cacheNode, scorer ai.BatchScorer) {
 
 // ScoreMatch will score the board at each board position, starting from the current one,
 // and following each one of the actions. In the end, len(scores) == len(actions)+1.
-func (mcts *mctsSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (
+// If useCache is true it will try to reuse previous iteration of boards generated,
+// greatly accelerating things. But it has to be called with the same board.
+func (mcts *mctsSearcher) ScoreMatch(
+	b *Board, scorer ai.BatchScorer, actions []Action, reuse bool) (
 	scores []float32) {
-	cn := newCacheNode(b, scorer)
+	var cn *cacheNode
+	if reuse && mcts.reuseCN != nil {
+		cn = mcts.reuseCN
+		cn.ClearScores()
+		cn.UpdateBaseScores(scorer, mcts.randomness)
+	} else {
+		cn = newCacheNode(b, scorer, mcts.randomness)
+		if reuse {
+			mcts.reuseCN = cn
+		}
+	}
 	for _, action := range actions {
-		mcts.updateCN(cn, scorer)
+		mcts.runOnCN(cn, scorer)
 		// Score of this node, is the score of the best action.
 		_, score := cn.FindBestScore(mcts.priorBase)
 		scores = append(scores, score)
@@ -191,11 +277,7 @@ func (mcts *mctsSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []
 			scores = append(scores, score)
 			return
 		}
-		newCn := cn.cacheNodes[idx]
-		if newCn == nil {
-			newCn = newCacheNode(cn.newBoards[idx], scorer)
-		}
-		cn = newCn
+		cn = cn.Step(idx, scorer, mcts.randomness)
 	}
 
 	// Add the final board score, if the match hasn't ended yet.
