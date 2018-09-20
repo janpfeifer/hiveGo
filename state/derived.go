@@ -15,8 +15,9 @@ type Derived struct {
 	NumPiecesOnBoard    [NUM_PLAYERS]uint8
 	NumSurroundingQueen [NUM_PLAYERS]uint8
 	PlacementPositions  [NUM_PLAYERS]map[Pos]bool
-	Wins                [NUM_PLAYERS]bool // If both players win, it is a draw.
-	QueenPos            [NUM_PLAYERS]Pos  // Only valid if queen is actually in the board.
+	Wins                [NUM_PLAYERS]bool  // If both players win, it is a draw.
+	QueenPos            [NUM_PLAYERS]Pos   // Only valid if queen is actually in the board.
+	Singles             [NUM_PLAYERS]uint8 // Count pieces that are at the tip (only one neighbour)
 
 	// Generic information only about the next player to move (NextPlayer)
 	RemovablePieces map[Pos]bool
@@ -62,6 +63,7 @@ func (b *Board) BuildDerived() {
 	}
 	derived.Actions = b.ValidActions(b.NextPlayer)
 	derived.Wins, derived.NumSurroundingQueen, derived.QueenPos = b.endGame()
+	derived.Singles = b.ListSingles()
 }
 
 // ValidActions returns the list of valid actions for given player.
@@ -308,4 +310,14 @@ func (b *Board) Winner() uint8 {
 	} else {
 		return 1
 	}
+}
+
+func (b *Board) ListSingles() (singles [2]uint8) {
+	for pos, stack := range b.board {
+		if len(b.OccupiedNeighbours(pos)) == 1 {
+			player, _ := stack.Top()
+			singles[player]++
+		}
+	}
+	return
 }

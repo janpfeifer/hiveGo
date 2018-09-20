@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"runtime"
 	"sync"
 
@@ -10,7 +11,7 @@ import (
 
 // Rescore the matches according to player 0 -- during rescoring we are only trying to
 // improve the one AI.
-func rescore(matches []*Match, reuse bool) {
+func rescore(matches []*Match) {
 	var wg sync.WaitGroup
 	semaphore := make(chan bool, runtime.GOMAXPROCS(0))
 	for matchNum, match := range matches {
@@ -26,7 +27,7 @@ func rescore(matches []*Match, reuse bool) {
 			}
 			newScores := players[0].Searcher.ScoreMatch(
 				match.Boards[from], players[0].Scorer,
-				match.Actions[from:len(match.Actions)], reuse)
+				match.Actions[from:len(match.Actions)])
 			copy(match.Scores[from:from+len(newScores)-1], newScores)
 			glog.V(1).Infof("Match %d rescored.", matchNum)
 		}(matchNum, match)
@@ -41,13 +42,13 @@ func trainFromExamples(labeledExamples []ai.LabeledExample) {
 	const learningRate = 1e-5
 	glog.V(1).Infof("len(LabeledExamples)=%d", len(labeledExamples))
 	loss := players[0].Learner.Learn(learningRate, labeledExamples, 0)
-	glog.Infof("  Loss before train loop: %.2f", loss)
+	log.Printf("  Loss before train loop: %.2f", loss)
 	if *flag_trainLoops > 0 {
 		loss = players[0].Learner.Learn(learningRate, labeledExamples, *flag_trainLoops)
-		glog.Infof("  Loss after %dth train loop: %.2f", *flag_trainLoops, loss)
+		log.Printf("  Loss after %dth train loop: %.2f", *flag_trainLoops, loss)
 	}
 	if players[0].ModelFile != "" {
-		glog.Infof("Saving to %s", players[0].ModelFile)
+		log.Printf("Saving to %s", players[0].ModelFile)
 		ai.LinearModelFileName = players[0].ModelFile // Hack for linear models. TODO: fix.
 		players[0].Learner.Save()
 		if glog.V(1) {
@@ -63,7 +64,7 @@ func loopRescoreAndRetrainMatches(matchesChan chan *Match) {
 	}
 
 	for rescoreIdx := 0; rescoreIdx < *flag_rescore; rescoreIdx++ {
-		rescore(matches, *flag_rescore > 1)
+		rescore(matches)
 		var labeledExamples []ai.LabeledExample
 		for _, match := range matches {
 			labeledExamples = match.AppendLabeledExamples(labeledExamples)

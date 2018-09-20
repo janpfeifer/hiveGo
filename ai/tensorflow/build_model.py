@@ -3,7 +3,7 @@
 import tensorflow as tf
 
 # Dimension of the input features, should match ai.AllFeaturesDim
-ALL_FEATURES_DIM = 35
+ALL_FEATURES_DIM = 37
 NUM_LAYERS = 4
 NODES_PER_LAYER = 128 - ALL_FEATURES_DIM
 LEARNING_RATE = 0.01
@@ -14,10 +14,10 @@ label = tf.placeholder(tf.float32, shape=[None], name='label')
 learning_rate = tf.placeholder(tf.float32, shape=(), name='learning_rate')
 
 # Feed Forward Neural Network, with connections to the input at every layer.
-logits = tf.layers.dense(x, NODES_PER_LAYER)
+logits = tf.layers.dense(x, NODES_PER_LAYER, tf.nn.selu)
 for _ in range(NUM_LAYERS - 1):
     logits = tf.concat([logits, x], 1)
-    logits = tf.layers.dense(logits, NODES_PER_LAYER)
+    logits = tf.layers.dense(logits, NODES_PER_LAYER, tf.nn.selu)
 y_ = tf.layers.dense(logits, 1)
 predict = tf.reshape(y_, [-1], name='output')
 

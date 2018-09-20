@@ -47,9 +47,17 @@ type cacheNode struct {
 	cacheNodes []*cacheNode
 }
 
+var testCN *cacheNode
+
 func newCacheNode(b *Board, scorer ai.BatchScorer, randomness float64) *cacheNode {
+	if testCN != nil && testCN.baseScores == nil {
+		log.Panic("cn::newCacheNode(): cacheNode (0) has no baseScores")
+	}
 	cn := &cacheNode{board: b}
 	cn.actions, cn.newBoards, cn.baseScores = ScoredActions(b, scorer)
+	if testCN != nil && testCN.baseScores == nil {
+		log.Panic("cn::newCacheNode(): cacheNode (1) has no baseScores")
+	}
 	cn.count = make([]int, len(cn.actions))
 	cn.sumMCScores = make([]float32, len(cn.actions))
 	cn.exponents = make([]float64, len(cn.actions))
@@ -58,6 +66,9 @@ func newCacheNode(b *Board, scorer ai.BatchScorer, randomness float64) *cacheNod
 		cn.sumExponents += cn.exponents[ii]
 	}
 	cn.cacheNodes = make([]*cacheNode, len(cn.actions))
+	if testCN != nil && testCN.baseScores == nil {
+		log.Panic("cn::newCacheNode(): cacheNode (2) has no baseScores")
+	}
 	return cn
 }
 
@@ -103,9 +114,16 @@ func (cn *cacheNode) UpdateBaseScores(scorer ai.BatchScorer, randomness float64)
 func (cn *cacheNode) Step(
 	index int, scorer ai.BatchScorer, randomness float64) *cacheNode {
 	if cn.cacheNodes[index] == nil {
+		if cn.baseScores == nil {
+			log.Panic("cn::Step(): cacheNode (2.a) has no baseScores")
+		}
+		testCN = cn
 		cn.cacheNodes[index] = newCacheNode(cn.newBoards[index], scorer, randomness)
-	}
-	if cn.cacheNodes[index].baseScores == nil {
+		if cn.baseScores == nil {
+			log.Panicf("cn::Step(): cacheNode (2.b) has no baseScores, idx=%d, act=%d",
+				index, len(cn.actions))
+		}
+	} else if cn.cacheNodes[index].baseScores == nil {
 		cn.cacheNodes[index].UpdateBaseScores(scorer, randomness)
 	}
 	return cn.cacheNodes[index]
@@ -175,6 +193,10 @@ func (cn *cacheNode) FindBestScore(priorBase float32) (bestIdx int, bestScore fl
 }
 
 func (cn *cacheNode) EstimatedScore(idx int, priorBase float32) float32 {
+	if idx > len(cn.actions) || idx > len(cn.baseScores) {
+		log.Panicf("Invalid index for EstimatedScore: %d, actions=%d, baseScores=%d, cn.sumMCScores=%d",
+			idx, len(cn.actions), len(cn.baseScores), len(cn.sumMCScores))
+	}
 	estimatedScore := cn.baseScores[idx]*priorBase + cn.sumMCScores[idx]
 	estimatedScore /= priorBase + float32(cn.count[idx])
 	if estimatedScore > 10.0 {
@@ -187,6 +209,9 @@ func (cn *cacheNode) EstimatedScore(idx int, priorBase float32) float32 {
 
 func (cn *cacheNode) Traverse(
 	depth int, scorer ai.BatchScorer, priorBase float32, randomness float64) float32 {
+	if cn.baseScores == nil {
+		log.Panic("cn::Traverse(): cacheNode has no baseScores")
+	}
 	// Sample according to current scores.
 	ii := cn.Sample()
 	if depth == 0 || cn.newBoards[ii].IsFinished() {
@@ -195,8 +220,20 @@ func (cn *cacheNode) Traverse(
 	}
 
 	// Traverse down the sampled variation.
+	if cn.baseScores == nil {
+		log.Panic("cn::Traverse(): cacheNode (2) has no baseScores")
+	}
+
 	nextCN := cn.Step(ii, scorer, randomness)
+	if cn.baseScores == nil {
+		log.Panic("cn::Traverse(): cacheNode (3) has no baseScores")
+	}
+
 	sampledScore := -nextCN.Traverse(depth-1, scorer, priorBase, randomness)
+
+	if cn.baseScores == nil {
+		log.Panic("cn::Traverse(): cacheNode (4) has no baseScores")
+	}
 
 	// Propagate back the score.
 	cn.sumMCScores[ii] += sampledScore
@@ -211,6 +248,7 @@ func (cn *cacheNode) Traverse(
 // Search implements the Searcher interface.
 func (mcts *mctsSearcher) Search(b *Board, scorer ai.BatchScorer) (
 	action Action, board *Board, score float32) {
+	testCN = nil
 	cn := newCacheNode(b, scorer, mcts.randomness)
 	mcts.runOnCN(cn, scorer)
 
@@ -248,22 +286,14 @@ func (mcts *mctsSearcher) runOnCN(cn *cacheNode, scorer ai.BatchScorer) {
 
 // ScoreMatch will score the board at each board position, starting from the current one,
 // and following each one of the actions. In the end, len(scores) == len(actions)+1.
-// If useCache is true it will try to reuse previous iteration of boards generated,
-// greatly accelerating things. But it has to be called with the same board.
+// If cache is provided it will try to reuse cache from a previous iteration of boards
+// generated greatly accelerating things.
+// It returns data that can be used on a future call as cache.
 func (mcts *mctsSearcher) ScoreMatch(
-	b *Board, scorer ai.BatchScorer, actions []Action, reuse bool) (
-	scores []float32) {
+	b *Board, scorer ai.BatchScorer, actions []Action) (scores []float32) {
 	var cn *cacheNode
-	if reuse && mcts.reuseCN != nil {
-		cn = mcts.reuseCN
-		cn.ClearScores()
-		cn.UpdateBaseScores(scorer, mcts.randomness)
-	} else {
-		cn = newCacheNode(b, scorer, mcts.randomness)
-		if reuse {
-			mcts.reuseCN = cn
-		}
-	}
+	cn = newCacheNode(b, scorer, mcts.randomness)
+
 	for _, action := range actions {
 		mcts.runOnCN(cn, scorer)
 		// Score of this node, is the score of the best action.

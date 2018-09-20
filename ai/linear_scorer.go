@@ -213,6 +213,9 @@ var (
 		// F_NUM_TO_DRAW
 		0.,
 
+		// F_NUM_SINGLE,
+		0., 0.,
+
 		// Bias: *Must always be last*
 		-0.79,
 	}
@@ -238,6 +241,9 @@ var (
 
 		// F_NUM_TO_DRAW
 		0.00944,
+
+		// F_NUM_SINGLE,
+		0., 0.,
 
 		// Bias: *Must always be last*
 		-0.8161,
@@ -267,6 +273,9 @@ var (
 
 		// MovesToDraw -> 1
 		0.0033,
+
+		// F_NUM_SINGLE,
+		0., 0.,
 
 		// Bias -> 1
 		-0.8147,

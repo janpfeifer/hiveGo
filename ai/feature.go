@@ -40,6 +40,9 @@ const (
 	// Number of moves till a draw due to running out of moves.
 	F_MOVES_TO_DRAW
 
+	// Number of pieces that are at a tip (only one neighbor)
+	F_NUM_SINGLE
+
 	// Last entry.
 	F_NUM_FEATURES
 )
@@ -71,6 +74,7 @@ var (
 
 		{F_NUM_THREATENING_MOVES, "NumThreateningMoves", 2, 0, fNumThreateningMoves},
 		{F_MOVES_TO_DRAW, "MovesToDraw", 1, 0, fNumToDraw},
+		{F_NUM_SINGLE, "NumSingle", 2, 0, fNumSingle},
 	}
 
 	// AllFeaturesDim is the dimension of all features concatenated, set during package
@@ -218,4 +222,13 @@ func fNumThreateningMoves(b *Board, def *FeatureDef, f []float32) {
 func fNumToDraw(b *Board, def *FeatureDef, f []float32) {
 	idx := def.VecIndex
 	f[idx] = float32(b.MaxMoves - b.MoveNumber + 1)
+
+}
+
+func fNumSingle(b *Board, def *FeatureDef, f []float32) {
+	idx := def.VecIndex
+	player := b.NextPlayer
+	opponent := b.OpponentPlayer()
+	f[idx] = float32(b.Derived.Singles[player])
+	f[idx+1] = float32(b.Derived.Singles[opponent])
 }

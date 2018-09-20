@@ -14,6 +14,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
 	ai_players "github.com/janpfeifer/hiveGo/ai/players"
+	"github.com/janpfeifer/hiveGo/ai/tensorflow"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
 	. "github.com/janpfeifer/hiveGo/state"
 )
@@ -49,6 +50,10 @@ var (
 
 	players = [2]*ai_players.SearcherScorePlayer{nil, nil}
 )
+
+func init() {
+	flag.BoolVar(&tensorflow.CpuOnly, "cpu", false, "Force to use CPU, even if GPU is available")
+}
 
 // Results and if the players were swapped.
 type Match struct {
@@ -224,7 +229,8 @@ func loadMatches(results chan<- *Match) {
 			break
 		}
 		if err != nil {
-			log.Panicf("Cannot read any more matches: %v", err)
+			glog.Errorf("Cannot read any more matches: %v", err)
+			break
 		}
 		if *flag_winsOnly && !match.FinalBoard().Draw() {
 			continue
@@ -296,30 +302,28 @@ func reportMatches(matches chan *Match) {
 		}
 
 		// Accounting.
-		if *flag_loadMatches == "" {
-			board := match.FinalBoard()
-			wins := board.Derived.Wins
-			if match.Swapped {
-				wins[0], wins[1] = wins[1], wins[0]
-			}
-			if *flag_print {
-				if match.Swapped {
-					fmt.Printf("*** Players swapped positions at this match! ***\n")
-				}
-				ui.PrintBoard(board)
-				ui.PrintWinner(board)
-				fmt.Println()
-				fmt.Println()
-			}
-			if board.Draw() {
-				totalWins[2]++
-			} else if wins[0] {
-				totalWins[0]++
-			} else {
-				totalWins[1]++
-			}
-			totalMoves += board.MoveNumber
+		board := match.FinalBoard()
+		wins := board.Derived.Wins
+		if match.Swapped {
+			wins[0], wins[1] = wins[1], wins[0]
 		}
+		if *flag_print {
+			if match.Swapped {
+				fmt.Printf("*** Players swapped positions at this match! ***\n")
+			}
+			ui.PrintBoard(board)
+			ui.PrintWinner(board)
+			fmt.Println()
+			fmt.Println()
+		}
+		if board.Draw() {
+			totalWins[2]++
+		} else if wins[0] {
+			totalWins[0]++
+		} else {
+			totalWins[1]++
+		}
+		totalMoves += board.MoveNumber
 	}
 
 	// Train with examples.

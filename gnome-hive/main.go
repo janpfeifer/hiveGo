@@ -10,6 +10,7 @@ import (
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/janpfeifer/hiveGo/ai/players"
+	"github.com/janpfeifer/hiveGo/ai/tensorflow"
 	. "github.com/janpfeifer/hiveGo/state"
 )
 
@@ -31,6 +32,10 @@ var (
 	// Sequence of boards that make up for the game. Used for undo-ing actions.
 	gameSeq []*Board
 )
+
+func init() {
+	flag.BoolVar(&tensorflow.CpuOnly, "cpu", false, "Force to use CPU, even if GPU is available")
+}
 
 const APP_ID = "com.github.janpfeifer.hiveGo.gnome-hive"
 

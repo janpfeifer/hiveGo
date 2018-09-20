@@ -22,7 +22,7 @@ type Searcher interface {
 
 	// ScoreMatch will score the board at each board position, starting from the current one,
 	// and following each one of the actions. In the end, len(scores) == len(actions)+1.
-	ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action, reuse bool) (scores []float32)
+	ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float32)
 }
 
 type randomizedSearcher struct {
@@ -154,7 +154,7 @@ func (rs *randomizedSearcher) Search(b *Board, scorer ai.BatchScorer) (Action, *
 	return Action{}, nil, 0.0
 }
 
-func (rs *randomizedSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action, reuse bool) (scores []float32) {
+func (rs *randomizedSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float32) {
 	log.Panicf("ScoreMatch not implemented for RandomizedSearcher")
 	return
 }

@@ -1,5 +1,35 @@
 package tensorflow
 
+// Google's support for Tensorflow in Go is still lacking. To get the Tensorlow
+// protobuffers needed compiled for go, do the following:
+//
+// 1) Install the Go Proto tool support. Details here:
+//
+// https://developers.google.com/protocol-buffers/docs/reference/go-generated
+//
+// I did the following:
+//      go get github.com/golang/protobuf/proto
+//      go get github.com/golang/protobuf/protoc-gen-go
+//
+// Have protoc installed (sudo apt install protobuf-compiler)
+//
+// 2) Get Tensorflow proto definitions (.proto files):
+//
+//      (From a directory called ${REPOS})
+//      git clone git@github.com:tensorflow/tensorflow.git
+//
+// 3) Compile protos to Go:
+//      ${REPOS} -> where you got the tensorflow sources in (2)
+//      ${GOSRC} -> your primary location of Go packages, typically the first entry in GOPATH.
+//      for ii in config.proto debug.proto cluster.proto rewriter_config.proto ; do
+//        protoc --proto_path=${REPOS}/tensorflow --go_out=${GOSRC}/src \
+//          ${REPOS}/tensorflow/tensorflow/core/protobuf/config.proto
+//      done
+//      protoc --proto_path=${REPOS}/tensorflow --go_out=${GOSRC}/src \
+//          ${REPOS}/tensorflow/tensorflow/core/framework/*.proto
+//
+//      You can convert other protos as needed -- yes, unfortunately I only need config.proto
+//      but had to manually track the dependencies ... :(
 import (
 	"fmt"
 	"io/ioutil"
@@ -8,11 +38,17 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/golang/protobuf/proto"
+	tfconfig "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf"
+
 	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
 	. "github.com/janpfeifer/hiveGo/state"
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
+
+// Set this to true to force to use CPU, even when GPU is avaialble.
+var CpuOnly = false
 
 type Scorer struct {
 	Basename string
@@ -34,18 +70,34 @@ func New(basename string, cpu bool) *Scorer {
 	if err != nil {
 		log.Panicf("Failed to read %q: %v", graphDefFilename, err)
 	}
+
+	// Create the one graph and session we will use all time.
 	graph := tf.NewGraph()
+	sessionOptions := &tf.SessionOptions{}
+	if CpuOnly {
+		// TODO this doesn't work .... :(
+		// Instead use:
+		//    export CUDA_VISIBLE_DEVICES=-1
+		// Before starting the program.
+		var config tfconfig.ConfigProto
+		config.DeviceCount = map[string]int32{"GPU": 0}
+		data, err := proto.Marshal(&config)
+		if err != nil {
+			log.Panicf("Failed to serialize tf.ConfigProto: %v", err)
+		}
+		sessionOptions.Config = data
+	}
+	sess, err := tf.NewSession(graph, sessionOptions)
+	if err != nil {
+		log.Panicf("Failed to create tensorflow session: %v", err)
+	}
+	devices, _ := sess.ListDevices()
+	glog.Infof("List of available devices: %v", devices)
+
 	if err = graph.Import(graphDef, ""); err != nil {
 		log.Fatal("Invalid GraphDef? read from %s: %v", graphDefFilename, err)
 	}
 
-	// Create the one session we will use all time.
-	// TODO: set it to run on CPU only, if requested.
-	_ = cpu
-	sess, err := tf.NewSession(graph, &tf.SessionOptions{Config: nil})
-	if err != nil {
-		log.Panicf("Failed to create tensorflow session: %v", err)
-	}
 	absBasename, err := filepath.Abs(basename)
 	if err != nil {
 		log.Panicf("Unknown absolute path for %s: %v", basename, err)

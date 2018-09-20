@@ -1,11 +1,11 @@
 model*.*
 cpu.prof
-tf_model.*
 v?.*
-matches*.bin
-matches*.bin~
+matches*
 wins*.bin
 wins*.bin~
+v[0-9]-*
+
 
 
 
