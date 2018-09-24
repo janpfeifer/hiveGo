@@ -13,26 +13,6 @@ import (
 var _ = log.Printf
 var _ = fmt.Printf
 
-type alphaBetaSearcher struct {
-	maxDepth int
-}
-
-// Search implements the Searcher interface.
-func (ab *alphaBetaSearcher) Search(b *Board, scorer ai.BatchScorer) (
-	action Action, board *Board, score float32) {
-	return AlphaBeta(b, scorer, ab.maxDepth)
-}
-
-func (ab *alphaBetaSearcher) ScoreMatch(b *Board, scorer ai.BatchScorer, actions []Action) (scores []float32) {
-	log.Panicf("ScoreMatch not implemented for AlphaBetaSearcher")
-	return
-}
-
-// NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPrunning.
-func NewAlphaBetaSearcher(maxDepth int) Searcher {
-	return &alphaBetaSearcher{maxDepth: maxDepth}
-}
-
 // Alpha Beta Pruning algorithm
 // See: wikipedia.org/wiki/Alpha-beta_pruning
 //
@@ -93,5 +73,47 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 		}
 	}
 
+	return
+}
+
+type alphaBetaSearcher struct {
+	maxDepth int
+}
+
+// Search implements the Searcher interface.
+func (ab *alphaBetaSearcher) Search(b *Board, scorer ai.BatchScorer) (
+	action Action, board *Board, score float32) {
+	return AlphaBeta(b, scorer, ab.maxDepth)
+}
+
+// NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPrunning.
+func NewAlphaBetaSearcher(maxDepth int) Searcher {
+	return &alphaBetaSearcher{maxDepth: maxDepth}
+}
+
+// ScoreMatch will score the board at each board position, starting from the current one,
+// and following each one of the actions. In the end, len(scores) == len(actions)+1.
+func (ab *alphaBetaSearcher) ScoreMatch(
+	b *Board, scorer ai.BatchScorer, actions []Action) (scores []float32) {
+	scores = make([]float32, 0, len(actions)+1)
+	for _, action := range actions {
+		bestAction, newBoard, score := AlphaBeta(b, scorer, ab.maxDepth)
+		scores = append(scores, score)
+		if action == bestAction {
+			b = newBoard
+		} else {
+			// Match action was different than what it would have played.
+			b = b.Act(action)
+			glog.V(1).Infof("Would have played %s instead of %s", bestAction, action)
+		}
+	}
+
+	// Add the final board score, if the match hasn't ended yet.
+	if isEnd, score := ai.EndGameScore(b); isEnd {
+		scores = append(scores, score)
+	} else {
+		_, _, score = AlphaBeta(b, scorer, ab.maxDepth)
+		scores = append(scores, score)
+	}
 	return
 }

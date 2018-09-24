@@ -23,7 +23,7 @@ package tensorflow
 //      ${GOSRC} -> your primary location of Go packages, typically the first entry in GOPATH.
 //      for ii in config.proto debug.proto cluster.proto rewriter_config.proto ; do
 //        protoc --proto_path=${REPOS}/tensorflow --go_out=${GOSRC}/src \
-//          ${REPOS}/tensorflow/tensorflow/core/protobuf/config.proto
+//          ${REPOS}/tensorflow/tensorflow/core/protobuf/${ii}
 //      done
 //      protoc --proto_path=${REPOS}/tensorflow --go_out=${GOSRC}/src \
 //          ${REPOS}/tensorflow/tensorflow/core/framework/*.proto

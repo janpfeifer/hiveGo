@@ -286,9 +286,6 @@ func (mcts *mctsSearcher) runOnCN(cn *cacheNode, scorer ai.BatchScorer) {
 
 // ScoreMatch will score the board at each board position, starting from the current one,
 // and following each one of the actions. In the end, len(scores) == len(actions)+1.
-// If cache is provided it will try to reuse cache from a previous iteration of boards
-// generated greatly accelerating things.
-// It returns data that can be used on a future call as cache.
 func (mcts *mctsSearcher) ScoreMatch(
 	b *Board, scorer ai.BatchScorer, actions []Action) (scores []float32) {
 	var cn *cacheNode
