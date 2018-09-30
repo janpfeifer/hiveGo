@@ -11,6 +11,18 @@ var _ = fmt.Printf
 
 // Derived holds information that is generated from the Board state.
 type Derived struct {
+	// Hash of the Board. Usually unique, but not guaranteed.
+	Hash uint64
+
+	// Number of times this exact same board has been seen earlier in the Match.
+	Repeats uint8
+
+	// Limits of the pieces on board.
+	MinX, MaxX, MinY, MaxY int8
+
+	// Normalized (shifted) and sorted list of positions occupied.
+	NormalizedPosStackSlice PosStackSlice
+
 	// Information about both players.
 	NumPiecesOnBoard    [NUM_PLAYERS]uint8
 	NumSurroundingQueen [NUM_PLAYERS]uint8
@@ -46,8 +58,20 @@ func (a Action) String() string {
 
 // BuildDerived rebuilds information derived from the board.
 func (b *Board) BuildDerived() {
-	b.Derived = &Derived{}
-	derived := b.Derived
+	// Reset Derived.
+	b.Derived = nil
+	derived := &Derived{}
+
+	// Get uncached (from Derived) results.
+	derived.MinX, derived.MaxX, derived.MinY, derived.MaxY = b.UsedLimits()
+
+	// Set new derived object.
+	b.Derived = derived
+
+	// Normalized list of positions.
+	derived.NormalizedPosStackSlice = b.normalizedPosStackSlice()
+	derived.Hash = b.normalizedHash()
+	derived.Repeats = b.FindRepeats()
 
 	// Per player info.
 	for p := uint8(0); p < NUM_PLAYERS; p++ {
@@ -297,11 +321,11 @@ func (b *Board) endGame() (wins [NUM_PLAYERS]bool, surrounding [NUM_PLAYERS]uint
 }
 
 func (b *Board) IsFinished() bool {
-	return b.Derived.Wins[0] || b.Derived.Wins[1]
+	return b.Derived.Repeats >= 2 || b.Derived.Wins[0] || b.Derived.Wins[1]
 }
 
 func (b *Board) Draw() bool {
-	return b.IsFinished() && b.Derived.Wins[0] == b.Derived.Wins[1]
+	return b.IsFinished() && (b.Derived.Repeats >= 2 || b.Derived.Wins[0] == b.Derived.Wins[1])
 }
 
 func (b *Board) Winner() uint8 {

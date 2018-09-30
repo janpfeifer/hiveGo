@@ -36,6 +36,7 @@ const (
 	// of free positions around the opponent's queen that can be
 	// reached.
 	F_NUM_THREATENING_MOVES
+	// F_OPP_NUM_THREATENING_MOVES
 
 	// Number of moves till a draw due to running out of moves.
 	F_MOVES_TO_DRAW
@@ -73,6 +74,8 @@ var (
 		{F_OPP_NUM_CAN_MOVE, "OppNumCanMove", 2 * int(NUM_PIECE_TYPES), 0, fNumCanMove},
 
 		{F_NUM_THREATENING_MOVES, "NumThreateningMoves", 2, 0, fNumThreateningMoves},
+		// {F_OPP_NUM_THREATENING_MOVES, "NumThreateningMoves", 2, 0, fNumThreateningMoves},
+
 		{F_MOVES_TO_DRAW, "MovesToDraw", 1, 0, fNumToDraw},
 		{F_NUM_SINGLE, "NumSingle", 2, 0, fNumSingle},
 	}
@@ -193,29 +196,47 @@ func fNumThreateningMoves(b *Board, def *FeatureDef, f []float32) {
 	idx := def.VecIndex
 	f[idx] = 0
 	f[idx+1] = 0
-	if b.Available(b.OpponentPlayer(), QUEEN) > 0 {
+	player, oppPlayer := b.NextPlayer, b.OpponentPlayer()
+	// if def.FId == F_OPP_NUM_THREATENING_MOVES {
+	// 	player, oppPlayer = oppPlayer, player
+	// }
+	if b.Available(oppPlayer, QUEEN) > 0 {
 		// Queen not yet set up.
 		return
 	}
 
-	freeOppQueenNeighbors := b.Derived.QueenPos[b.OpponentPlayer()].Neighbours()
+	// Add
+	freeOppQueenNeighbors := b.Derived.QueenPos[oppPlayer].Neighbours()
 	usedPieces := make(map[Pos]bool)
 	usedPositions := make([]Pos, 0, len(freeOppQueenNeighbors))
+	canPlaceAroundQueen := false
 	for _, action := range b.Derived.Actions {
-		if !action.Move || !posInSlice(freeOppQueenNeighbors, action.TargetPos) ||
+		if !posInSlice(freeOppQueenNeighbors, action.TargetPos) ||
 			posInSlice(freeOppQueenNeighbors, action.SourcePos) {
 			continue
 		}
-		if !usedPieces[action.SourcePos] {
-			// Number of pieces that can reach around opponent's queen.
-			usedPieces[action.SourcePos] = true
-			f[idx]++
+		if action.Move {
+			if !usedPieces[action.SourcePos] {
+				// Number of pieces that can reach around opponent's queen.
+				usedPieces[action.SourcePos] = true
+				f[idx]++
+			}
+		} else {
+			// Placement can happen when there is a bettle on top of the
+			// opponent Queen.
+			canPlaceAroundQueen = true
+			continue
 		}
 		if !posInSlice(usedPositions, action.TargetPos) {
 			// Number of positions around opponent's queen that can be reached.
 			usedPositions = append(usedPositions, action.TargetPos)
 			f[idx+1]++
 		}
+	}
+	if canPlaceAroundQueen {
+		// In this case any of the available pieces for placement can
+		// be put around the Queen.
+		f[idx] += float32(TOTAL_PIECES_PER_PLAYER - b.Derived.NumPiecesOnBoard[player])
 	}
 }
 

@@ -239,6 +239,9 @@ var (
 		// F_NUM_THREATENING_MOVES
 		-0.1299, -0.04499,
 
+		// F_OPP_NUM_THREATENING_MOVES
+		0.1299, 0.04499,
+
 		// F_NUM_TO_DRAW
 		0.00944,
 
@@ -270,6 +273,9 @@ var (
 
 		// NumThreateningMoves -> 2
 		-0.0946, 0.0114,
+
+		// OppNumThreateningMoves -> 2
+		0.0946, -0.0114,
 
 		// MovesToDraw -> 1
 		0.0033,

@@ -54,6 +54,10 @@ type Board struct {
 	MoveNumber, MaxMoves int
 	NextPlayer           uint8
 
+	// Previous is a link to the Board at the previous position, or nil if
+	// this is the initial Board.
+	Previous *Board
+
 	// Derived information is regenerated after each move.
 	Derived *Derived
 }
@@ -180,16 +184,19 @@ func NewBoard() *Board {
 		MoveNumber: 1,
 		MaxMoves:   1000,
 		NextPlayer: 0,
+		Previous:   nil,
 	}
 	board.BuildDerived()
 	return board
 }
 
-// Copy makes a deep copy of the board.
+// Copy makes a deep copy of the board for a next move. The new Board.Previous
+// is set to the current one, b.
 func (b *Board) Copy() *Board {
 	newB := &Board{}
 	*newB = *b
 	newB.Derived = nil
+	newB.Previous = b
 	newB.board = make(map[Pos]EncodedStack)
 	for pos, stack := range b.board {
 		newB.board[pos] = stack
@@ -259,8 +266,16 @@ func (b *Board) PopPiece(pos Pos) (player uint8, piece Piece) {
 	return
 }
 
-// UsedLimits returns the max/min of x/y used in the board.
+func (b *Board) NumPiecesOnBoard() int8 {
+	return int8(len(b.board))
+}
+
+// UsedLimits returns the max/min of x/y used in the board. Stores copy
+// in Derived, to be reused if needed.
 func (b *Board) UsedLimits() (min_x, max_x, min_y, max_y int8) {
+	if b.Derived != nil {
+		return b.Derived.MinX, b.Derived.MaxX, b.Derived.MinY, b.Derived.MaxY
+	}
 	first := true
 	for pos, _ := range b.board {
 		x, y := pos.X(), pos.Y()

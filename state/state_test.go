@@ -139,7 +139,7 @@ func TestSpiderMoves(t *testing.T) {
 
 	// Spider at (-1, 3)
 	want = []Pos{{-2, 1}, {1, 2}}
-	printBoard(board)
+	// printBoard(board)
 	spiderMoves = listMovesForPiece(board, SPIDER, Pos{-1, 3})
 	if !reflect.DeepEqual(want, spiderMoves) {
 		t.Errorf("Wanted Spider moves to be %v, got %v", want, spiderMoves)
@@ -310,5 +310,76 @@ func TestAct(t *testing.T) {
 	board.BuildDerived()
 	if len(board.Derived.Actions) != 0 {
 		t.Errorf("Expected no action available, got %v", board.Derived.Actions)
+	}
+}
+
+func checkDraw(t *testing.T, b *Board, draw bool) {
+	if b.Draw() != draw {
+		t.Errorf("TestRepeats: board at move number %d wanted draw=%v, got draw=%v, repeats=%d",
+			b.MoveNumber, draw, !draw, b.Derived.Repeats)
+		printBoard(b)
+	}
+}
+
+// TestRepeats tests that 3 times repeated Board positions get marked as
+// a draw.
+func TestRepeats(t *testing.T) {
+	b := NewBoard()
+	b = b.Act(Action{Move: false, Piece: QUEEN, TargetPos: Pos{0, 0}})
+	checkDraw(t, b, false)
+	b = b.Act(Action{Move: false, Piece: QUEEN, TargetPos: Pos{0, 1}})
+	checkDraw(t, b, false)
+
+	for ii := int8(0); ii < 4; ii++ {
+		b = b.Act(Action{Move: true, Piece: QUEEN, SourcePos: Pos{ii, ii / 2}, TargetPos: Pos{ii + 1, (ii + 1) / 2}})
+		checkDraw(t, b, false)
+		// fmt.Printf("Move %d, Player %d, Repeats: %d, Hash: %x\n", b.MoveNumber, b.NextPlayer, b.Derived.Repeats, b.Derived.Hash)
+		// printBoard(b)
+
+		// At the last repeat this position will be repeating the third time.
+		b = b.Act(Action{Move: true, Piece: QUEEN, SourcePos: Pos{ii, ii/2 + 1}, TargetPos: Pos{ii + 1, (ii+1)/2 + 1}})
+		checkDraw(t, b, ii == 3)
+	}
+
+	// Check that another move of the first player also repeats.
+	ii := int8(4)
+	b = b.Act(Action{Move: true, Piece: QUEEN, SourcePos: Pos{ii, ii / 2}, TargetPos: Pos{ii + 1, (ii + 1) / 2}})
+	checkDraw(t, b, true)
+
+	// Finally a placement should break the repeats.
+	b = b.Act(Action{Move: false, Piece: ANT, TargetPos: Pos{5, 1}})
+	checkDraw(t, b, false)
+}
+
+func BenchmarkCalcDerived(b *testing.B) {
+	layout := []PieceLayout{
+		{Pos{-2, -1}, 1, ANT},
+		{Pos{-1, -1}, 0, GRASSHOPPER},
+		{Pos{-1, 1}, 0, BEETLE},
+		{Pos{-1, 2}, 0, GRASSHOPPER},
+		{Pos{0, 0}, 0, BEETLE},
+		{Pos{0, 1}, 1, QUEEN},
+		{Pos{0, 2}, 0, ANT},
+		{Pos{1, -2}, 0, ANT},
+		{Pos{1, -1}, 0, SPIDER},
+		{Pos{2, 0}, 1, ANT},
+		{Pos{2, 1}, 1, GRASSHOPPER},
+		{Pos{3, -1}, 1, GRASSHOPPER},
+		{Pos{3, 0}, 1, SPIDER},
+		{Pos{4, 0}, 0, SPIDER},
+		{Pos{5, -1}, 0, QUEEN},
+		{Pos{6, 0}, 1, SPIDER},
+		{Pos{7, -1}, 1, ANT},
+		{Pos{7, 0}, 1, GRASSHOPPER},
+	}
+	board := buildBoard(layout)
+	board.BuildDerived()
+	board.NextPlayer = 1
+	action := Action{SourcePos: Pos{7, -1}, TargetPos: Pos{1, 1}, Piece: ANT}
+	// printBoard(board)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		board.Act(action)
 	}
 }
