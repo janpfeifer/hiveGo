@@ -376,7 +376,7 @@ func BenchmarkCalcDerived(b *testing.B) {
 	board.BuildDerived()
 	board.NextPlayer = 1
 	action := Action{SourcePos: Pos{7, -1}, TargetPos: Pos{1, 1}, Piece: ANT}
-	// printBoard(board)
+	printBoard(board)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

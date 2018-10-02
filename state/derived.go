@@ -79,12 +79,7 @@ func (b *Board) BuildDerived() {
 		derived.PlacementPositions[p] = b.placementPositions(p)
 	}
 
-	derived.RemovablePieces = make(map[Pos]bool)
-	for pos, _ := range b.board {
-		if b.IsRemovable(pos) {
-			derived.RemovablePieces[pos] = true
-		}
-	}
+	derived.RemovablePieces = b.removable()
 	derived.Actions = b.ValidActions(b.NextPlayer)
 	derived.Wins, derived.NumSurroundingQueen, derived.QueenPos = b.endGame()
 	derived.Singles = b.ListSingles()
@@ -154,8 +149,10 @@ func (b *Board) addPlacementActions(player uint8, actions []Action) []Action {
 	return actions
 }
 
-// Determine whether a piece on specified position is removable without
-// splitting the hive.
+// IsRemovable determines whether a piece on specified position is
+// removable without splitting the hive.
+//
+// Deprecated, use Derived.RemovablePieces instead, which is much faster.
 func (b *Board) IsRemovable(pos Pos) bool {
 	_, _, stacked := b.PieceAt(pos)
 	if stacked {
