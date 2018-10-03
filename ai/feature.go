@@ -36,7 +36,7 @@ const (
 	// of free positions around the opponent's queen that can be
 	// reached.
 	F_NUM_THREATENING_MOVES
-	// F_OPP_NUM_THREATENING_MOVES
+	F_OPP_NUM_THREATENING_MOVES
 
 	// Number of moves till a draw due to running out of moves.
 	F_MOVES_TO_DRAW
@@ -57,6 +57,9 @@ type FeatureDef struct {
 	// VecIndex refers to the index in the concatenated feature vector.
 	VecIndex int
 	Setter   FeatureSetter
+
+	// Number of feature (AllFeaturesDim) when this feature was created.
+	Version int
 }
 
 var (
@@ -64,20 +67,20 @@ var (
 	// The VecIndex attribute is properly set during the package initialization.
 	// The  "Opp" prefix refers to opponent.
 	AllFeatures = [F_NUM_FEATURES]FeatureDef{
-		{F_NUM_OFFBOARD, "NumOffboard", int(NUM_PIECE_TYPES), 0, fNumOffBoard},
-		{F_OPP_NUM_OFFBOARD, "OppNumOffboard", int(NUM_PIECE_TYPES), 0, fNumOffBoard},
+		{F_NUM_OFFBOARD, "NumOffboard", int(NUM_PIECE_TYPES), 0, fNumOffBoard, 0},
+		{F_OPP_NUM_OFFBOARD, "OppNumOffboard", int(NUM_PIECE_TYPES), 0, fNumOffBoard, 0},
 
-		{F_NUM_SURROUNDING_QUEEN, "NumSurroundingQueen", 1, 0, fNumSurroundingQueen},
-		{F_OPP_NUM_SURROUNDING_QUEEN, "OppNumSurroundingQueen", 1, 0, fNumSurroundingQueen},
+		{F_NUM_SURROUNDING_QUEEN, "NumSurroundingQueen", 1, 0, fNumSurroundingQueen, 0},
+		{F_OPP_NUM_SURROUNDING_QUEEN, "OppNumSurroundingQueen", 1, 0, fNumSurroundingQueen, 0},
 
-		{F_NUM_CAN_MOVE, "NumCanMove", 2 * int(NUM_PIECE_TYPES), 0, fNumCanMove},
-		{F_OPP_NUM_CAN_MOVE, "OppNumCanMove", 2 * int(NUM_PIECE_TYPES), 0, fNumCanMove},
+		{F_NUM_CAN_MOVE, "NumCanMove", 2 * int(NUM_PIECE_TYPES), 0, fNumCanMove, 0},
+		{F_OPP_NUM_CAN_MOVE, "OppNumCanMove", 2 * int(NUM_PIECE_TYPES), 0, fNumCanMove, 0},
 
-		{F_NUM_THREATENING_MOVES, "NumThreateningMoves", 2, 0, fNumThreateningMoves},
-		// {F_OPP_NUM_THREATENING_MOVES, "NumThreateningMoves", 2, 0, fNumThreateningMoves},
+		{F_NUM_THREATENING_MOVES, "NumThreateningMoves", 2, 0, fNumThreateningMoves, 0},
+		{F_OPP_NUM_THREATENING_MOVES, "OppNumThreateningMoves", 2, 0, fNumThreateningMoves, 39},
 
-		{F_MOVES_TO_DRAW, "MovesToDraw", 1, 0, fNumToDraw},
-		{F_NUM_SINGLE, "NumSingle", 2, 0, fNumSingle},
+		{F_MOVES_TO_DRAW, "MovesToDraw", 1, 0, fNumToDraw, 0},
+		{F_NUM_SINGLE, "NumSingle", 2, 0, fNumSingle, 0},
 	}
 
 	// AllFeaturesDim is the dimension of all features concatenated, set during package
@@ -104,17 +107,38 @@ type LabeledExample struct {
 	Label    float32
 }
 
-func MakeLabeledExample(board *Board, label float32) LabeledExample {
-	return LabeledExample{FeatureVector(board), label}
+func MakeLabeledExample(board *Board, label float32, version int) LabeledExample {
+	return LabeledExample{FeatureVector(board, version), label}
 }
 
 // FeatureVector calculates the feature vector, of length AllFeaturesDim, for the given
 // board.
-func FeatureVector(b *Board) (f []float32) {
+// Models created at different times may use different subsets of features. This is
+// specified by providing the number of features expected by the model.
+func FeatureVector(b *Board, version int) (f []float32) {
+	if version > AllFeaturesDim {
+		log.Panicf("Requested %d features, but only know about %d", version, AllFeaturesDim)
+	}
 	f = make([]float32, AllFeaturesDim)
 	for ii := range AllFeatures {
-		AllFeatures[ii].Setter(b, &AllFeatures[ii], f)
+		featDef := &AllFeatures[ii]
+		if featDef.Version <= version {
+			featDef.Setter(b, featDef, f)
+		}
 	}
+
+	if version != AllFeaturesDim {
+		// Filter only features for given version.
+		newF := make([]float32, 0, version)
+		for ii := range AllFeatures {
+			featDef := &AllFeatures[ii]
+			if featDef.Version <= version {
+				newF = append(newF, f[featDef.VecIndex:featDef.VecIndex+featDef.Dim]...)
+			}
+		}
+		f = newF
+	}
+
 	return
 }
 
@@ -153,13 +177,12 @@ func fNumSurroundingQueen(b *Board, def *FeatureDef, f []float32) {
 
 func fNumCanMove(b *Board, def *FeatureDef, f []float32) {
 	idx := def.VecIndex
-	actions := b.Derived.Actions
 	player := b.NextPlayer
 	opponent := b.OpponentPlayer()
 	if def.FId == F_OPP_NUM_CAN_MOVE {
 		player, opponent = opponent, player
-		actions = b.ValidActions(player)
 	}
+	actions := b.Derived.PlayersActions[player]
 	var queenNeighbours []Pos
 	if b.Available(opponent, QUEEN) == 0 {
 		queenNeighbours = b.OccupiedNeighbours(b.Derived.QueenPos[opponent])
@@ -194,23 +217,25 @@ func posInSlice(slice []Pos, p Pos) bool {
 
 func fNumThreateningMoves(b *Board, def *FeatureDef, f []float32) {
 	idx := def.VecIndex
+	player := b.NextPlayer
+	opponent := b.OpponentPlayer()
+	if def.FId == F_OPP_NUM_CAN_MOVE {
+		player, opponent = opponent, player
+	}
+	actions := b.Derived.PlayersActions[player]
 	f[idx] = 0
 	f[idx+1] = 0
-	player, oppPlayer := b.NextPlayer, b.OpponentPlayer()
-	// if def.FId == F_OPP_NUM_THREATENING_MOVES {
-	// 	player, oppPlayer = oppPlayer, player
-	// }
-	if b.Available(oppPlayer, QUEEN) > 0 {
+	if b.Available(opponent, QUEEN) > 0 {
 		// Queen not yet set up.
 		return
 	}
 
 	// Add
-	freeOppQueenNeighbors := b.Derived.QueenPos[oppPlayer].Neighbours()
+	freeOppQueenNeighbors := b.Derived.QueenPos[opponent].Neighbours()
 	usedPieces := make(map[Pos]bool)
 	usedPositions := make([]Pos, 0, len(freeOppQueenNeighbors))
 	canPlaceAroundQueen := false
-	for _, action := range b.Derived.Actions {
+	for _, action := range actions {
 		if !posInSlice(freeOppQueenNeighbors, action.TargetPos) ||
 			posInSlice(freeOppQueenNeighbors, action.SourcePos) {
 			continue

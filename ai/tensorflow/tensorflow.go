@@ -59,6 +59,8 @@ type Scorer struct {
 	input, label, learningRate, checkpointFile tf.Output
 	output, loss                               tf.Output
 	initOp, trainOp, saveOp, restoreOp         *tf.Operation
+
+	version int // Uses the number of input features used.
 }
 
 // New creates a new Scorer by reading model's graph `basename`.pb,
@@ -125,6 +127,10 @@ func New(basename string, cpu bool) *Scorer {
 		restoreOp: graph.Operation("save/restore_all"),
 	}
 
+	// Set version to the size of the input.
+	s.version = int(s.input.Shape().Size(1))
+	glog.V(1).Infof("TensorFlow model's version=%d", s.version)
+
 	// Either restore or initialize the network.
 	cpIndex, _ := s.CheckpointFiles()
 	if _, err := os.Stat(cpIndex); err == nil {
@@ -173,6 +179,10 @@ func (s *Scorer) Init() error {
 	return err
 }
 
+func (s *Scorer) Version() int {
+	return s.version
+}
+
 func (s *Scorer) UnlimitedBatchScore(batch [][]float32) []float32 {
 	glog.V(2).Infof("UnlimitedBatchScore: batch.size=[%d, %d]", len(batch), len(batch[0]))
 	batchTensor, err := tf.NewTensor(batch)
@@ -191,21 +201,21 @@ func (s *Scorer) UnlimitedBatchScore(batch [][]float32) []float32 {
 }
 
 func (s *Scorer) Score(b *Board) float32 {
-	features := [][]float32{ai.FeatureVector(b)}
+	features := [][]float32{ai.FeatureVector(b, s.version)}
 	scores := s.UnlimitedBatchScore(features)
 	score := scores[0]
-	// if score > 9.8 {
-	// 	score = 9.8
-	// } else if score < -9.8 {
-	// 	score = -9.8
-	// }
+	if score > 9.8 {
+		score = 9.8
+	} else if score < -9.8 {
+		score = -9.8
+	}
 	return score
 }
 
 func (s *Scorer) BatchScore(boards []*Board) []float32 {
 	features := make([][]float32, len(boards))
 	for ii, board := range boards {
-		features[ii] = ai.FeatureVector(board)
+		features[ii] = ai.FeatureVector(board, s.version)
 	}
 	scores := s.UnlimitedBatchScore(features)
 	for ii, score := range scores {

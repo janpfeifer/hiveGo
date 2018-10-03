@@ -48,7 +48,7 @@ var (
 		"If to rescore loaded matches. A value higher than 1 means that it will loop "+
 			"over rescoring and retraining.")
 
-	players = [2]*ai_players.SearcherScorePlayer{nil, nil}
+	players = [2]*ai_players.SearcherScorerPlayer{nil, nil}
 )
 
 func init() {
@@ -82,13 +82,14 @@ func (m *Match) Encode(enc *gob.Encoder) {
 	m.Boards = boards
 }
 
+// AppendLabeledExamples will add examples for learning _for Player 0 only_.
 func (m *Match) AppendLabeledExamples(examples []ai.LabeledExample) []ai.LabeledExample {
 	from := 0
 	if *flag_lastActions > 1 && *flag_lastActions < len(m.Actions) {
 		from = len(m.Actions) - *flag_lastActions
 	}
 	for ii := from; ii < len(m.Actions); ii++ {
-		examples = append(examples, ai.MakeLabeledExample(m.Boards[ii], m.Scores[ii]))
+		examples = append(examples, ai.MakeLabeledExample(m.Boards[ii], m.Scores[ii], players[0].Scorer.Version()))
 	}
 	return examples
 }

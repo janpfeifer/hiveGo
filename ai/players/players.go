@@ -21,9 +21,9 @@ type Player interface {
 	Play(b *Board) (action Action, board *Board, score float32)
 }
 
-// SearcherScorePlayer is a standard set up for an AI: a searcher and
+// SearcherScorerPlayer is a standard set up for an AI: a searcher and
 // a scorer. It implements the Player interface.
-type SearcherScorePlayer struct {
+type SearcherScorerPlayer struct {
 	Searcher  search.Searcher
 	Scorer    ai.BatchScorer
 	Learner   ai.LearnerScorer
@@ -31,7 +31,7 @@ type SearcherScorePlayer struct {
 }
 
 // Play implements the Player interface: it chooses an action given a Board.
-func (p *SearcherScorePlayer) Play(b *Board) (action Action, board *Board, score float32) {
+func (p *SearcherScorerPlayer) Play(b *Board) (action Action, board *Board, score float32) {
 	action, board, score = p.Searcher.Search(b, p.Scorer)
 	// log.Printf("Move #%d: AI playing %v, score=%.3f", b.MoveNumber, action, score)
 	// log.Printf("Features:")
@@ -51,7 +51,7 @@ func (p *SearcherScorePlayer) Play(b *Board) (action Action, board *Board, score
 //         So lower values (closer to 0) means less randomness, higher value means more randomness,
 //         hence more exploration.
 //
-func NewAIPlayer(config string) *SearcherScorePlayer {
+func NewAIPlayer(config string) *SearcherScorerPlayer {
 	// Break config in parts.
 	params := make(map[string]string)
 	parts := strings.Split(config, ",")
@@ -157,7 +157,7 @@ func NewAIPlayer(config string) *SearcherScorePlayer {
 		panic("Cannot continue")
 	}
 
-	return &SearcherScorePlayer{
+	return &SearcherScorerPlayer{
 		Searcher:  searcher,
 		Scorer:    model,
 		Learner:   model,

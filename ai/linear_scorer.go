@@ -36,7 +36,7 @@ func (w LinearScorer) UnlimitedScore(features []float32) float32 {
 }
 
 func (w LinearScorer) Score(b *Board) float32 {
-	features := FeatureVector(b)
+	features := FeatureVector(b, w.Version())
 	sum := w.UnlimitedScore(features)
 	if sum > 9.8 {
 		sum = 9.8
@@ -134,6 +134,10 @@ func check(err error) {
 // Horrible hack, but ... adding the file name to the LinearScorer object
 // would take lots of refactoring.
 var LinearModelFileName string
+
+func (w LinearScorer) Version() int {
+	return len(w) - 1
+}
 
 func (w LinearScorer) Save() {
 	muLinearModels.Lock()
@@ -274,8 +278,40 @@ var (
 		// NumThreateningMoves -> 2
 		-0.0946, 0.0114,
 
+		// MovesToDraw -> 1
+		0.0033,
+
+		// F_NUM_SINGLE,
+		0., 0.,
+
+		// Bias -> 1
+		-0.8147,
+	}
+
+	TrainedV3 = LinearScorer{
+		// NumOffboard -> 5
+		0.0446, 0.0340, 0.0287, -1.8639, 0.0321,
+
+		// OppNumOffboard -> 5
+		0.0532, 0.0373, 0.0572, 1.8688, 0.0432,
+
+		// NumSurroundingQueen -> 1
+		-3.0338,
+
+		// OppNumSurroundingQueen -> 1
+		3.3681,
+
+		// NumCanMove -> 10
+		0.5989, 0.0090, 0.4845, -0.0045, -0.1100, 0.0213, 1.0952, -0.0198, 0.0468, 0.0054,
+
+		// OppNumCanMove -> 10
+		0.0185, -0.0096, -0.2016, 0.0043, 0.0483, -0.0133, 0.2939, 0.0113, 0.0004, 0.0037,
+
+		// NumThreateningMoves -> 2
+		-0.0946, 0.0114,
+
 		// OppNumThreateningMoves -> 2
-		// 0.0946, -0.0114,
+		0.0946, -0.0114,
 
 		// MovesToDraw -> 1
 		0.0033,
@@ -287,5 +323,5 @@ var (
 		-0.8147,
 	}
 
-	TrainedBest = TrainedV2
+	TrainedBest = TrainedV3
 )

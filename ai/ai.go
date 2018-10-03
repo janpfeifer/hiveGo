@@ -9,6 +9,10 @@ import (
 // determine probabilistic moves.
 type Scorer interface {
 	Score(board *Board) float32
+
+	// Version returns the version of the Scorer: usually the number of features
+	// used -- so system can maintain backwards compatibility.
+	Version() int
 }
 
 // BatchScorer is a Scorer that also handles batches.

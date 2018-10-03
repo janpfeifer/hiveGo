@@ -83,8 +83,14 @@ func (ui *UI) Run(board *Board) (*Board, error) {
 func (ui *UI) PrintWinner(b *Board) {
 	d := b.Derived
 	if d.Wins[0] && d.Wins[1] {
-		fmt.Printf("\n\n%s*** DRAW: Both queens were sorrounded! ***%s\n\n",
-			ui.blinkStart(), ui.colorEnd())
+		reason := "Both queens were sorrounded"
+		if d.Repeats >= 2 {
+			reason = "Last position repeated 3 times"
+		} else if b.MoveNumber > b.MaxMoves {
+			reason = "Max number of moves reached"
+		}
+		fmt.Printf("\n\n%s*** DRAW: %s! ***%s\n\n",
+			ui.blinkStart(), reason, ui.colorEnd())
 	} else {
 		player := uint8(0)
 		if d.Wins[1] {

@@ -31,9 +31,12 @@ type Derived struct {
 	QueenPos            [NUM_PLAYERS]Pos   // Only valid if queen is actually in the board.
 	Singles             [NUM_PLAYERS]uint8 // Count pieces that are at the tip (only one neighbour)
 
-	// Generic information only about the next player to move (NextPlayer)
+	// Pieces that can be removed without breaking the hive.
 	RemovablePieces map[Pos]bool
-	Actions         []Action
+	PlayersActions  [NUM_PLAYERS][]Action
+
+	// Actions of the next player to move (shortcut to PlayersActions[NextPlayer]).
+	Actions []Action
 }
 
 // Action describe a placement or a move. If `piece` is given, `posSource` can be
@@ -80,7 +83,10 @@ func (b *Board) BuildDerived() {
 	}
 
 	derived.RemovablePieces = b.removable()
-	derived.Actions = b.ValidActions(b.NextPlayer)
+	for p := uint8(0); p < NUM_PLAYERS; p++ {
+		derived.PlayersActions[p] = b.ValidActions(p)
+	}
+	derived.Actions = derived.PlayersActions[b.NextPlayer]
 	derived.Wins, derived.NumSurroundingQueen, derived.QueenPos = b.endGame()
 	derived.Singles = b.ListSingles()
 }
