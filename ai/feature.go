@@ -41,8 +41,13 @@ const (
 	// Number of moves till a draw due to running out of moves.
 	F_MOVES_TO_DRAW
 
-	// Number of pieces that are at a tip (only one neighbor)
+	// Number of pieces that are "leaves" (only one neighbor)
+	// First number is for current player, the second is for the
+	// opponent.
 	F_NUM_SINGLE
+
+	// Whether there is an opponent BEETLE on top of QUEEN.
+	//F_QUEEN_COVERED
 
 	// Last entry.
 	F_NUM_FEATURES

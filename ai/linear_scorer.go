@@ -26,7 +26,7 @@ func (w LinearScorer) UnlimitedScore(features []float32) float32 {
 
 	// Dot product of weights and features.
 	if len(w)-1 != len(features) {
-		log.Fatalf("Features dimension is %d, but weights dimension is %d (+1 bias)",
+		log.Panicf("Features dimension is %d, but weights dimension is %d (+1 bias)",
 			len(features), len(w)-1)
 	}
 	for ii, feature := range features {
@@ -35,15 +35,32 @@ func (w LinearScorer) UnlimitedScore(features []float32) float32 {
 	return sum
 }
 
+// Adjusts numbers larger than 10 to approximate 10 in the infinity, by applying
+// a sigmoid to anything above 9.8 -- in absolute terms, it works simetrically
+// on negative numbers.
+func SigmoidTo10(x float32) float32 {
+	if x < 9.8 && x > -9.8 {
+		return x
+	}
+	sign := float32(1)
+	abs := x
+	if x < 0 {
+		sign = -1
+		abs = -x
+	}
+
+	// Calculate sigmoid part.
+	const reduction = float32(4) // Makes it converge slower to 10.0
+	sig := (abs - 9.8) / reduction
+	sig = float32(1.0 / (1.0 + math.Exp(-float64(sig))))
+	sig = (sig - 0.5) * 0.2 / 0.5
+	abs = 9.8 + sig
+	return sign * abs
+}
+
 func (w LinearScorer) Score(b *Board) float32 {
 	features := FeatureVector(b, w.Version())
-	sum := w.UnlimitedScore(features)
-	if sum > 9.8 {
-		sum = 9.8
-	} else if sum < -9.8 {
-		sum = -9.8
-	}
-	return sum
+	return SigmoidTo10(w.UnlimitedScore(features))
 }
 
 func (w LinearScorer) BatchScore(boards []*Board) []float32 {
@@ -55,7 +72,10 @@ func (w LinearScorer) BatchScore(boards []*Board) []float32 {
 }
 
 func (w LinearScorer) String() string {
-	parts := make([]string, len(w)+2*(len(AllFeatures)+1))
+	if len(w) != AllFeaturesDim+1 {
+		return fmt.Sprintf("Model with %d features, AllFeaturesDim=%d", len(w)-1, AllFeaturesDim)
+	}
+	parts := make([]string, len(w)+2*(len(w)))
 	for _, fDef := range AllFeatures {
 		parts = append(parts, fmt.Sprintf("\n\t// %s -> %d\n\t", fDef.Name, fDef.Dim))
 		for _, value := range w[fDef.VecIndex : fDef.VecIndex+fDef.Dim] {
@@ -75,8 +95,8 @@ var (
 
 func (w LinearScorer) Learn(learningRate float32, examples []LabeledExample, steps int) float32 {
 	var totalLoss float32
-	for step := 0; step < steps; step++ {
-		grad := make([]float32, AllFeaturesDim+1)
+	for step := 0; step < steps || step == 0; step++ {
+		grad := make([]float32, len(w))
 		totalLoss = 0
 		for _, example := range examples {
 			// Loss = Sqr(label - score)
@@ -96,12 +116,14 @@ func (w LinearScorer) Learn(learningRate float32, examples []LabeledExample, ste
 		totalLoss = float32(math.Sqrt(float64(totalLoss)))
 
 		// Sum gradient and regularization.
-		for ii := range grad {
-			grad[ii] /= float32(len(examples))
-		}
-		clip(grad, 0.1)
-		for ii := range grad {
-			w[ii] += grad[ii] // 1e-2*w[ii]
+		if step < steps {
+			for ii := range grad {
+				grad[ii] /= float32(len(examples))
+			}
+			clip(grad, 0.1)
+			for ii := range grad {
+				w[ii] += grad[ii]
+			}
 		}
 	}
 	return totalLoss
@@ -171,21 +193,23 @@ func NewLinearScorerFromFile(file string) (w LinearScorer) {
 	}
 	defer func() { cacheLinearScorers[file] = w }()
 
-	w = make(LinearScorer, len(TrainedBest))
 	_, err := os.Stat(file)
 	if os.IsNotExist(err) {
 		// Make fresh copy of TrainedBest
+		w = make(LinearScorer, AllFeaturesDim+1)
+		if TrainedBest.Version() != AllFeaturesDim {
+			glog.Errorf("New model with %d features initialized with current best with %d, it may not make much sense ?", w.Version(), TrainedBest.Version())
+		}
 		copy(w, TrainedBest)
+		glog.V(1).Infof("New model has %d features", w.Version())
 		return
 	}
 
 	data, err := ioutil.ReadFile(file)
 	check(err)
 	valuesStr := strings.Split(string(data), "\n")
-	if len(valuesStr) < len(w) {
-		log.Fatalf("Model file '%s' only has %d values, need %d",
-			len(valuesStr), len(w))
-	}
+	w = make(LinearScorer, len(valuesStr))
+
 	for ii := 0; ii < len(w); ii++ {
 		f64, err := strconv.ParseFloat(valuesStr[ii], 32)
 		w[ii] = float32(f64)
@@ -289,38 +313,39 @@ var (
 	}
 
 	TrainedV3 = LinearScorer{
+		// Pieces order: ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER
 		// NumOffboard -> 5
-		0.0446, 0.0340, 0.0287, -1.8639, 0.0321,
+		-0.1891, 0.0648, -0.0803, -1.8169, -0.0319,
 
 		// OppNumOffboard -> 5
-		0.0532, 0.0373, 0.0572, 1.8688, 0.0432,
+		0.2967, 0.0625, 0.2306, 2.2038, 0.1646,
 
 		// NumSurroundingQueen -> 1
-		-3.0338,
+		-2.4521,
 
 		// OppNumSurroundingQueen -> 1
-		3.3681,
+		2.7604,
 
 		// NumCanMove -> 10
-		0.5989, 0.0090, 0.4845, -0.0045, -0.1100, 0.0213, 1.0952, -0.0198, 0.0468, 0.0054,
+		0.0065, 0.4391, 0.5519, -0.4833, -0.0156, 0.1361, 0.9591, -0.1592, 0.2405, 0.0343,
 
 		// OppNumCanMove -> 10
-		0.0185, -0.0096, -0.2016, 0.0043, 0.0483, -0.0133, 0.2939, 0.0113, 0.0004, 0.0037,
+		0.2158, -0.7518, -0.4865, 0.3333, 0.1677, -0.2764, -0.0134, -0.2725, 0.0145, 0.0184,
 
 		// NumThreateningMoves -> 2
-		-0.0946, 0.0114,
+		0.0087, 0.0714,
 
 		// OppNumThreateningMoves -> 2
-		0.0946, -0.0114,
+		0.1979, 0.0486,
 
 		// MovesToDraw -> 1
-		0.0033,
+		-0.0074,
 
-		// F_NUM_SINGLE,
-		0., 0.,
+		// NumSingle -> 2
+		-0.2442, 0.3755,
 
 		// Bias -> 1
-		-0.8147,
+		-0.7409,
 	}
 
 	TrainedBest = TrainedV3

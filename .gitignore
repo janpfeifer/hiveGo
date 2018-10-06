@@ -1,12 +1,14 @@
 model*.*
 cpu.prof
 v?.*
-matches*
+match*
 wins*.bin
 wins*.bin~
 v[0-9]-*
 bench*
 cpuprof.out
+linear*
+
 
 
 

@@ -3,7 +3,7 @@
 import tensorflow as tf
 
 # Dimension of the input features, should match ai.AllFeaturesDim
-ALL_FEATURES_DIM = 37
+ALL_FEATURES_DIM = 39  # Was 37
 NUM_LAYERS = 4
 NODES_PER_LAYER = 128 - ALL_FEATURES_DIM
 LEARNING_RATE = 0.01

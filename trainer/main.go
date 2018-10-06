@@ -74,12 +74,9 @@ type Match struct {
 func (m *Match) FinalBoard() *Board { return m.Boards[len(m.Boards)-1] }
 
 func (m *Match) Encode(enc *gob.Encoder) {
-	boards := m.Boards
-	m.Boards = []*Board{boards[0].Copy()}
-	if err := enc.Encode(m); err != nil {
+	if err := SaveMatch(enc, m.Boards[0], m.Actions, m.Scores); err != nil {
 		log.Panicf("Failed to encode match: %v", err)
 	}
-	m.Boards = boards
 }
 
 // AppendLabeledExamples will add examples for learning _for Player 0 only_.
@@ -88,6 +85,7 @@ func (m *Match) AppendLabeledExamples(examples []ai.LabeledExample) []ai.Labeled
 	if *flag_lastActions > 1 && *flag_lastActions < len(m.Actions) {
 		from = len(m.Actions) - *flag_lastActions
 	}
+	glog.Infof("Making LabeledExample, version=%d", players[0].Scorer.Version())
 	for ii := from; ii < len(m.Actions); ii++ {
 		examples = append(examples, ai.MakeLabeledExample(m.Boards[ii], m.Scores[ii], players[0].Scorer.Version()))
 	}
@@ -96,14 +94,15 @@ func (m *Match) AppendLabeledExamples(examples []ai.LabeledExample) []ai.Labeled
 
 func MatchDecode(dec *gob.Decoder) (match *Match, err error) {
 	match = &Match{}
-	err = dec.Decode(match)
+	initial := &Board{}
+	initial, match.Actions, match.Scores, err = LoadMatch(dec)
 	if err != nil {
 		return
 	}
-	board := NewBoard()
-	board.MaxMoves = match.Boards[0].MaxMoves
-	board.BuildDerived()
-	match.Boards[0] = board
+	initial.BuildDerived()
+	match.Boards = make([]*Board, 1, len(match.Actions)+1)
+	match.Boards[0] = initial
+	board := initial
 	for _, action := range match.Actions {
 		board = board.Act(action)
 		match.Boards = append(match.Boards, board)
@@ -201,7 +200,7 @@ func runMatches(results chan<- *Match) {
 }
 
 // Open file for writing. If filename already exists rename it by appending an "~" suffix.
-func openWriterAndBackup(filename string) io.Writer {
+func openWriterAndBackup(filename string) io.WriteCloser {
 	if _, err := os.Stat(filename); err == nil {
 		err = os.Rename(filename, filename+"~")
 		if err != nil {
@@ -261,7 +260,7 @@ func main() {
 		log.Fatalf("Invalid --max_moves=%d", *flag_maxMoves)
 	}
 	for ii := 0; ii < 2; ii++ {
-		players[ii] = ai_players.NewAIPlayer(*flag_players[ii])
+		players[ii] = ai_players.NewAIPlayer(*flag_players[ii], *flag_numMatches == 1)
 	}
 
 	// Run/load matches.
@@ -285,10 +284,16 @@ func reportMatches(matches chan *Match) {
 	totalMoves := 0
 
 	var enc *gob.Encoder
+	var file io.WriteCloser
 	if *flag_saveMatches != "" {
-		file := openWriterAndBackup(*flag_saveMatches)
+		file = openWriterAndBackup(*flag_saveMatches)
 		enc = gob.NewEncoder(file)
 	}
+	defer func() {
+		if file != nil {
+			file.Close()
+		}
+	}()
 
 	count := 0
 	var labeledExamples []ai.LabeledExample

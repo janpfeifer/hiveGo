@@ -1,6 +1,7 @@
 package state
 
 import (
+	"encoding/gob"
 	"fmt"
 	"sort"
 )
@@ -374,4 +375,38 @@ func (b *Board) FriendlyNeighbours(pos Pos) (poss []Pos) {
 // of the b.NextPlayer.
 func (b *Board) OpponentNeighbours(pos Pos) (poss []Pos) {
 	return b.PlayerNeighbours(b.OpponentPlayer(), pos)
+}
+
+// SaveMatch will "save" (encode) the match and scores for future reconstruction.
+// scores is opional.
+func SaveMatch(enc *gob.Encoder, initial *Board, actions []Action, scores []float32) error {
+	b := initial.Copy()
+	b.Derived = nil
+	if err := enc.Encode(b); err != nil {
+		return fmt.Errorf("Failed to encode match's board: %v", err)
+	}
+	if err := enc.Encode(actions); err != nil {
+		return fmt.Errorf("Failed to encode match's actions: %v", err)
+	}
+	if err := enc.Encode(scores); err != nil {
+		return fmt.Errorf("Failed to encode match's scores: %v", err)
+	}
+	return nil
+}
+
+// LoadMatch restores match initial board, actions and scores.
+func LoadMatch(dec *gob.Decoder) (initial *Board, actions []Action, scores []float32, err error) {
+	tmp := &Board{}
+	err = dec.Decode(tmp)
+	if err != nil {
+		return
+	}
+	initial = NewBoard()
+	initial.MaxMoves = tmp.MaxMoves
+	err = dec.Decode(&actions)
+	if err != nil {
+		return
+	}
+	err = dec.Decode(&scores)
+	return
 }

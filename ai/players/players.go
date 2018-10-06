@@ -24,10 +24,11 @@ type Player interface {
 // SearcherScorerPlayer is a standard set up for an AI: a searcher and
 // a scorer. It implements the Player interface.
 type SearcherScorerPlayer struct {
-	Searcher  search.Searcher
-	Scorer    ai.BatchScorer
-	Learner   ai.LearnerScorer
-	ModelFile string
+	Searcher     search.Searcher
+	Scorer       ai.BatchScorer
+	Learner      ai.LearnerScorer
+	ModelFile    string
+	Parallelized bool
 }
 
 // Play implements the Player interface: it chooses an action given a Board.
@@ -51,7 +52,7 @@ func (p *SearcherScorerPlayer) Play(b *Board) (action Action, board *Board, scor
 //         So lower values (closer to 0) means less randomness, higher value means more randomness,
 //         hence more exploration.
 //
-func NewAIPlayer(config string) *SearcherScorerPlayer {
+func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 	// Break config in parts.
 	params := make(map[string]string)
 	parts := strings.Split(config, ",")
@@ -119,9 +120,12 @@ func NewAIPlayer(config string) *SearcherScorerPlayer {
 		if maxDepth < 0 {
 			maxDepth = 3
 		}
-		searcher = search.NewAlphaBetaSearcher(maxDepth)
-		if randomness > 0.0 {
+
+		if randomness <= 0 {
+			searcher = search.NewAlphaBetaSearcher(maxDepth, parallelized)
+		} else {
 			// Randomized searcher.
+			searcher = search.NewAlphaBetaSearcher(maxDepth, false)
 			searcher = search.NewRandomizedSearcher(searcher, randomness)
 		}
 	}
@@ -158,9 +162,10 @@ func NewAIPlayer(config string) *SearcherScorerPlayer {
 	}
 
 	return &SearcherScorerPlayer{
-		Searcher:  searcher,
-		Scorer:    model,
-		Learner:   model,
-		ModelFile: modelFile,
+		Searcher:     searcher,
+		Scorer:       model,
+		Learner:      model,
+		ModelFile:    modelFile,
+		Parallelized: parallelized,
 	}
 }

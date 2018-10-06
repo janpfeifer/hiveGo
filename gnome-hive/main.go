@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/gob"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -29,6 +31,9 @@ var (
 	flag_resources = flag.String("resources", "", "Directory with resources. "+
 		"If empty it will try to search in GOPATH for the directory.")
 
+	// Save match at end.
+	flag_saveMatch = flag.String("save", "", "File name where to save match. Matches are appendeded to given file.")
+
 	// Sequence of boards that make up for the game. Used for undo-ing actions.
 	gameSeq []*Board
 )
@@ -41,8 +46,12 @@ const APP_ID = "com.github.janpfeifer.hiveGo.gnome-hive"
 
 // Board in use. It will always be set.
 var (
-	board     *Board
-	started   bool // Starts as false, and set to true once a game is running.
+	initial, board *Board
+	actions        []Action
+	scores         []float32
+	started        bool // Starts as false, and set to true once a game is running.
+
+	// Hints for the UI.
 	finished  bool
 	aiPlayers = [2]players.Player{nil, nil}
 	nextIsAI  bool
@@ -73,6 +82,15 @@ func findResourcesDir() {
 	return
 }
 
+// Open file for appending.
+func openForAppending(filename string) io.WriteCloser {
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Panicf("Failed to save file to '%s': %v", filename, err)
+	}
+	return file
+}
+
 func main() {
 	flag.Parse()
 	if *flag_maxMoves <= 0 {
@@ -97,6 +115,9 @@ func newGame() {
 	board = NewBoard()
 	board.MaxMoves = *flag_maxMoves
 	board.BuildDerived()
+	initial = board
+	actions = nil
+	scores = nil
 	gameSeq := make([]*Board, 0, *flag_maxMoves)
 	gameSeq = append(gameSeq, board)
 
@@ -106,7 +127,7 @@ func newGame() {
 		case *flag_players[ii] == "hotseat":
 			continue
 		case *flag_players[ii] == "ai":
-			aiPlayers[ii] = players.NewAIPlayer(*flag_aiConfig)
+			aiPlayers[ii] = players.NewAIPlayer(*flag_aiConfig, true)
 		default:
 			log.Fatalf("Unknown player type --p%d=%s", ii, *flag_players[ii])
 		}
@@ -128,6 +149,8 @@ func newGame() {
 
 func executeAction(action Action) {
 	board = board.Act(action)
+	actions = append(actions, action)
+	scores = append(scores, 0)
 	gameSeq = append(gameSeq, board)
 	finished = board.IsFinished()
 	if !finished && len(board.Derived.Actions) == 0 {
@@ -142,6 +165,16 @@ func executeAction(action Action) {
 		return
 	}
 	followAction()
+
+	if board.IsFinished() && *flag_saveMatch != "" {
+		log.Printf("Saving match to %s", *flag_saveMatch)
+		file := openForAppending(*flag_saveMatch)
+		enc := gob.NewEncoder(file)
+		if err := SaveMatch(enc, initial, actions, scores); err != nil {
+			log.Printf("Failed to save match to %s: %v", *flag_saveMatch, err)
+		}
+		file.Close()
+	}
 }
 
 func undoAction() {

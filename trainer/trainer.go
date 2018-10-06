@@ -39,13 +39,17 @@ func rescore(matches []*Match) {
 
 // trainFromExamples: only player[0] is trained.
 func trainFromExamples(labeledExamples []ai.LabeledExample) {
-	const learningRate = 1e-5
+	const learningRate = 1.0e-4
 	glog.V(1).Infof("len(LabeledExamples)=%d", len(labeledExamples))
 	loss := players[0].Learner.Learn(learningRate, labeledExamples, 0)
 	log.Printf("  Loss before train loop: %.2f", loss)
 	if *flag_trainLoops > 0 {
 		loss = players[0].Learner.Learn(learningRate, labeledExamples, *flag_trainLoops)
 		log.Printf("  Loss after %dth train loop: %.2f", *flag_trainLoops, loss)
+		loss = players[0].Learner.Learn(learningRate, labeledExamples, 1)
+		log.Printf("  Loss after train loop: %.2f", loss)
+		loss = players[0].Learner.Learn(learningRate, labeledExamples, 0)
+		log.Printf("  Loss after train loop: %.2f", loss)
 	}
 	if players[0].ModelFile != "" {
 		log.Printf("Saving to %s", players[0].ModelFile)
