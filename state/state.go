@@ -226,6 +226,7 @@ func (b *Board) HasPiece(pos Pos) bool {
 	return ok && stack.HasPiece()
 }
 
+// PieceAt returns the piece at the top of the stack on the given position.
 func (b *Board) PieceAt(pos Pos) (player uint8, piece Piece, stacked bool) {
 	stack, _ := b.board[pos]
 	player, piece = stack.PieceAt(0)

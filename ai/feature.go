@@ -47,7 +47,7 @@ const (
 	F_NUM_SINGLE
 
 	// Whether there is an opponent BEETLE on top of QUEEN.
-	//F_QUEEN_COVERED
+	F_QUEEN_COVERED
 
 	// Last entry.
 	F_NUM_FEATURES
@@ -86,6 +86,7 @@ var (
 
 		{F_MOVES_TO_DRAW, "MovesToDraw", 1, 0, fNumToDraw, 0},
 		{F_NUM_SINGLE, "NumSingle", 2, 0, fNumSingle, 0},
+		{F_QUEEN_COVERED, "QueenIsCovered", 2, 0, fQueenIsCovered, 41},
 	}
 
 	// AllFeaturesDim is the dimension of all features concatenated, set during package
@@ -282,4 +283,21 @@ func fNumSingle(b *Board, def *FeatureDef, f []float32) {
 	opponent := b.OpponentPlayer()
 	f[idx] = float32(b.Derived.Singles[player])
 	f[idx+1] = float32(b.Derived.Singles[opponent])
+}
+
+func fQueenIsCovered(b *Board, def *FeatureDef, f []float32) {
+	idx := def.VecIndex
+	player := b.NextPlayer
+	opponent := b.OpponentPlayer()
+	for ii = 0; ii < 2; ii + 1 {
+		pos := b.Derived.QueenPos[player]
+		posPlayer, _, _ := b.PieceAt(pos)
+		if posPlayer != player {
+			f[idx+ii] = 1.0
+		} else {
+			f[idx+ii] = 0.0
+		}
+		// Invert players selection.
+		player, opponent = opponent, player
+	}
 }
