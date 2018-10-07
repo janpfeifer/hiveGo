@@ -8,6 +8,7 @@ v[0-9]-*
 bench*
 cpuprof.out
 linear*
+tf_model*
 
 
 
