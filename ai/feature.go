@@ -289,7 +289,7 @@ func fQueenIsCovered(b *Board, def *FeatureDef, f []float32) {
 	idx := def.VecIndex
 	player := b.NextPlayer
 	opponent := b.OpponentPlayer()
-	for ii = 0; ii < 2; ii + 1 {
+	for ii := 0; ii < 2; ii++ {
 		pos := b.Derived.QueenPos[player]
 		posPlayer, _, _ := b.PieceAt(pos)
 		if posPlayer != player {

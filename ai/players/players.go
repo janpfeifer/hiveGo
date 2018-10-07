@@ -109,7 +109,7 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 			// another model to decide this ?
 			randomness = 0.5
 		}
-		searcher = search.NewMonteCarloTreeSearcher(maxDepth, maxTime, randomness)
+		searcher = search.NewMonteCarloTreeSearcher(maxDepth, maxTime, randomness, parallelized)
 	}
 	if _, ok := params["ab"]; ok {
 		delete(params, "ab")

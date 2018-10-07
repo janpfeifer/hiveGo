@@ -7,6 +7,8 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/golang/glog"
@@ -19,18 +21,19 @@ var _ = log.Printf
 var _ = fmt.Printf
 
 type mctsSearcher struct {
-	maxDepth   int
-	maxTime    time.Duration
-	randomness float64
-	priorBase  float32 // How much to weight the baseScore in comparison to MC samples.
+	maxDepth     int
+	maxTime      time.Duration
+	randomness   float64
+	priorBase    float32 // How much to weight the baseScore in comparison to MC samples.
+	parallelized bool
 
 	// Cache previous searches on the current tree. Reused by score match.
 	reuseCN *cacheNode
 }
 
 // NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPrunning.
-func NewMonteCarloTreeSearcher(maxDepth int, maxTime time.Duration, randomness float64) Searcher {
-	return &mctsSearcher{maxDepth: maxDepth, maxTime: maxTime, randomness: randomness, priorBase: 3.0}
+func NewMonteCarloTreeSearcher(maxDepth int, maxTime time.Duration, randomness float64, parallelized bool) Searcher {
+	return &mctsSearcher{maxDepth: maxDepth, maxTime: maxTime, randomness: randomness, priorBase: 3.0, parallelized: parallelized}
 }
 
 // cacheNode holds information about the possible actions of a board.
@@ -45,6 +48,8 @@ type cacheNode struct {
 	sumExponents float64
 
 	cacheNodes []*cacheNode
+
+	mu sync.Mutex // Lcok for updates.
 }
 
 var testCN *cacheNode
@@ -73,7 +78,7 @@ func newCacheNode(b *Board, scorer ai.BatchScorer, randomness float64) *cacheNod
 }
 
 // UpdateBaseScores re-scores the boards according to a presumably updates scorer.
-// It is used by ScoreMatch with reuse=true.
+// It is used by ScoreMatch with rescore=true.
 func (cn *cacheNode) UpdateBaseScores(scorer ai.BatchScorer, randomness float64) {
 	cn.baseScores = make([]float32, len(cn.actions))
 	boardsToScore := make([]*Board, 0, len(cn.newBoards))
@@ -114,17 +119,26 @@ func (cn *cacheNode) UpdateBaseScores(scorer ai.BatchScorer, randomness float64)
 func (cn *cacheNode) Step(
 	index int, scorer ai.BatchScorer, randomness float64) *cacheNode {
 	if cn.cacheNodes[index] == nil {
-		if cn.baseScores == nil {
-			log.Panic("cn::Step(): cacheNode (2.a) has no baseScores")
+		cn.mu.Lock()
+		if cn.cacheNodes[index] == nil {
+			if cn.baseScores == nil {
+				log.Panic("cn::Step(): cacheNode (2.a) has no baseScores")
+			}
+			testCN = cn
+			cn.cacheNodes[index] = newCacheNode(cn.newBoards[index], scorer, randomness)
+			if cn.baseScores == nil {
+				log.Panicf("cn::Step(): cacheNode (2.b) has no baseScores, idx=%d, act=%d",
+					index, len(cn.actions))
+			}
 		}
-		testCN = cn
-		cn.cacheNodes[index] = newCacheNode(cn.newBoards[index], scorer, randomness)
-		if cn.baseScores == nil {
-			log.Panicf("cn::Step(): cacheNode (2.b) has no baseScores, idx=%d, act=%d",
-				index, len(cn.actions))
-		}
+		cn.mu.Unlock()
+
 	} else if cn.cacheNodes[index].baseScores == nil {
-		cn.cacheNodes[index].UpdateBaseScores(scorer, randomness)
+		cn.mu.Lock()
+		if cn.cacheNodes[index].baseScores == nil {
+			cn.cacheNodes[index].UpdateBaseScores(scorer, randomness)
+		}
+		cn.mu.Unlock()
 	}
 	return cn.cacheNodes[index]
 }
@@ -146,6 +160,9 @@ func (cn *cacheNode) ClearScores() {
 }
 
 func (cn *cacheNode) Sample() int {
+	cn.mu.Lock()
+	defer cn.mu.Unlock()
+
 	if len(cn.actions) == 0 {
 		log.Panic("Sampling from no actions available.")
 	}
@@ -160,7 +177,7 @@ func (cn *cacheNode) Sample() int {
 		}
 		chance -= probability
 	}
-	if chance > 0.0001 {
+	if chance > 0.001 {
 		glog.Errorf("MCTS failed to choose any, %.3f probability mass still missing", chance)
 	}
 	return len(cn.exponents) - 1 // Pick last one.
@@ -236,11 +253,13 @@ func (cn *cacheNode) Traverse(
 	}
 
 	// Propagate back the score.
+	cn.mu.Lock()
 	cn.sumMCScores[ii] += sampledScore
 	cn.count[ii]++
 	cn.sumExponents -= cn.exponents[ii]
 	cn.exponents[ii] = math.Exp(float64(cn.EstimatedScore(ii, priorBase)) / randomness)
 	cn.sumExponents += cn.exponents[ii]
+	cn.mu.Unlock()
 
 	return sampledScore
 }
@@ -276,10 +295,27 @@ func (mcts *mctsSearcher) runOnCN(cn *cacheNode, scorer ai.BatchScorer) {
 	if len(cn.actions) > 1 {
 		start := time.Now()
 		count := 0
+
+		// Handle parallelism.
+		maxParallel := runtime.GOMAXPROCS(0)
+		if !mcts.parallelized {
+			maxParallel = 1
+		}
+		var wg sync.WaitGroup
+		semaphore := make(chan bool, maxParallel)
+
+		// Loop over traverses.
 		for time.Since(start) < mcts.maxTime {
-			cn.Traverse(mcts.maxDepth, scorer, mcts.priorBase, mcts.randomness)
+			wg.Add(1)
+			semaphore <- true
+			go func() {
+				cn.Traverse(mcts.maxDepth, scorer, mcts.priorBase, mcts.randomness)
+				<-semaphore
+				wg.Done()
+			}()
 			count++
 		}
+		wg.Wait()
 		glog.V(1).Infof("Samples: %d", count)
 	}
 }
