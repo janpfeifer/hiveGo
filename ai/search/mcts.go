@@ -23,6 +23,8 @@ var _ = fmt.Printf
 type mctsSearcher struct {
 	maxDepth     int
 	maxTime      time.Duration
+	maxTraverses int
+
 	randomness   float64
 	priorBase    float32 // How much to weight the baseScore in comparison to MC samples.
 	parallelized bool
@@ -32,8 +34,15 @@ type mctsSearcher struct {
 }
 
 // NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPrunning.
-func NewMonteCarloTreeSearcher(maxDepth int, maxTime time.Duration, randomness float64, parallelized bool) Searcher {
-	return &mctsSearcher{maxDepth: maxDepth, maxTime: maxTime, randomness: randomness, priorBase: 3.0, parallelized: parallelized}
+func NewMonteCarloTreeSearcher(maxDepth int, maxTime time.Duration, maxTraverses int, randomness float64, parallelized bool) Searcher {
+	return &mctsSearcher{
+		maxDepth:     maxDepth,
+		maxTime:      maxTime,
+		maxTraverses: maxTraverses,
+		randomness:   randomness,
+		priorBase:    3.0,
+		parallelized: parallelized,
+	}
 }
 
 // cacheNode holds information about the possible actions of a board.
@@ -305,7 +314,7 @@ func (mcts *mctsSearcher) runOnCN(cn *cacheNode, scorer ai.BatchScorer) {
 		semaphore := make(chan bool, maxParallel)
 
 		// Loop over traverses.
-		for time.Since(start) < mcts.maxTime {
+		for time.Since(start) < mcts.maxTime && count < mcts.maxTraverses {
 			wg.Add(1)
 			semaphore <- true
 			go func() {

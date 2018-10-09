@@ -19,7 +19,7 @@ func (b *Board) Surfaces() (surfaces *Surfaces) {
 	surfaces = &Surfaces{}
 
 	for piecePos := range b.board {
-		for pos := range b.EmptyNeighbours(piecePos) {
+		for _, pos := range b.EmptyNeighbours(piecePos) {
 			if _, found := surfaces.PosToSurface[pos]; found {
 				// Position already in surfaces.
 				continue
@@ -53,7 +53,7 @@ func (b *Board) Surfaces() (surfaces *Surfaces) {
 func (b *Board) surfaceAntMoves(srcPos Pos, surfaces *Surfaces) (poss []Pos) {
 	visited := map[Pos]bool{srcPos: true}
 	visitedSurfaces := make(map[int]bool, surfaces.Num)
-	for pos := range b.EmptyAndConnectedNeighbours(srcPos, srcPos, visited) {
+	for _, pos := range b.EmptyAndConnectedNeighbours(srcPos, srcPos, visited) {
 		visitedSurfaces[surfaces.PosToSurface[pos]] = true
 	}
 

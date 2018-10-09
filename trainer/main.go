@@ -47,6 +47,7 @@ var (
 	flag_rescore     = flag.Int("rescore", 0,
 		"If to rescore loaded matches. A value higher than 1 means that it will loop "+
 			"over rescoring and retraining.")
+	flag_learningRate = flag.Float64("learning_rate", 1e-5, "Learning rate when learning")
 
 	players = [2]*ai_players.SearcherScorerPlayer{nil, nil}
 )
@@ -74,7 +75,7 @@ type Match struct {
 func (m *Match) FinalBoard() *Board { return m.Boards[len(m.Boards)-1] }
 
 func (m *Match) Encode(enc *gob.Encoder) {
-	if err := SaveMatch(enc, m.Boards[0], m.Actions, m.Scores); err != nil {
+	if err := SaveMatch(enc, m.Boards[0].MaxMoves, m.Actions, m.Scores); err != nil {
 		log.Panicf("Failed to encode match: %v", err)
 	}
 }
@@ -85,7 +86,7 @@ func (m *Match) AppendLabeledExamples(examples []ai.LabeledExample) []ai.Labeled
 	if *flag_lastActions > 1 && *flag_lastActions < len(m.Actions) {
 		from = len(m.Actions) - *flag_lastActions
 	}
-	glog.Infof("Making LabeledExample, version=%d", players[0].Scorer.Version())
+	glog.V(2).Infof("Making LabeledExample, version=%d", players[0].Scorer.Version())
 	for ii := from; ii < len(m.Actions); ii++ {
 		examples = append(examples, ai.MakeLabeledExample(m.Boards[ii], m.Scores[ii], players[0].Scorer.Version()))
 	}
@@ -93,12 +94,14 @@ func (m *Match) AppendLabeledExamples(examples []ai.LabeledExample) []ai.Labeled
 }
 
 func MatchDecode(dec *gob.Decoder) (match *Match, err error) {
+	glog.V(2).Infof("Loading match ...")
 	match = &Match{}
 	initial := &Board{}
 	initial, match.Actions, match.Scores, err = LoadMatch(dec)
 	if err != nil {
 		return
 	}
+	glog.V(2).Infof("Loaded match with %d actions", len(match.Actions))
 	initial.BuildDerived()
 	match.Boards = make([]*Board, 1, len(match.Actions)+1)
 	match.Boards[0] = initial

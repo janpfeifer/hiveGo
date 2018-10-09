@@ -13,6 +13,7 @@ import (
 // improve the one AI.
 func rescore(matches []*Match) {
 	var wg sync.WaitGroup
+	glog.V(2).Infof("Rescoring: parallelization=%d", runtime.GOMAXPROCS(0))
 	semaphore := make(chan bool, runtime.GOMAXPROCS(0))
 	for matchNum, match := range matches {
 		wg.Add(1)
@@ -25,11 +26,12 @@ func rescore(matches []*Match) {
 			if *flag_lastActions > 1 && *flag_lastActions < len(match.Actions) {
 				from = len(match.Actions) - *flag_lastActions
 			}
+			glog.V(2).Infof("Rescoring match %d", matchNum)
 			newScores := players[0].Searcher.ScoreMatch(
 				match.Boards[from], players[0].Scorer,
 				match.Actions[from:len(match.Actions)])
 			copy(match.Scores[from:from+len(newScores)-1], newScores)
-			glog.V(1).Infof("Match %d rescored.", matchNum)
+			glog.V(2).Infof("Match %d rescored.", matchNum)
 		}(matchNum, match)
 	}
 
@@ -39,15 +41,13 @@ func rescore(matches []*Match) {
 
 // trainFromExamples: only player[0] is trained.
 func trainFromExamples(labeledExamples []ai.LabeledExample) {
-	const learningRate = 1.0e-4
+	learningRate := float32(*flag_learningRate)
 	glog.V(1).Infof("len(LabeledExamples)=%d", len(labeledExamples))
 	loss := players[0].Learner.Learn(learningRate, labeledExamples, 0)
 	log.Printf("  Loss before train loop: %.2f", loss)
 	if *flag_trainLoops > 0 {
 		loss = players[0].Learner.Learn(learningRate, labeledExamples, *flag_trainLoops)
 		log.Printf("  Loss after %dth train loop: %.2f", *flag_trainLoops, loss)
-		loss = players[0].Learner.Learn(learningRate, labeledExamples, 1)
-		log.Printf("  Loss after train loop: %.2f", loss)
 		loss = players[0].Learner.Learn(learningRate, labeledExamples, 0)
 		log.Printf("  Loss after train loop: %.2f", loss)
 	}

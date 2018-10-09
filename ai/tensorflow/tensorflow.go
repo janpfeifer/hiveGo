@@ -203,13 +203,7 @@ func (s *Scorer) UnlimitedBatchScore(batch [][]float32) []float32 {
 func (s *Scorer) Score(b *Board) float32 {
 	features := [][]float32{ai.FeatureVector(b, s.version)}
 	scores := s.UnlimitedBatchScore(features)
-	score := scores[0]
-	if score > 9.8 {
-		score = 9.8
-	} else if score < -9.8 {
-		score = -9.8
-	}
-	return score
+	return scores[0]
 }
 
 func (s *Scorer) BatchScore(boards []*Board) []float32 {
@@ -217,15 +211,7 @@ func (s *Scorer) BatchScore(boards []*Board) []float32 {
 	for ii, board := range boards {
 		features[ii] = ai.FeatureVector(board, s.version)
 	}
-	scores := s.UnlimitedBatchScore(features)
-	for ii, score := range scores {
-		if score > 9.8 {
-			scores[ii] = 9.8
-		} else if score < -9.8 {
-			scores[ii] = -9.8
-		}
-	}
-	return scores
+	return s.UnlimitedBatchScore(features)
 }
 
 func (s *Scorer) Learn(learningRate float32, examples []ai.LabeledExample, steps int) float32 {

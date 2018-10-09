@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/golang/glog"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/janpfeifer/hiveGo/ai/players"
@@ -148,6 +149,7 @@ func newGame() {
 }
 
 func executeAction(action Action) {
+	glog.Infof("Player %d played %s", board.NextPlayer, action)
 	board = board.Act(action)
 	actions = append(actions, action)
 	scores = append(scores, 0)
@@ -170,7 +172,7 @@ func executeAction(action Action) {
 		log.Printf("Saving match to %s", *flag_saveMatch)
 		file := openForAppending(*flag_saveMatch)
 		enc := gob.NewEncoder(file)
-		if err := SaveMatch(enc, initial, actions, scores); err != nil {
+		if err := SaveMatch(enc, initial.MaxMoves, actions, scores); err != nil {
 			log.Printf("Failed to save match to %s: %v", *flag_saveMatch, err)
 		}
 		file.Close()

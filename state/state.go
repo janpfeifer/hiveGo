@@ -380,10 +380,8 @@ func (b *Board) OpponentNeighbours(pos Pos) (poss []Pos) {
 
 // SaveMatch will "save" (encode) the match and scores for future reconstruction.
 // scores is opional.
-func SaveMatch(enc *gob.Encoder, initial *Board, actions []Action, scores []float32) error {
-	b := initial.Copy()
-	b.Derived = nil
-	if err := enc.Encode(b); err != nil {
+func SaveMatch(enc *gob.Encoder, MaxMoves int, actions []Action, scores []float32) error {
+	if err := enc.Encode(MaxMoves); err != nil {
 		return fmt.Errorf("Failed to encode match's board: %v", err)
 	}
 	if err := enc.Encode(actions); err != nil {
@@ -397,17 +395,17 @@ func SaveMatch(enc *gob.Encoder, initial *Board, actions []Action, scores []floa
 
 // LoadMatch restores match initial board, actions and scores.
 func LoadMatch(dec *gob.Decoder) (initial *Board, actions []Action, scores []float32, err error) {
-	tmp := &Board{}
-	err = dec.Decode(tmp)
+	initial = NewBoard()
+	err = dec.Decode(&initial.MaxMoves)
 	if err != nil {
 		return
 	}
-	initial = NewBoard()
-	initial.MaxMoves = tmp.MaxMoves
+	actions = make([]Action, 0, initial.MaxMoves)
 	err = dec.Decode(&actions)
 	if err != nil {
 		return
 	}
+	scores = make([]float32, 0, initial.MaxMoves)
 	err = dec.Decode(&scores)
 	return
 }
