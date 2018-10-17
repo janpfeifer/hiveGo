@@ -1,6 +1,7 @@
 package search
 
-// Monte Carlo Tree Search implementation
+// Monte Carlo Tree Search implementation, with a hacked version of UCT
+// (Upper Confidence Bound for Trees).
 
 import (
 	"fmt"
@@ -24,7 +25,9 @@ type mctsSearcher struct {
 	maxDepth     int
 	maxTime      time.Duration
 	maxTraverses int
+	useUCT       bool
 
+	scorer       ai.BatchScorer
 	randomness   float64
 	priorBase    float32 // How much to weight the baseScore in comparison to MC samples.
 	parallelized bool
@@ -34,11 +37,15 @@ type mctsSearcher struct {
 }
 
 // NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPrunning.
-func NewMonteCarloTreeSearcher(maxDepth int, maxTime time.Duration, maxTraverses int, randomness float64, parallelized bool) Searcher {
+func NewMonteCarloTreeSearcher(maxDepth int, maxTime time.Duration, maxTraverses int, useUCT bool,
+	scorer ai.BatchScorer, randomness float64, parallelized bool) Searcher {
 	return &mctsSearcher{
 		maxDepth:     maxDepth,
 		maxTime:      maxTime,
 		maxTraverses: maxTraverses,
+		useUCT:       useUCT,
+
+		scorer:       scorer,
 		randomness:   randomness,
 		priorBase:    3.0,
 		parallelized: parallelized,
@@ -47,48 +54,59 @@ func NewMonteCarloTreeSearcher(maxDepth int, maxTime time.Duration, maxTraverses
 
 // cacheNode holds information about the possible actions of a board.
 type cacheNode struct {
-	board        *Board
-	actions      []Action
-	newBoards    []*Board
-	baseScores   []float32 // Scores for board.NextPlayer.
-	count        []int     // How many times each of the paths have been traversed.
+	// Board, actions, children boards and children base scores.
+	board      *Board
+	actions    []Action
+	newBoards  []*Board
+	baseScores []float32 // Scores for board.NextPlayer.
+
+	// Children cacheNodes.
+	cacheNodes   []*cacheNode
+	cacheNodesMu []sync.Mutex
+
+	// How many times each of the paths have been traversed.
+	count []int
+
+	// Random MCTS.
 	sumMCScores  []float32 // Sum of each of the traversals at the given path.
 	exponents    []float64
 	sumExponents float64
 
-	cacheNodes []*cacheNode
+	// UCT UpperBound based MCTS.
+	mctsScores  []float32
+	upperBounds []float32
 
 	mu sync.Mutex // Lcok for updates.
 }
 
-var testCN *cacheNode
-
-func newCacheNode(b *Board, scorer ai.BatchScorer, randomness float64) *cacheNode {
-	if testCN != nil && testCN.baseScores == nil {
-		log.Panic("cn::newCacheNode(): cacheNode (0) has no baseScores")
-	}
+func newCacheNode(mcts *mctsSearcher, b *Board) *cacheNode {
 	cn := &cacheNode{board: b}
-	cn.actions, cn.newBoards, cn.baseScores = ScoredActions(b, scorer)
-	if testCN != nil && testCN.baseScores == nil {
-		log.Panic("cn::newCacheNode(): cacheNode (1) has no baseScores")
-	}
+	cn.actions, cn.newBoards, cn.baseScores = ScoredActions(b, mcts.scorer)
 	cn.count = make([]int, len(cn.actions))
-	cn.sumMCScores = make([]float32, len(cn.actions))
-	cn.exponents = make([]float64, len(cn.actions))
-	for ii, score := range cn.baseScores {
-		cn.exponents[ii] = math.Exp(float64(score) / randomness)
-		cn.sumExponents += cn.exponents[ii]
+	if mcts.useUCT {
+		cn.mctsScores = make([]float32, len(cn.actions))
+		cn.upperBounds = make([]float32, len(cn.actions))
+	} else {
+		cn.sumMCScores = make([]float32, len(cn.actions))
+		cn.exponents = make([]float64, len(cn.actions))
+		cn.SetSoftmaxScoresFromBase(mcts)
 	}
 	cn.cacheNodes = make([]*cacheNode, len(cn.actions))
-	if testCN != nil && testCN.baseScores == nil {
-		log.Panic("cn::newCacheNode(): cacheNode (2) has no baseScores")
-	}
+	cn.cacheNodesMu = make([]sync.Mutex, len(cn.actions))
 	return cn
+}
+
+func (cn *cacheNode) SetSoftmaxScoresFromBase(mcts *mctsSearcher) {
+	cn.sumExponents = 0
+	for ii, score := range cn.baseScores {
+		cn.exponents[ii] = math.Exp(float64(score) / mcts.randomness)
+		cn.sumExponents += cn.exponents[ii]
+	}
 }
 
 // UpdateBaseScores re-scores the boards according to a presumably updates scorer.
 // It is used by ScoreMatch with rescore=true.
-func (cn *cacheNode) UpdateBaseScores(scorer ai.BatchScorer, randomness float64) {
+func (cn *cacheNode) UpdateBaseScores(mcts *mctsSearcher) {
 	cn.baseScores = make([]float32, len(cn.actions))
 	boardsToScore := make([]*Board, 0, len(cn.newBoards))
 
@@ -105,7 +123,7 @@ func (cn *cacheNode) UpdateBaseScores(scorer ai.BatchScorer, randomness float64)
 	// Score non-end-of-game, using scorer.
 	if len(boardsToScore) > 0 {
 		// Score other boards.
-		scored := scorer.BatchScore(boardsToScore)
+		scored := mcts.scorer.BatchScore(boardsToScore)
 		scoredIdx := 0
 		for ii := range cn.baseScores {
 			if !cn.newBoards[ii].IsFinished() {
@@ -116,59 +134,50 @@ func (cn *cacheNode) UpdateBaseScores(scorer ai.BatchScorer, randomness float64)
 	}
 
 	// Finally update the exponents.
-	cn.sumExponents = 0
-	for ii, score := range cn.baseScores {
-		cn.exponents[ii] = math.Exp(float64(score) / randomness)
-		cn.sumExponents += cn.exponents[ii]
+	if !mcts.useUCT {
+		cn.SetSoftmaxScoresFromBase(mcts)
 	}
 }
 
-// Step into the index's cacheNode under the current one. If it doesn't exist,
-// create one using the given scorer.
-func (cn *cacheNode) Step(
-	index int, scorer ai.BatchScorer, randomness float64) *cacheNode {
+// Step steps into the index's cacheNode under the current one. If it doesn't exist,
+// it creates a new one.
+func (cn *cacheNode) Step(mcts *mctsSearcher, index int) *cacheNode {
+	cn.cacheNodesMu[index].Lock()
+	defer cn.cacheNodesMu[index].Unlock()
 	if cn.cacheNodes[index] == nil {
-		cn.mu.Lock()
-		if cn.cacheNodes[index] == nil {
-			if cn.baseScores == nil {
-				log.Panic("cn::Step(): cacheNode (2.a) has no baseScores")
-			}
-			testCN = cn
-			cn.cacheNodes[index] = newCacheNode(cn.newBoards[index], scorer, randomness)
-			if cn.baseScores == nil {
-				log.Panicf("cn::Step(): cacheNode (2.b) has no baseScores, idx=%d, act=%d",
-					index, len(cn.actions))
-			}
-		}
-		cn.mu.Unlock()
-
+		cn.cacheNodes[index] = newCacheNode(mcts, cn.newBoards[index])
 	} else if cn.cacheNodes[index].baseScores == nil {
-		cn.mu.Lock()
-		if cn.cacheNodes[index].baseScores == nil {
-			cn.cacheNodes[index].UpdateBaseScores(scorer, randomness)
-		}
-		cn.mu.Unlock()
+		cn.cacheNodes[index].UpdateBaseScores(mcts)
 	}
 	return cn.cacheNodes[index]
 }
 
-func (cn *cacheNode) ClearScores() {
+func (cn *cacheNode) RecursivelyClearScores(mcts *mctsSearcher) {
 	cn.baseScores = nil
-	for ii := range cn.actions {
-		cn.sumMCScores[ii] = 0
-		cn.count[ii] = 0
-		cn.exponents[ii] = 0
+	if mcts.useUCT {
+		for ii := range cn.actions {
+			cn.count[ii] = 0
+			cn.mctsScores[ii] = 0
+		}
+	} else {
+		for ii := range cn.actions {
+			cn.count[ii] = 0
+			cn.sumMCScores[ii] = 0
+			cn.exponents[ii] = 0
+		}
+		cn.sumExponents = 0
 	}
-	cn.sumExponents = 0
 
 	for _, childCN := range cn.cacheNodes {
 		if childCN != nil {
-			childCN.ClearScores()
+			childCN.RecursivelyClearScores(mcts)
 		}
 	}
 }
 
-func (cn *cacheNode) Sample() int {
+// Sample picks the next step. If using UCT, simply picks the one with
+// highest upper bound.
+func (cn *cacheNode) Sample(mcts *mctsSearcher) int {
 	cn.mu.Lock()
 	defer cn.mu.Unlock()
 
@@ -192,6 +201,7 @@ func (cn *cacheNode) Sample() int {
 	return len(cn.exponents) - 1 // Pick last one.
 }
 
+// FindAction returns the index to the given action in the board.
 func (cn *cacheNode) FindAction(action Action) int {
 	for ii, cnAction := range cn.actions {
 		if cnAction == action {
@@ -204,12 +214,12 @@ func (cn *cacheNode) FindAction(action Action) int {
 	return -1
 }
 
-func (cn *cacheNode) FindBestScore(priorBase float32) (bestIdx int, bestScore float32) {
+func (cn *cacheNode) FindBestScore(mcts *mctsSearcher) (bestIdx int, bestScore float32) {
 	// Select best action.
 	bestIdx = 0
-	bestScore = cn.EstimatedScore(0, priorBase)
+	bestScore = cn.EstimatedScore(mcts, 0)
 	for ii := 1; ii < len(cn.actions); ii++ {
-		score := cn.EstimatedScore(ii, priorBase)
+		score := cn.EstimatedScore(mcts, ii)
 		if score > bestScore {
 			bestScore = score
 			bestIdx = ii
@@ -218,88 +228,147 @@ func (cn *cacheNode) FindBestScore(priorBase float32) (bestIdx int, bestScore fl
 	return
 }
 
-func (cn *cacheNode) EstimatedScore(idx int, priorBase float32) float32 {
-	if idx > len(cn.actions) || idx > len(cn.baseScores) {
-		log.Panicf("Invalid index for EstimatedScore: %d, actions=%d, baseScores=%d, cn.sumMCScores=%d",
-			idx, len(cn.actions), len(cn.baseScores), len(cn.sumMCScores))
+// EstimatedScore returns current estimate of score for index action of the current node.
+func (cn *cacheNode) EstimatedScore(mcts *mctsSearcher, idx int) float32 {
+	if mcts.useUCT {
+		// Score is the base score if no traverse was done. Otherwise takes
+		// the current traverse score.
+		if cn.count[idx] == 0 {
+			return cn.baseScores[idx]
+		} else {
+			return cn.mctsScores[idx]
+		}
+	} else {
+		if idx > len(cn.actions) || idx > len(cn.baseScores) {
+			log.Panicf("Invalid index for EstimatedScore: %d, actions=%d, baseScores=%d, cn.sumMCScores=%d",
+				idx, len(cn.actions), len(cn.baseScores), len(cn.sumMCScores))
+		}
+		estimatedScore := cn.baseScores[idx]*mcts.priorBase + cn.sumMCScores[idx]
+		estimatedScore /= mcts.priorBase + float32(cn.count[idx])
+		if estimatedScore > 10.0 {
+			estimatedScore = 10.0
+		} else if estimatedScore < -10.0 {
+			estimatedScore = -10.0
+		}
+		return estimatedScore
 	}
-	estimatedScore := cn.baseScores[idx]*priorBase + cn.sumMCScores[idx]
-	estimatedScore /= priorBase + float32(cn.count[idx])
-	if estimatedScore > 10.0 {
-		estimatedScore = 10.0
-	} else if estimatedScore < -10.0 {
-		estimatedScore = -10.0
-	}
-	return estimatedScore
 }
 
-func (cn *cacheNode) Traverse(
-	depth int, scorer ai.BatchScorer, priorBase float32, randomness float64) float32 {
+// FindHighestUpperBound finds the index of the highest estimated upper-bound
+func (cn *cacheNode) FindHighestUpperBound(mcts *mctsSearcher) (highestUpperBoundIdx int) {
+	// Select best action.
+	upperBoundScores := cn.UpperBoundScores(mcts)
+	highestUpperBoundIdx = 0
+	highestUpperBound := upperBoundScores[0]
+	for ii := 1; ii < len(cn.actions); ii++ {
+		if upperBoundScores[ii] > highestUpperBound {
+			highestUpperBound = upperBoundScores[ii]
+			highestUpperBoundIdx = ii
+		}
+	}
+	return
+}
+
+// UpperBoundScores returns the estimated upper-bound scores for the available actions.
+// This is part of the UCT MCTS algorithm.
+func (cn *cacheNode) UpperBoundScores(mcts *mctsSearcher) (scores []float32) {
+	scores = make([]float32, len(cn.actions))
+	totalCount := len(cn.actions) // Starts with one per action.
+	if totalCount == 1 {
+		scores[0] = cn.EstimatedScore(mcts, 0)
+		return
+	}
+	for _, v := range cn.count {
+		totalCount += v
+	}
+	lnTotalCount := math.Log(float64(totalCount))
+	baseDeviation := float32(mcts.randomness * 5.)
+	for ii := range scores {
+		scores[ii] = cn.EstimatedScore(mcts, ii) + baseDeviation*float32(math.Sqrt(lnTotalCount/(float64(cn.count[ii])+1)))
+	}
+	return
+}
+
+// Traverse traverses the game tree up to the given depth, and returns the
+// sampled (random MCTS) or expected (UCT) score.
+func (cn *cacheNode) Traverse(mcts *mctsSearcher, depth int) float32 {
 	if cn.baseScores == nil {
 		log.Panic("cn::Traverse(): cacheNode has no baseScores")
 	}
-	// Sample according to current scores.
-	ii := cn.Sample()
+
+	// Sample/select according to current scores.
+	var ii int
+	if mcts.useUCT {
+		ii = cn.FindHighestUpperBound(mcts)
+	} else {
+		ii = cn.Sample(mcts)
+	}
 	if depth == 0 || cn.newBoards[ii].IsFinished() {
 		// If leaf node, return base score.
 		return cn.baseScores[ii]
 	}
 
 	// Traverse down the sampled variation.
-	if cn.baseScores == nil {
-		log.Panic("cn::Traverse(): cacheNode (2) has no baseScores")
-	}
-
-	nextCN := cn.Step(ii, scorer, randomness)
-	if cn.baseScores == nil {
-		log.Panic("cn::Traverse(): cacheNode (3) has no baseScores")
-	}
-
-	sampledScore := -nextCN.Traverse(depth-1, scorer, priorBase, randomness)
-
-	if cn.baseScores == nil {
-		log.Panic("cn::Traverse(): cacheNode (4) has no baseScores")
-	}
+	nextCN := cn.Step(mcts, ii)
+	score := -nextCN.Traverse(mcts, depth-1)
 
 	// Propagate back the score.
 	cn.mu.Lock()
-	cn.sumMCScores[ii] += sampledScore
 	cn.count[ii]++
-	cn.sumExponents -= cn.exponents[ii]
-	cn.exponents[ii] = math.Exp(float64(cn.EstimatedScore(ii, priorBase)) / randomness)
-	cn.sumExponents += cn.exponents[ii]
+	if mcts.useUCT {
+		// If using UCT we only store the most likely score, and
+		// then return the best score so far.
+		cn.mctsScores[ii] = score
+		_, score = cn.FindBestScore(mcts)
+
+	} else {
+		// Random sampling.
+		cn.sumMCScores[ii] += score
+		cn.sumExponents -= cn.exponents[ii]
+		cn.exponents[ii] = math.Exp(float64(cn.EstimatedScore(mcts, ii)) / mcts.randomness)
+		cn.sumExponents += cn.exponents[ii]
+	}
 	cn.mu.Unlock()
 
-	return sampledScore
+	return score
 }
 
 // Search implements the Searcher interface.
-func (mcts *mctsSearcher) Search(b *Board, scorer ai.BatchScorer) (
+func (mcts *mctsSearcher) Search(b *Board) (
 	action Action, board *Board, score float32) {
-	testCN = nil
-	cn := newCacheNode(b, scorer, mcts.randomness)
-	mcts.runOnCN(cn, scorer)
+	cn := newCacheNode(mcts, b)
+	mcts.runOnCN(cn)
 
 	if glog.V(2) {
-		for ii, action := range cn.actions {
-			mean := cn.sumMCScores[ii]
-			if cn.count[ii] > 0 {
-				mean /= float32(cn.count[ii])
+		if mcts.useUCT {
+			ubScores := cn.UpperBoundScores(mcts)
+			for ii, action := range cn.actions {
+				glog.Infof("Action %s:\tbase=%.2f\testimated=%.2f\tuppder-bound=%.2f\tcount=%d",
+					action, cn.baseScores[ii], cn.EstimatedScore(mcts, ii),
+					ubScores[ii], cn.count[ii])
 			}
-			glog.Infof("Action %s:\tbase=%.2f\testimated=%.2f\tmean=%.2f\tprob=%.2f%%\tcount=%d",
-				action, cn.baseScores[ii], cn.EstimatedScore(ii, mcts.priorBase),
-				mean, 100.0*cn.exponents[ii]/cn.sumExponents, cn.count[ii])
+			glog.Infoln("")
+		} else {
+			for ii, action := range cn.actions {
+				mean := cn.sumMCScores[ii]
+				if cn.count[ii] > 0 {
+					mean /= float32(cn.count[ii])
+				}
+				glog.Infof("Action %s:\tbase=%.2f\testimated=%.2f\tmean=%.2f\tprob=%.2f%%\tcount=%d",
+					action, cn.baseScores[ii], cn.EstimatedScore(mcts, ii),
+					mean, 100.0*cn.exponents[ii]/cn.sumExponents, cn.count[ii])
+			}
+			glog.Infoln("")
 		}
-		glog.Infoln("")
 	}
-	bestIdx, bestScore := cn.FindBestScore(mcts.priorBase)
+	bestIdx, bestScore := cn.FindBestScore(mcts)
 
 	glog.V(1).Infof("Estimated best score: %.2f", bestScore)
 	return cn.actions[bestIdx], cn.newBoards[bestIdx], bestScore
 }
 
 // runMCTS runs MCTS for the given specifications on the cacheNode.
-func (mcts *mctsSearcher) runOnCN(cn *cacheNode, scorer ai.BatchScorer) {
+func (mcts *mctsSearcher) runOnCN(cn *cacheNode) {
 	// Sample while there is time.
 	if len(cn.actions) > 1 {
 		start := time.Now()
@@ -307,18 +376,21 @@ func (mcts *mctsSearcher) runOnCN(cn *cacheNode, scorer ai.BatchScorer) {
 
 		// Handle parallelism.
 		maxParallel := runtime.GOMAXPROCS(0)
-		if !mcts.parallelized {
+		if !mcts.parallelized || mcts.useUCT {
 			maxParallel = 1
 		}
 		var wg sync.WaitGroup
 		semaphore := make(chan bool, maxParallel)
+		glog.V(3).Infof("MCTS: parallelization=%d", maxParallel)
 
 		// Loop over traverses.
 		for time.Since(start) < mcts.maxTime && count < mcts.maxTraverses {
 			wg.Add(1)
 			semaphore <- true
 			go func() {
-				cn.Traverse(mcts.maxDepth, scorer, mcts.priorBase, mcts.randomness)
+				glog.V(3).Infof("MCTS: starting traverse")
+				cn.Traverse(mcts, mcts.maxDepth)
+				glog.V(3).Infof("MCTS: done traverse")
 				<-semaphore
 				wg.Done()
 			}()
@@ -331,15 +403,14 @@ func (mcts *mctsSearcher) runOnCN(cn *cacheNode, scorer ai.BatchScorer) {
 
 // ScoreMatch will score the board at each board position, starting from the current one,
 // and following each one of the actions. In the end, len(scores) == len(actions)+1.
-func (mcts *mctsSearcher) ScoreMatch(
-	b *Board, scorer ai.BatchScorer, actions []Action) (scores []float32) {
+func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action) (scores []float32) {
 	var cn *cacheNode
-	cn = newCacheNode(b, scorer, mcts.randomness)
+	cn = newCacheNode(mcts, b)
 
 	for _, action := range actions {
-		mcts.runOnCN(cn, scorer)
+		mcts.runOnCN(cn)
 		// Score of this node, is the score of the best action.
-		_, score := cn.FindBestScore(mcts.priorBase)
+		_, score := cn.FindBestScore(mcts)
 		scores = append(scores, score)
 
 		// The action taken may be different than the best action, specially
@@ -349,11 +420,11 @@ func (mcts *mctsSearcher) ScoreMatch(
 			scores = append(scores, score)
 			return
 		}
-		cn = cn.Step(idx, scorer, mcts.randomness)
+		cn = cn.Step(mcts, idx)
 	}
 
 	// Add the final board score, if the match hasn't ended yet.
-	_, score := cn.FindBestScore(mcts.priorBase)
+	_, score := cn.FindBestScore(mcts)
 	scores = append(scores, score)
 	return
 }

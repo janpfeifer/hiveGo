@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
 	"github.com/janpfeifer/hiveGo/ai/search"
 	"github.com/janpfeifer/hiveGo/ai/tensorflow"
@@ -33,7 +34,7 @@ type SearcherScorerPlayer struct {
 
 // Play implements the Player interface: it chooses an action given a Board.
 func (p *SearcherScorerPlayer) Play(b *Board) (action Action, board *Board, score float32) {
-	action, board, score = p.Searcher.Search(b, p.Scorer)
+	action, board, score = p.Searcher.Search(b)
 	// log.Printf("Move #%d: AI playing %v, score=%.3f", b.MoveNumber, action, score)
 	// log.Printf("Features:")
 	// ai.PrettyPrintFeatures(ai.FeatureVector(board))
@@ -56,15 +57,40 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 	// Break config in parts.
 	params := make(map[string]string)
 	parts := strings.Split(config, ",")
-	for _, part := range parts {
-		subparts := strings.Split(part, "=")
-		if len(subparts) == 1 {
-			params[subparts[0]] = ""
-		} else if len(subparts) == 2 {
-			params[subparts[0]] = subparts[1]
-		} else {
-			log.Panicf("In AI configuration: cannot parse '%s'", part)
+	if len(parts) > 1 || parts[0] != "" {
+		for _, part := range parts {
+			subparts := strings.Split(part, "=")
+			if len(subparts) == 1 {
+				params[subparts[0]] = ""
+			} else if len(subparts) == 2 {
+				params[subparts[0]] = subparts[1]
+			} else {
+				log.Panicf("In AI configuration: cannot parse '%s'", part)
+			}
 		}
+	}
+
+	// Scorer.
+	useTF := false
+	cpu := false
+	modelFile := ""
+	if value, ok := params["model"]; ok {
+		modelFile = value
+		delete(params, "model")
+	}
+	if _, ok := params["tf"]; ok {
+		useTF = true
+		delete(params, "tf")
+	}
+	if _, ok := params["cpu"]; ok {
+		cpu = true
+		delete(params, "cpu")
+	}
+	var model ai.LearnerScorer
+	if useTF {
+		model = tensorflow.New(modelFile, cpu)
+	} else {
+		model = ai.NewLinearScorerFromFile(modelFile)
 	}
 
 	// Configure searcher.
@@ -74,6 +100,7 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 	maxDepth := -1
 	var maxTime time.Duration
 	maxTraverses := 200
+	useUCT := false
 
 	randomness := 0.0
 	if value, ok := params["max_depth"]; ok {
@@ -105,6 +132,14 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 			log.Panicf("Invalid AI value '%s' for max_traverse: %s", value, err)
 		}
 	}
+	if _, ok := params["use_uct"]; ok {
+		delete(params, "use_uct")
+		useUCT = true
+		if parallelized {
+			glog.Errorf("UCT version of MCST ('use_uct') cannot be parallelized.")
+			parallelized = false // UCT doesnt' work parallelized (not yet at least)
+		}
+	}
 
 	if _, ok := params["mcts"]; ok {
 		delete(params, "mcts")
@@ -120,7 +155,7 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 			randomness = 0.5
 		}
 		searcher = search.NewMonteCarloTreeSearcher(
-			maxDepth, maxTime, maxTraverses, randomness, parallelized)
+			maxDepth, maxTime, maxTraverses, useUCT, model, randomness, parallelized)
 	}
 	if _, ok := params["ab"]; ok {
 		delete(params, "ab")
@@ -133,35 +168,12 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 		}
 
 		if randomness <= 0 {
-			searcher = search.NewAlphaBetaSearcher(maxDepth, parallelized)
+			searcher = search.NewAlphaBetaSearcher(maxDepth, parallelized, model)
 		} else {
 			// Randomized searcher.
-			searcher = search.NewAlphaBetaSearcher(maxDepth, false)
-			searcher = search.NewRandomizedSearcher(searcher, randomness)
+			searcher = search.NewAlphaBetaSearcher(maxDepth, false, model)
+			searcher = search.NewRandomizedSearcher(searcher, model, randomness)
 		}
-	}
-
-	// Scorer
-	useTF := false
-	cpu := false
-	modelFile := ""
-	if value, ok := params["model"]; ok {
-		modelFile = value
-		delete(params, "model")
-	}
-	if _, ok := params["tf"]; ok {
-		useTF = true
-		delete(params, "tf")
-	}
-	if _, ok := params["cpu"]; ok {
-		cpu = true
-		delete(params, "cpu")
-	}
-	var model ai.LearnerScorer
-	if useTF {
-		model = tensorflow.New(modelFile, cpu)
-	} else {
-		model = ai.NewLinearScorerFromFile(modelFile)
 	}
 
 	// Check that all parameters were processed.

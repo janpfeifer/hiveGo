@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"sync"
@@ -165,7 +166,7 @@ func runMatch(matchNum int) *Match {
 	return match
 }
 
-// runMatches run --repeat number of matches, and write the resulting matches
+// runMatches run --num_matches number of matches, and write the resulting matches
 // to the given channel.
 func runMatches(results chan<- *Match) {
 	if *flag_winsOnly {
@@ -173,6 +174,8 @@ func runMatches(results chan<- *Match) {
 	}
 	// Run at most GOMAXPROCS simultaneously.
 	var wg sync.WaitGroup
+	parallelism := runtime.GOMAXPROCS(0)
+	glog.V(1).Infof("Parallelism for running matches=%d", parallelism)
 	semaphore := make(chan bool, runtime.GOMAXPROCS(0))
 	done := false
 	wins := 0
@@ -219,28 +222,39 @@ func openWriterAndBackup(filename string) io.WriteCloser {
 
 // Load matches, and automatically build boards.
 func loadMatches(results chan<- *Match) {
-	file, err := os.Open(*flag_loadMatches)
+	filenames, err := filepath.Glob(*flag_loadMatches)
 	if err != nil {
-		log.Panicf("Cannot open '%s' for reading: %v", *flag_loadMatches, err)
+		log.Panicf("Invalid pattern '%s' for loading matches: %v", *flag_loadMatches, err)
 	}
-	dec := gob.NewDecoder(file)
+	if len(filenames) == 0 {
+		log.Panicf("Did not find any files matching '%s'", *flag_loadMatches)
+	}
 
-	// Run at most GOMAXPROCS re-scoring simultaneously.
-	for ii := 0; true; ii++ {
-		match, err := MatchDecode(dec)
-		if err == io.EOF {
-			break
-		}
+	var matchesCount = 0
+	for _, filename := range filenames {
+		file, err := os.Open(filename)
 		if err != nil {
-			glog.Errorf("Cannot read any more matches: %v", err)
-			break
+			log.Panicf("Cannot open '%s' for reading: %v", filename, err)
 		}
-		if *flag_winsOnly && !match.FinalBoard().Draw() {
-			continue
+		dec := gob.NewDecoder(file)
+		for {
+			match, err := MatchDecode(dec)
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				glog.Errorf("Cannot read any more matches in %s: %v", filename, err)
+				break
+			}
+			if *flag_winsOnly && !match.FinalBoard().Draw() {
+				continue
+			}
+			matchesCount++
+			results <- match
 		}
-		results <- match
 	}
 	close(results)
+	glog.Infof("%d matches read", matchesCount)
 }
 
 func main() {

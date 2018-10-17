@@ -13,7 +13,7 @@ import (
 // improve the one AI.
 func rescore(matches []*Match) {
 	var wg sync.WaitGroup
-	glog.V(2).Infof("Rescoring: parallelization=%d", runtime.GOMAXPROCS(0))
+	glog.V(1).Infof("Rescoring: parallelization=%d", runtime.GOMAXPROCS(0))
 	semaphore := make(chan bool, runtime.GOMAXPROCS(0))
 	for matchNum, match := range matches {
 		wg.Add(1)
@@ -27,9 +27,7 @@ func rescore(matches []*Match) {
 				from = len(match.Actions) - *flag_lastActions
 			}
 			glog.V(2).Infof("Rescoring match %d", matchNum)
-			newScores := players[0].Searcher.ScoreMatch(
-				match.Boards[from], players[0].Scorer,
-				match.Actions[from:len(match.Actions)])
+			newScores := players[0].Searcher.ScoreMatch(match.Boards[from], match.Actions[from:len(match.Actions)])
 			copy(match.Scores[from:from+len(newScores)-1], newScores)
 			glog.V(2).Infof("Match %d rescored.", matchNum)
 		}(matchNum, match)

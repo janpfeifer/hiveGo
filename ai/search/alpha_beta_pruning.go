@@ -131,26 +131,26 @@ func alphaBetaParallelized(board *Board, scorer ai.BatchScorer, maxDepth int, al
 type alphaBetaSearcher struct {
 	maxDepth     int
 	parallelized bool
+
+	scorer ai.BatchScorer
 }
 
 // Search implements the Searcher interface.
-func (ab *alphaBetaSearcher) Search(b *Board, scorer ai.BatchScorer) (
-	action Action, board *Board, score float32) {
-	return AlphaBeta(b, scorer, ab.maxDepth, ab.parallelized)
+func (ab *alphaBetaSearcher) Search(b *Board) (action Action, board *Board, score float32) {
+	return AlphaBeta(b, ab.scorer, ab.maxDepth, ab.parallelized)
 }
 
 // NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPrunning.
-func NewAlphaBetaSearcher(maxDepth int, parallelized bool) Searcher {
-	return &alphaBetaSearcher{maxDepth: maxDepth, parallelized: parallelized}
+func NewAlphaBetaSearcher(maxDepth int, parallelized bool, scorer ai.BatchScorer) Searcher {
+	return &alphaBetaSearcher{maxDepth: maxDepth, parallelized: parallelized, scorer: scorer}
 }
 
 // ScoreMatch will score the board at each board position, starting from the current one,
 // and following each one of the actions. In the end, len(scores) == len(actions)+1.
-func (ab *alphaBetaSearcher) ScoreMatch(
-	b *Board, scorer ai.BatchScorer, actions []Action) (scores []float32) {
+func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action) (scores []float32) {
 	scores = make([]float32, 0, len(actions)+1)
 	for _, action := range actions {
-		bestAction, newBoard, score := AlphaBeta(b, scorer, ab.maxDepth, ab.parallelized)
+		bestAction, newBoard, score := AlphaBeta(b, ab.scorer, ab.maxDepth, ab.parallelized)
 		scores = append(scores, score)
 		glog.V(1).Infof("Move %d, Player %d, Score %.2f", b.MoveNumber, b.NextPlayer, score)
 		if action == bestAction {
@@ -172,7 +172,7 @@ func (ab *alphaBetaSearcher) ScoreMatch(
 	if isEnd, score := ai.EndGameScore(b); isEnd {
 		scores = append(scores, score)
 	} else {
-		_, _, score = AlphaBeta(b, scorer, ab.maxDepth, ab.parallelized)
+		_, _, score = AlphaBeta(b, ab.scorer, ab.maxDepth, ab.parallelized)
 		scores = append(scores, score)
 	}
 	return

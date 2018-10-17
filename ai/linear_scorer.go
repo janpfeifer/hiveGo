@@ -187,6 +187,10 @@ func NewLinearScorerFromFile(file string) (w LinearScorer) {
 	muLinearModels.Lock()
 	defer muLinearModels.Unlock()
 
+	if file == "" {
+		return TrainedBest
+	}
+
 	if cached, ok := cacheLinearScorers[file]; ok {
 		glog.Infof("Using cache for model '%s'", file)
 		return cached
