@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Welcome to GopherJS with jQuery</title>
+	<script
+	  src="https://code.jquery.com/jquery-2.2.4.min.js"
+	  integrity="sha256-BbhdlvQf/xTY9gja0Dq3HiwQF8LaCRTXxZKRutelT44="
+	  crossorigin="anonymous"></script>
+<style>
+.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  height: 100%;
+  width: 100%;
+  min-height: 100%;
+  min-width: 100%;
+  overflow: auto;
+  margin: 0px 0px;
+}
+</style>
+</head>	
+<body>
+	<svg id="canvas" class="fullscreen">
+    <defs id="svgdefs">
+	    <pattern id="circles-1" patternUnits="userSpaceOnUse" width="10" height="10">
+	      <image xlink:href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxMCcgaGVpZ2h0PScxMCc+CiAgPHJlY3Qgd2lkdGg9JzEwJyBoZWlnaHQ9JzEwJyBmaWxsPScjZmZmJyAvPgogIDxjaXJjbGUgY3g9IjEiIGN5PSIxIiByPSIxIiBmaWxsPSIjMDAwIi8+Cjwvc3ZnPg=="
+	        x="0" y="0" width="10" height="10">
+	      </image>
+	    </pattern>
+
+	    <pattern id="ANT" patternUnits="userSpaceOnUse" width="1024" height="1024" patternTransform="translate(-512, 128) scale(0.2, 0.2) ">
+	    	<image xlink:href="/github.com/janpfeifer/hiveGo/images/Ant.png" width="1024" height="1024"></image>
+	    </pattern>
+
+       <pattern id="img1" patternUnits="userSpaceOnUse" width="100%" height="650">
+            <image class='twombly' xlink:href="http://gastv.mx/wp-content/uploads/2014/05/jumex.jpg" x="-30" y="-30"
+                width="380" height="267" />
+        </pattern>
+
+    </defs>		
+	</svg>
+    <script src="web_ui.js"></script>
+    <script>
+    	//document.getElementById("canvas").addEventListener("wheel", // function(e){
+    	//	alert("Hello: "+e);
+		//});
+    </script>
+</body>
+</html>
