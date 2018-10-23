@@ -175,7 +175,8 @@ func (cn *cacheNode) RecursivelyClearScores(mcts *mctsSearcher) {
 	}
 }
 
-// Sample picks the next step. If using UCT, simply picks the one with
+// Sample picks the next step, with probability weighted
+// by expected score. If using UCT, simply picks the one with
 // highest upper bound.
 func (cn *cacheNode) Sample(mcts *mctsSearcher) int {
 	cn.mu.Lock()
@@ -361,10 +362,19 @@ func (mcts *mctsSearcher) Search(b *Board) (
 			glog.Infoln("")
 		}
 	}
-	bestIdx, bestScore := cn.FindBestScore(mcts)
 
-	glog.V(1).Infof("Estimated best score: %.2f", bestScore)
-	return cn.actions[bestIdx], cn.newBoards[bestIdx], bestScore
+	var actionIdx int
+	var actionScore float32
+	if mcts.useUCT {
+		actionIdx, actionScore = cn.FindBestScore(mcts)
+		glog.V(1).Infof("Estimated best score: %.2f", actionScore)
+	} else {
+		actionIdx = cn.Sample(mcts)
+		actionScore = cn.EstimatedScore(mcts, actionIdx)
+		glog.V(1).Infof("Estimated action score: %.2f", actionScore)
+	}
+
+	return cn.actions[actionIdx], cn.newBoards[actionIdx], actionScore
 }
 
 // runMCTS runs MCTS for the given specifications on the cacheNode.
