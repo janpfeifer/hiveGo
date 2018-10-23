@@ -1,3 +1,6 @@
+// This file contains the functions that check if a match position
+// is repeated, and a cache of previous states of matches, to accelerate
+// search in some cases.
 package state
 
 import (
@@ -7,7 +10,7 @@ import (
 	"sort"
 )
 
-// PosStack represents a positoin and the stack of pieces in the position.
+// PosStack represents a position and the stack of pieces in the position.
 type PosStack struct {
 	Pos   Pos
 	Stack EncodedStack

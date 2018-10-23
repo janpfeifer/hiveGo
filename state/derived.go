@@ -11,16 +11,19 @@ var _ = fmt.Printf
 
 // Derived holds information that is generated from the Board state.
 type Derived struct {
-	// Hash of the Board. Usually unique, but not guaranteed.
-	Hash uint64
-
 	// Number of times this exact same board has been seen earlier in the Match.
 	Repeats uint8
 
 	// Limits of the pieces on board.
 	MinX, MaxX, MinY, MaxY int8
 
-	// Normalized (shifted) and sorted list of positions occupied.
+	// Hash of the Board. Usually unique, but not guaranteed.
+	// One of the things that the Hash doesn't cover if the previous state
+	// in the same match.
+	Hash uint64
+
+	// Normalized (shifted) and sorted list of positions occupied. Used by hash
+	// calculation.
 	NormalizedPosStackSlice PosStackSlice
 
 	// Information about both players.
