@@ -40,7 +40,7 @@ func rescore(matches []*Match) {
 // trainFromExamples: only player[0] is trained.
 func trainFromExamples(labeledExamples []ai.LabeledExample) {
 	learningRate := float32(*flag_learningRate)
-	glog.V(1).Infof("len(LabeledExamples)=%d", len(labeledExamples))
+	log.Printf("Number of labeled examples: %d", len(labeledExamples))
 	loss := players[0].Learner.Learn(learningRate, labeledExamples, 0)
 	log.Printf("  Loss before train loop: %.2f", loss)
 	if *flag_trainLoops > 0 {
