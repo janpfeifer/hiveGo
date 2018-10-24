@@ -108,6 +108,38 @@ func CreateSVG(elemType string, attrs Attrs) *js.Object {
 	return elem
 }
 
+func ZoomOnWheel(e jquery.Event) {
+	wheelEvent := e.Object.Get("originalEvent")
+	scrollAmount := wheelEvent.Get("deltaY").Float()
+	ui.Scale = ui.Scale * math.Pow(1.1, scrollAmount/50.0)
+	OnChangeOfUIParams()
+}
+
+// Variables that control the drag of the board.
+var (
+	DragStarted  = false
+	DragX, DragY int
+)
+
+func DragOnMouseDown(e jquery.Event) {
+	DragStarted = true
+	DragX, DragY = e.PageX, e.PageY
+}
+
+func DragOnMouseUp(e jquery.Event) {
+	DragStarted = false
+}
+
+func DragOnMouseMove(e jquery.Event) {
+	if DragStarted {
+		deltaX, deltaY := e.PageX-DragX, e.PageY-DragY
+		ui.ShiftX += float64(deltaX)
+		ui.ShiftY += float64(deltaY)
+		DragX, DragY = e.PageX, e.PageY
+		OnChangeOfUIParams()
+	}
+}
+
 func Alert(msg string) {
 	js.Global.Call("alert", msg)
 }
@@ -126,39 +158,16 @@ func main() {
 	ui.Scale = 2.0
 	OnChangeOfUIParams()
 
-	// circle := CreateSVG("circle", Attrs{
-	// 	"cx": "50%", "cy": "50%", "r": 40, "stroke": "green", "stroke-width": 4, "fill": "yellow"})
-	// canvas.Append(circle)
+	canvas.On("wheel", ZoomOnWheel)
+	canvas.On(jquery.MOUSEDOWN, DragOnMouseDown)
+	canvas.On(jquery.MOUSEUP, DragOnMouseUp)
+	canvas.On(jquery.MOUSEMOVE, DragOnMouseMove)
 
-	// hex := Hexagon(400, 250, 100, Attrs{
-	// 	"stroke": "green", "stroke-width": 4,
-	// 	// "fill":       "yellow",
-	// 	"fill": "url(#ANT)",
-	// })
-	// canvas.Append(hex)
-
-	//fmt.Printf("%v\n", js.Keys(canvasObj))
-
-	// canvasObj.Call("addEventListener", "wheel", js.MakeFunc(func(this *js.Object, args []*js.Object) interface{} {
-	// 	fmt.Printf("num args=%d\n", len(args))
-	// 	e := args[0]
-	// 	fmt.Printf("%v\n", js.Keys(e))
-	// 	fmt.Printf("%s\n", e.Get("deltaY").String())
-	// 	return nil
-	// }))
-
-	canvas.On("wheel", func(e jquery.Event) {
-		// HexMoveTo(hex, 200, 200, 15)
-		wheelEvent := e.Object.Get("originalEvent")
-		scrollAmount := wheelEvent.Get("deltaY").Float()
-		ui.Scale = ui.Scale * math.Pow(1.1, scrollAmount/50.0)
-		print(ui.Scale)
-		OnChangeOfUIParams()
-	})
-
-	action := state.Action{
-		Move:      false,
-		Piece:     state.ANT,
-		TargetPos: state.Pos{0, 0}}
-	Place(0, action)
+	for ii := state.ANT; ii < state.LAST_PIECE_TYPE; ii++ {
+		action := state.Action{
+			Move:      false,
+			Piece:     ii,
+			TargetPos: state.Pos{int8(ii) - 3, 0}}
+		Place(int(ii)%2, action)
+	}
 }

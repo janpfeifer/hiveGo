@@ -17,7 +17,11 @@ var (
 	piecesOnBoard = make(map[state.Pos][]*PieceOnBoard)
 )
 
+const PieceDrawingScale = 1.2
+
 type PieceOnBoard struct {
+	Player    int
+	Piece     state.Piece
 	Hex, Rect *js.Object
 }
 
@@ -70,7 +74,8 @@ func (pob *PieceOnBoard) MoveTo(pos state.Pos, stackPos int) {
 	SetAttrs(pob.Hex, attrs)
 
 	// Move rectangle.
-	rectSize := face * 1.22
+	//rectSize := face * 1.22
+	rectSize := face * 1.22 * PieceDrawingScale
 	attrs = Attrs{
 		"x": xc - rectSize/2.0, "y": yc - rectSize/2.0,
 		"width": rectSize, "height": rectSize,
@@ -80,7 +85,8 @@ func (pob *PieceOnBoard) MoveTo(pos state.Pos, stackPos int) {
 
 func OnChangeOfUIParams() {
 	// Scale papterns.
-	scale := 0.04 * ui.Scale
+	//scale := 0.04 * ui.Scale
+	scale := 0.04 * ui.Scale * PieceDrawingScale
 	for _, image := range boardPiecesImages {
 		SetAttrs(image, Attrs{
 			"width":  scale * 1024,
@@ -102,16 +108,26 @@ func OnChangeOfUIParams() {
 func Place(player int, action state.Action) {
 	pos := action.TargetPos
 	stack := piecesOnBoard[pos]
+	var color string
+	if player == 0 {
+		color = "cornsilk"
+	} else {
+		color = "darkkhaki"
+	}
 	pob := &PieceOnBoard{
+		Player: player,
+		Piece:  action.Piece,
 		Hex: CreateSVG("polygon", Attrs{
 			"stroke":       "black",
 			"stroke-width": 2.0 * ui.Scale,
-			"fill-opacity": 0.0,
+			"fill":         color,
+			"fill-opacity": 1.0,
 		}),
 		Rect: CreateSVG("rect", Attrs{
-			"stroke":       "black",
-			"stroke-width": 1.0,
-			"fill":         fmt.Sprintf("url(#%s)", PieceToPatternId(action.Piece)),
+			"stroke":         "black",
+			"stroke-width":   0,
+			"fill":           fmt.Sprintf("url(#%s)", PieceToPatternId(action.Piece)),
+			"pointer-events": "none",
 		}),
 	}
 	pob.MoveTo(pos, len(stack))
