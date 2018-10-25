@@ -53,8 +53,8 @@ var ui *UIParams
 func NewUIParams() *UIParams {
 	ui := &UIParams{
 		PixelRatio: window.Get("devicePixelRatio").Float(),
-		Width:      jq(window).InnerWidth(),
-		Height:     jq(window).InnerHeight(),
+		Width:      canvas.InnerWidth(),
+		Height:     canvas.InnerHeight(),
 		Scale:      1.0,
 		ShiftX:     0,
 		ShiftY:     0,
@@ -108,6 +108,7 @@ func CreateSVG(elemType string, attrs Attrs) *js.Object {
 	return elem
 }
 
+// Control Zooming of board.
 func ZoomOnWheel(e jquery.Event) {
 	wheelEvent := e.Object.Get("originalEvent")
 	scrollAmount := wheelEvent.Get("deltaY").Float()
@@ -140,6 +141,32 @@ func DragOnMouseMove(e jquery.Event) {
 	}
 }
 
+// Place where available pieces are displayed.
+var (
+	BoardGroup    jquery.JQuery
+	OffBoardRects [2]*js.Object
+)
+
+func createBoardRects() {
+	BoardGroup = jq(CreateSVG("g", Attrs{
+		"x":      0,
+		"y":      0,
+		"width":  "100%",
+		"height": "100%",
+	}))
+	canvas.Append(BoardGroup)
+
+	for ii := 0; ii < 2; ii++ {
+		OffBoardRects[ii] = CreateSVG("rect", Attrs{
+			"stroke":       "firebrick",
+			"stroke-width": 3.0,
+			"fill":         "moccasin",
+		})
+		canvas.Append(OffBoardRects[ii])
+	}
+}
+
+// Tools
 func Alert(msg string) {
 	js.Global.Call("alert", msg)
 }
@@ -148,20 +175,51 @@ func GetDocumentById(id string) *js.Object {
 	return document.Call("getElementById", id)
 }
 
-func main() {
+func OnCanvasResize() {
+	ui.Width = canvas.InnerWidth()
+	ui.Height = canvas.InnerHeight()
 
+	// OffBoard space.
+	offboardHeight := int(128.0 * ui.PixelRatio)
+	if ui.Height < 3*offboardHeight {
+		ui.Height = 3 * offboardHeight
+	}
+	SetAttrs(OffBoardRects[0], Attrs{
+		"x": 0, "y": 0,
+		"width":  ui.Width,
+		"height": offboardHeight,
+	})
+	SetAttrs(OffBoardRects[1], Attrs{
+		"x": 0, "y": ui.Height - offboardHeight,
+		"width":  ui.Width,
+		"height": offboardHeight,
+	})
+
+	// Adjust all elements on page.
+	OnChangeOfUIParams()
+}
+
+func OnChangeOfUIParams() {
+	PiecesOnChangeOfUIParams()
+}
+
+func main() {
 	//show jQuery Version on console:
 	print("Your current jQuery version is: " + jq().Jquery)
+
+	// Create board parts.
+	createBoardRects()
 
 	// Create UIParams.
 	ui = NewUIParams()
 	ui.Scale = 2.0
-	OnChangeOfUIParams()
+	OnCanvasResize()
 
 	canvas.On("wheel", ZoomOnWheel)
 	canvas.On(jquery.MOUSEDOWN, DragOnMouseDown)
 	canvas.On(jquery.MOUSEUP, DragOnMouseUp)
 	canvas.On(jquery.MOUSEMOVE, DragOnMouseMove)
+	jq(window).On(jquery.RESIZE, OnCanvasResize)
 
 	for ii := state.ANT; ii < state.LAST_PIECE_TYPE; ii++ {
 		action := state.Action{

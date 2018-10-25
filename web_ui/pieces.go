@@ -10,8 +10,10 @@ import (
 
 var (
 	// Patterns for pieces.
-	boardPiecesPatterns []*js.Object
-	boardPiecesImages   []*js.Object
+	boardPiecesPatterns    []*js.Object
+	boardPiecesImages      []*js.Object
+	OffBoardPiecesPatterns []*js.Object
+	OffBoardPiecesImages   []*js.Object
 
 	// Map of all pieces currently on board.
 	piecesOnBoard = make(map[state.Pos][]*PieceOnBoard)
@@ -25,21 +27,33 @@ type PieceOnBoard struct {
 	Hex, Rect *js.Object
 }
 
-func PieceToPatternId(p state.Piece) string {
-	return fmt.Sprintf("board_%s", state.PieceNames[p])
+const (
+	BOARD    = "board_"
+	OFFBOARD = "offboard_"
+)
+
+func PieceToPatternId(prefix string, p state.Piece) string {
+	return prefix + state.PieceNames[p]
 }
 
 func init() {
+	boardPiecesPatterns, boardPiecesImages =
+		createPiecesPatternsAndImages(BOARD)
+	OffBoardPiecesPatterns, OffBoardPiecesImages =
+		createPiecesPatternsAndImages(OFFBOARD)
+}
+
+func createPiecesPatternsAndImages(prefix string) (patterns []*js.Object, images []*js.Object) {
 	for ii := state.ANT; ii < state.LAST_PIECE_TYPE; ii++ {
 		pattern := CreateSVG("pattern", Attrs{
-			"id":           PieceToPatternId(ii),
+			"id":           PieceToPatternId(prefix, ii),
 			"patternUnits": "objectBoundingBox",
 			"width":        "1.0",
 			"height":       "1.0",
 			"x":            "0",
 			"y":            "0",
 		})
-		boardPiecesPatterns = append(boardPiecesPatterns, pattern)
+		patterns = append(patterns, pattern)
 		image := CreateSVG("image", Attrs{
 			"href": fmt.Sprintf(
 				"/github.com/janpfeifer/hiveGo/images/%s.png",
@@ -47,10 +61,11 @@ func init() {
 			"width":  1024,
 			"height": 1024,
 		})
-		boardPiecesImages = append(boardPiecesImages, image)
+		images = append(images, image)
 		jq(pattern).Append(image)
 		svgDefs.Append(pattern)
 	}
+	return patterns, images
 }
 
 func (pob *PieceOnBoard) MoveTo(pos state.Pos, stackPos int) {
@@ -83,7 +98,7 @@ func (pob *PieceOnBoard) MoveTo(pos state.Pos, stackPos int) {
 	SetAttrs(pob.Rect, attrs)
 }
 
-func OnChangeOfUIParams() {
+func PiecesOnChangeOfUIParams() {
 	// Scale papterns.
 	//scale := 0.04 * ui.Scale
 	scale := 0.04 * ui.Scale * PieceDrawingScale
@@ -126,15 +141,15 @@ func Place(player int, action state.Action) {
 		Rect: CreateSVG("rect", Attrs{
 			"stroke":         "black",
 			"stroke-width":   0,
-			"fill":           fmt.Sprintf("url(#%s)", PieceToPatternId(action.Piece)),
+			"fill":           fmt.Sprintf("url(#%s)", PieceToPatternId(BOARD, action.Piece)),
 			"pointer-events": "none",
 		}),
 	}
 	pob.MoveTo(pos, len(stack))
 	piecesOnBoard[pos] = append(stack, pob)
 
-	canvas.Append(pob.Hex)
-	canvas.Append(pob.Rect)
+	BoardGroup.Append(pob.Hex)
+	BoardGroup.Append(pob.Rect)
 	jq(pob.Rect).On(jquery.MOUSEUP, func(e jquery.Event) {
 		fmt.Printf("IsPropagationStopped=%v\n", e.IsPropagationStopped())
 	})
