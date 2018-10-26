@@ -55,7 +55,7 @@ func NewUIParams() *UIParams {
 		PixelRatio: window.Get("devicePixelRatio").Float(),
 		Width:      canvas.InnerWidth(),
 		Height:     canvas.InnerHeight(),
-		Scale:      1.0,
+		Scale:      window.Get("devicePixelRatio").Float(),
 		ShiftX:     0,
 		ShiftY:     0,
 	}
@@ -66,6 +66,11 @@ func NewUIParams() *UIParams {
 // UI configuration.
 func (ui *UIParams) Face() float64 {
 	return STANDARD_FACE * ui.Scale
+}
+
+// OffBoard height for UI.
+func (ui *UIParams) OffBoardHeight() int {
+	return int(128.0 * ui.PixelRatio)
 }
 
 // hexTriangleHeight returns the height of the triangles that make up for an hexagon, given the face lenght.
@@ -143,8 +148,9 @@ func DragOnMouseMove(e jquery.Event) {
 
 // Place where available pieces are displayed.
 var (
-	BoardGroup    jquery.JQuery
-	OffBoardRects [2]*js.Object
+	BoardGroup     jquery.JQuery
+	OffBoardGroups [2]jquery.JQuery
+	OffBoardRects  [2]*js.Object
 )
 
 func createBoardRects() {
@@ -157,12 +163,19 @@ func createBoardRects() {
 	canvas.Append(BoardGroup)
 
 	for ii := 0; ii < 2; ii++ {
+		OffBoardGroups[ii] = jq(CreateSVG("g", Attrs{
+			"x":      0,
+			"y":      0,
+			"width":  "100%",
+			"height": "100%",
+		}))
+		canvas.Append(OffBoardGroups[ii])
 		OffBoardRects[ii] = CreateSVG("rect", Attrs{
 			"stroke":       "firebrick",
 			"stroke-width": 3.0,
 			"fill":         "moccasin",
 		})
-		canvas.Append(OffBoardRects[ii])
+		OffBoardGroups[ii].Append(OffBoardRects[ii])
 	}
 }
 
@@ -180,7 +193,7 @@ func OnCanvasResize() {
 	ui.Height = canvas.InnerHeight()
 
 	// OffBoard space.
-	offboardHeight := int(128.0 * ui.PixelRatio)
+	offboardHeight := ui.OffBoardHeight()
 	if ui.Height < 3*offboardHeight {
 		ui.Height = 3 * offboardHeight
 	}
@@ -194,6 +207,7 @@ func OnCanvasResize() {
 		"width":  ui.Width,
 		"height": offboardHeight,
 	})
+	AdjustOffBoardPieces()
 
 	// Adjust all elements on page.
 	OnChangeOfUIParams()
@@ -203,16 +217,23 @@ func OnChangeOfUIParams() {
 	PiecesOnChangeOfUIParams()
 }
 
+// Game information.
+var (
+	board *state.Board
+)
+
 func main() {
 	//show jQuery Version on console:
 	print("Your current jQuery version is: " + jq().Jquery)
 
 	// Create board parts.
-	createBoardRects()
+	board = state.NewBoard()
 
 	// Create UIParams.
 	ui = NewUIParams()
 	ui.Scale = 2.0
+	createBoardRects()
+	PlaceOffBoardPieces(board)
 	OnCanvasResize()
 
 	canvas.On("wheel", ZoomOnWheel)
@@ -226,6 +247,6 @@ func main() {
 			Move:      false,
 			Piece:     ii,
 			TargetPos: state.Pos{int8(ii) - 3, 0}}
-		Place(int(ii)%2, action)
+		Place(uint8(ii)%2, action)
 	}
 }

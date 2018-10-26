@@ -348,6 +348,9 @@ var (
 		// NumSingle -> 2
 		-0.2442, 0.3755,
 
+		// QueenIsCovered -> 2
+		-10, 10,
+
 		// Bias -> 1
 		-0.7409,
 	}
