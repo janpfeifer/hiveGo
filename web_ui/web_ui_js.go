@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"log"
 	"math"
 
 	"github.com/gopherjs/gopherjs/js"
@@ -25,7 +27,7 @@ var (
 	window    = js.Global
 	document  = js.Global.Get("document")
 	canvas    = jq(CANVAS_SVG)
-	canvasObj = canvas.Underlying().Index(0)
+	canvasObj = Obj(canvas)
 	svgDefs   = jq(SVG_DEFS)
 )
 
@@ -52,7 +54,11 @@ var ui *UIParams
 
 func NewUIParams() *UIParams {
 	ui := &UIParams{
-		PixelRatio: window.Get("devicePixelRatio").Float(),
+		// PixelRatio should be set to window.Get("devicePixelRatio").Float(),
+		// but at least on PixelBook, the browser already zoom things to
+		// the PixelRatio without us needing to do anything. So fixed to 1.
+		// for now.
+		PixelRatio: 1.0,
 		Width:      canvas.InnerWidth(),
 		Height:     canvas.InnerHeight(),
 		Scale:      window.Get("devicePixelRatio").Float(),
@@ -171,11 +177,23 @@ func createBoardRects() {
 		}))
 		canvas.Append(OffBoardGroups[ii])
 		OffBoardRects[ii] = CreateSVG("rect", Attrs{
-			"stroke":       "firebrick",
-			"stroke-width": 3.0,
-			"fill":         "moccasin",
+			"stroke": "firebrick",
+			"fill":   "moccasin",
 		})
 		OffBoardGroups[ii].Append(OffBoardRects[ii])
+	}
+	MarkNextPlayer()
+}
+
+func MarkNextPlayer() {
+	for ii := uint8(0); ii < state.NUM_PLAYERS; ii++ {
+		width := 2.0 * ui.PixelRatio
+		if board.NextPlayer == ii {
+			width = 6 * ui.PixelRatio
+		}
+		SetAttrs(OffBoardRects[ii], Attrs{
+			"stroke-width": width,
+		})
 	}
 }
 
@@ -207,6 +225,7 @@ func OnCanvasResize() {
 		"width":  ui.Width,
 		"height": offboardHeight,
 	})
+	MarkNextPlayer()
 	AdjustOffBoardPieces()
 
 	// Adjust all elements on page.
@@ -215,12 +234,39 @@ func OnCanvasResize() {
 
 func OnChangeOfUIParams() {
 	PiecesOnChangeOfUIParams()
+	SelectionsOnChangeOfUIParams()
+}
+
+func Obj(jo jquery.JQuery) *js.Object {
+	return jo.Underlying().Index(0)
 }
 
 // Game information.
 var (
 	board *state.Board
 )
+
+func ExecuteAction(action state.Action) {
+	board = board.Act(action)
+	if board.IsFinished() {
+		fmt.Printf("Animate end of game.")
+		return
+	}
+	if len(board.Derived.Actions) == 0 {
+		// Auto-execute skip action.
+		if action.Piece == state.NO_PIECE {
+			// Two skip actions in a row.
+			log.Fatal("No moves avaialble to either players !?")
+			return
+		}
+		// Recurse to a skip action.
+		ExecuteAction(state.Action{Piece: state.NO_PIECE})
+		return
+	}
+
+	// Select next player.
+	MarkNextPlayer()
+}
 
 func main() {
 	//show jQuery Version on console:
@@ -231,7 +277,6 @@ func main() {
 
 	// Create UIParams.
 	ui = NewUIParams()
-	ui.Scale = 2.0
 	createBoardRects()
 	PlaceOffBoardPieces(board)
 	OnCanvasResize()
@@ -242,6 +287,9 @@ func main() {
 	canvas.On(jquery.MOUSEMOVE, DragOnMouseMove)
 	jq(window).On(jquery.RESIZE, OnCanvasResize)
 
+}
+
+func ExamplePieces() {
 	for ii := state.ANT; ii < state.LAST_PIECE_TYPE; ii++ {
 		action := state.Action{
 			Move:      false,
