@@ -36,6 +36,16 @@ And since the Go code that runs the game can also run in compiled javascript, th
 
 **TODO**: Convert the TensorFlow model to [TensorFlow.js](https://github.com/tensorflow/tfjs), so we can get good models also running on the client browser.
 
+## Trainer
+
+Allows playing games among AI's automatically. 
+
+* Play new games. Optionally save the games.
+* Load and rescore old games.
+* Compare AIs
+* Train models while playing the game.
+* Can train TF models.
+
 ## Note
 
 Thanks for Florence Poirel for the awesome drawings!
