@@ -16,7 +16,9 @@ var (
 	OffBoardPiecesImages   []*js.Object
 
 	// Map of all pieces currently on board.
-	piecesOnBoard = make(map[state.Pos][]*PieceOnScreen)
+	piecesOnBoard      = make(map[state.Pos][]*PieceOnScreen)
+	piecesOnBoardStack []*PieceOnScreen
+	piecesOnBoardIndex = 0
 )
 
 const (
@@ -29,6 +31,7 @@ const (
 type PieceOnScreen struct {
 	Index     int
 	Player    uint8
+	StackPos  int
 	Piece     state.Piece
 	Hex, Rect jquery.JQuery
 }
@@ -165,6 +168,7 @@ func Place(player uint8, action state.Action) {
 	pos := action.TargetPos
 	stack := piecesOnBoard[pos]
 	pons := &PieceOnScreen{
+		Index:  piecesOnBoardIndex,
 		Player: player,
 		Piece:  action.Piece,
 		Hex: jq(CreateSVG("polygon", Attrs{
@@ -184,9 +188,31 @@ func Place(player uint8, action state.Action) {
 	}
 	pons.MoveTo(pos, len(stack))
 	piecesOnBoard[pos] = append(stack, pons)
+	stackPos := len(stack)
+	piecesOnBoardIndex++
 
-	BoardGroup.Append(pons.Hex)
-	BoardGroup.Append(pons.Rect)
+	// Make sure new piece is under other pieces that are higher.
+	var ponsAbove *PieceOnScreen
+	for _, pieces := range piecesOnBoard {
+		if len(pieces) > stackPos+1 {
+			for _, tmpPons := range pieces[stackPos+1 : len(pieces)] {
+				if ponsAbove == nil || tmpPons.Index < ponsAbove.Index {
+					ponsAbove = tmpPons
+				}
+			}
+		}
+	}
+	if ponsAbove == nil || true {
+		fmt.Printf("Appending piece: %v\n", pons.Hex)
+		BoardGroup.Append(pons.Hex)
+		BoardGroup.Append(pons.Rect)
+	} else {
+		fmt.Printf("Inserting piece before another: %v\n", ponsAbove)
+		pons.Hex.InsertBefore(ponsAbove.Hex)
+		pons.Rect.InsertBefore(ponsAbove.Hex)
+	}
+
+	// Connect click to selection.
 	pons.Hex.On(jquery.MOUSEUP, func(e jquery.Event) {
 		pons.OnSelectOnBoard(pos)
 	})
