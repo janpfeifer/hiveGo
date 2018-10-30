@@ -14,15 +14,28 @@ Hopefully this should work on linux box with Go properly installed:
     go install github/janpfeifer/hiveGo && hiveGo
 ```
 
-## GUI interface
+## Gnome Version
 
-In the works.
+Easy to build in XWindows -- well, more or less, depending on the dependencies working out fine. Probably one could compile it in windows as well ... 
 
 ```
     go get github/janpfeifer/hiveGo
-    go install github/janpfeifer/hiveGo/gnome-hive && gnome-hive
+    go install github/janpfeifer/hiveGo/gnome-hive && \
+      gnome-hive -p1=ai -ai=ab,max_depth=1 --vmodule=main=1,alpha_beta_pruning=1,linear_scorer=1 --logtostderr
 ```
+
+## Web Version
+
+The Gnome version works nicely ... but asking anyone to install it is cruel. And I wouldn't want to distribute a binary -- then I would have to try to compile everything staticly.
+
+So instead, why not a web version ... duh, I should have done this first, but I wanted to try out coding for Gnome.
+
+Anyway, GopherJS, a compiler of Go to js, made this very easy. SVG + JQuery libraries for GopherJS are not well documented ... so it took a little while to learn the ropes ... but the nice thing is: it all work on the web.
+
+And since the Go code that runs the game can also run in compiled javascript, the whole game runs on the machine -> **TODO**: provide a link to a static version.
+
+**TODO**: Convert the TensorFlow model to [TensorFlow.js](https://github.com/tensorflow/tfjs), so we can get good models also running on the client browser.
 
 ## Note
 
-Thanks for Florence Poirrel for the awesome drawings, for the upcoming GUI.
+Thanks for Florence Poirel for the awesome drawings!
