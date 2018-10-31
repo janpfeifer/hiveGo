@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"math"
 
@@ -188,11 +187,57 @@ func createBoardRects() {
 func MarkNextPlayer() {
 	for ii := uint8(0); ii < state.NUM_PLAYERS; ii++ {
 		width := 2.0 * ui.PixelRatio
-		if board.NextPlayer == ii {
-			width = 6 * ui.PixelRatio
+		stroke := "firebrick"
+		if board.IsFinished() {
+			if board.Draw() || board.Winner() == ii {
+				stroke = "url(#colors)"
+				width = 12 * ui.PixelRatio
+			}
+		} else {
+			if board.NextPlayer == ii {
+				width = 6 * ui.PixelRatio
+			}
 		}
 		SetAttrs(OffBoardRects[ii], Attrs{
 			"stroke-width": width,
+			"stroke":       stroke,
+		})
+	}
+}
+
+var (
+	HasEndGameMessage = false
+	EndGameMessage    jquery.JQuery
+)
+
+func ShowEndGameMessage(text string) {
+	EndGameMessage = jq(CreateSVG("text", Attrs{
+		"id":                 "end_game_message",
+		"fill":               "url(#colors)",
+		"class":              "end_game_message_class",
+		"alignment-baseline": "middle",
+		"text-anchor":        "middle",
+		"pointer-events":     "none",
+	}))
+	EndGameMessage.Append(text)
+	canvas.Append(EndGameMessage)
+	HasEndGameMessage = true
+	AdjustEndGameMessagePosition()
+}
+
+func AdjustEndGameMessagePosition() {
+	if HasEndGameMessage {
+		var y float64
+		if board.Draw() {
+			y = float64(ui.Height) / 2.0
+		} else if board.Winner() == 0 {
+			y = float64(ui.OffBoardHeight()) + 50*ui.PixelRatio
+		} else {
+			y = float64(ui.Height-ui.OffBoardHeight()) - 50*ui.PixelRatio
+		}
+		SetAttrs(Obj(EndGameMessage), Attrs{
+			"x": ui.Width / 2.0,
+			"y": y,
 		})
 	}
 }
@@ -227,6 +272,7 @@ func OnCanvasResize() {
 	})
 	MarkNextPlayer()
 	AdjustOffBoardPieces()
+	AdjustEndGameMessagePosition()
 
 	// Adjust all elements on page.
 	OnChangeOfUIParams()
@@ -249,9 +295,19 @@ var (
 func ExecuteAction(action state.Action) {
 	board = board.Act(action)
 	if board.IsFinished() {
-		fmt.Printf("Animate end of game.")
+		MarkNextPlayer()
+		var msg string
+		if board.Draw() {
+			msg = "Draw !!!"
+		} else if board.Winner() == 0 {
+			msg = "Top Player Wins !!!"
+		} else {
+			msg = "Bottom Player Wins !!!"
+		}
+		ShowEndGameMessage(msg)
 		return
 	}
+
 	if len(board.Derived.Actions) == 0 {
 		// Auto-execute skip action.
 		if action.Piece == state.NO_PIECE {

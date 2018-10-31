@@ -49,3 +49,7 @@ Allows playing games among AI's automatically.
 ## Note
 
 Thanks for Florence Poirel for the awesome drawings!
+
+Background pictures:
+* Winning pattern from [pexels.com/light-creative-abstract-colorful-134](https://www.pexels.com/photo/light-creative-abstract-colorful-134/)
+

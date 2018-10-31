@@ -8,6 +8,7 @@
 	  integrity="sha256-BbhdlvQf/xTY9gja0Dq3HiwQF8LaCRTXxZKRutelT44="
 	  crossorigin="anonymous"></script>
 	  <link rel="icon" href="/github.com/janpfeifer/hiveGo/images/Icon.png"/>
+	  <link href="https://fonts.googleapis.com/css?family=Indie+Flower" rel="stylesheet">
 <style>
 .fullscreen {
   position: fixed;
@@ -22,11 +23,22 @@
   overflow: auto;
   margin: 0px 0px;
 }
+.end_game_message_class { 
+	font-size: 65px;
+	font-family: 'Indie Flower', cursive;
+	font-style: italic;
+	font-weight: bold;
+	user-select: none;
+}
 </style>
 </head>	
 <body>
 	<svg id="canvas" class="fullscreen" style="background: #F0F0F0;">
-    <defs id="svgdefs"></defs>		
+    <defs id="svgdefs">
+		<pattern id="colors" x="0" y="0" width="1024" height="587" patternUnits="userSpaceOnUse">
+    		<image href="/github.com/janpfeifer/hiveGo/images/colors.png" with="1024" height="587"></image>
+    	</pattern>
+    </defs>		
 	</svg>
     <script src="web_ui.js"></script>
 </body>
