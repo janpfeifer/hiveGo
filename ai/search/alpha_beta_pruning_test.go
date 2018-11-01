@@ -19,7 +19,7 @@ type PieceLayout struct {
 	piece  Piece
 }
 
-var scorer = ai.ManualV0
+var scorer = ai.TrainedBest
 
 func buildBoard(layout []PieceLayout) (b *Board) {
 	b = NewBoard()
@@ -45,7 +45,7 @@ func listMovesForPiece(b *Board, piece Piece, pos Pos) (poss []Pos) {
 func printBoard(b *Board) {
 	ui := ascii_ui.NewUI(true, false)
 	ui.PrintBoard(b)
-	ai.PrettyPrintFeatures(ai.FeatureVector(b))
+	ai.PrettyPrintFeatures(ai.FeatureVector(b, ai.AllFeaturesDim))
 }
 
 func TestEndGameMove(t *testing.T) {
@@ -64,7 +64,7 @@ func TestEndGameMove(t *testing.T) {
 	board.NextPlayer = 1
 	board.BuildDerived()
 
-	action, _, score := AlphaBeta(board, scorer, 2)
+	action, _, score := AlphaBeta(board, scorer, 2, false)
 	want := Action{Move: true, Piece: GRASSHOPPER, SourcePos: Pos{-2, 2}, TargetPos: Pos{0, 1}}
 	if !reflect.DeepEqual(want, action) {
 		printBoard(board)

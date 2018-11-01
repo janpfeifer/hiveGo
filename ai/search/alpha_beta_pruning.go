@@ -22,7 +22,7 @@ func printBoard(b *Board) {
 // Alpha Beta Pruning algorithm
 // See: wikipedia.org/wiki/Alpha-beta_pruning
 //
-// TODO: Iterative deepening, princiapal variation estimation of scores.
+// TODO: Iterative deepening, principal variation estimation of scores.
 //
 // Args:
 //    board: current board
@@ -140,7 +140,7 @@ func (ab *alphaBetaSearcher) Search(b *Board) (action Action, board *Board, scor
 	return AlphaBeta(b, ab.scorer, ab.maxDepth, ab.parallelized)
 }
 
-// NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPrunning.
+// NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPruning.
 func NewAlphaBetaSearcher(maxDepth int, parallelized bool, scorer ai.BatchScorer) Searcher {
 	return &alphaBetaSearcher{maxDepth: maxDepth, parallelized: parallelized, scorer: scorer}
 }
