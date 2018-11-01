@@ -62,8 +62,6 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 	bestScore = alpha
 	bestBoard = nil
 	bestAction = Action{}
-
-	// TODO: Sort actions according the expected score.
 	for ii := range actions {
 		if maxDepth > 1 && !newBoards[ii].IsFinished() {
 			// Runs alphaBeta for opponent player, so the alpha/beta are reversed.
@@ -102,8 +100,6 @@ func alphaBetaParallelized(board *Board, scorer ai.BatchScorer, maxDepth int, al
 	bestScore = alpha
 	bestBoard = nil
 	bestAction = Action{}
-
-	// TODO: Sort actions according the expected score.
 	for ii := range actions {
 		if maxDepth > 1 && !newBoards[ii].IsFinished() {
 			// Runs alphaBeta for opponent player, so the alpha/beta are reversed.

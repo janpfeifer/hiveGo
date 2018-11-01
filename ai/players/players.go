@@ -101,6 +101,7 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 	var maxTime time.Duration
 	maxTraverses := 200
 	useUCT := false
+	maxScore := float32(10.0)
 
 	randomness := 0.0
 	if value, ok := params["max_depth"]; ok {
@@ -112,7 +113,7 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 	}
 	if value, ok := params["randomness"]; ok {
 		delete(params, "randomness")
-		randomness, err := strconv.ParseFloat(value, 64)
+		randomness, err = strconv.ParseFloat(value, 64)
 		if err != nil || randomness <= 0.0 {
 			log.Panicf("Invalid AI value '%s' for randomness: %s", value, err)
 		}
@@ -140,6 +141,14 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 			parallelized = false // UCT doesnt' work parallelized (not yet at least)
 		}
 	}
+	if value, ok := params["max_score"]; ok {
+		delete(params, "max_score")
+		v64, err := strconv.ParseFloat(value, 64)
+		if err != nil || v64 <= 0.0 {
+			log.Panicf("Invalid max_score value '%s': %s", value, err)
+		}
+		maxScore = float32(v64)
+	}
 
 	if _, ok := params["mcts"]; ok {
 		delete(params, "mcts")
@@ -155,7 +164,8 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 			randomness = 0.5
 		}
 		searcher = search.NewMonteCarloTreeSearcher(
-			maxDepth, maxTime, maxTraverses, useUCT, model, randomness, parallelized)
+			maxDepth, maxTime, maxTraverses, useUCT, maxScore,
+			model, randomness, parallelized)
 	}
 	if _, ok := params["ab"]; ok {
 		delete(params, "ab")

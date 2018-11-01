@@ -27,6 +27,15 @@ type mctsSearcher struct {
 	maxTraverses int
 	useUCT       bool
 
+	// Number of boards and candidate nodes generated during a
+	// search: used for performance measures.
+	numBoards     int
+	numCacheNodes int
+
+	// For UCT, scores higher than that will stop the traverse, the victory
+	// or defeat is assumed a given.
+	maxScore float32
+
 	scorer       ai.BatchScorer
 	randomness   float64
 	priorBase    float32 // How much to weight the baseScore in comparison to MC samples.
@@ -37,13 +46,18 @@ type mctsSearcher struct {
 }
 
 // NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPrunning.
-func NewMonteCarloTreeSearcher(maxDepth int, maxTime time.Duration, maxTraverses int, useUCT bool,
+func NewMonteCarloTreeSearcher(maxDepth int, maxTime time.Duration,
+	maxTraverses int, useUCT bool, maxScore float32,
 	scorer ai.BatchScorer, randomness float64, parallelized bool) Searcher {
 	return &mctsSearcher{
 		maxDepth:     maxDepth,
 		maxTime:      maxTime,
 		maxTraverses: maxTraverses,
 		useUCT:       useUCT,
+		maxScore:     maxScore,
+
+		numBoards:     0,
+		numCacheNodes: 0,
 
 		scorer:       scorer,
 		randomness:   randomness,
@@ -81,7 +95,9 @@ type cacheNode struct {
 
 func newCacheNode(mcts *mctsSearcher, b *Board) *cacheNode {
 	cn := &cacheNode{board: b}
+	mcts.numCacheNodes++
 	cn.actions, cn.newBoards, cn.baseScores = ScoredActions(b, mcts.scorer)
+	mcts.numBoards += len(cn.newBoards)
 	cn.count = make([]int, len(cn.actions))
 	if mcts.useUCT {
 		cn.mctsScores = make([]float32, len(cn.actions))
@@ -104,8 +120,8 @@ func (cn *cacheNode) SetSoftmaxScoresFromBase(mcts *mctsSearcher) {
 	}
 }
 
-// UpdateBaseScores re-scores the boards according to a presumably updates scorer.
-// It is used by ScoreMatch with rescore=true.
+// UpdateBaseScores re-scores the boards according to a presumably
+// updated scorer. It is used by ScoreMatch with rescore=true.
 func (cn *cacheNode) UpdateBaseScores(mcts *mctsSearcher) {
 	cn.baseScores = make([]float32, len(cn.actions))
 	boardsToScore := make([]*Board, 0, len(cn.newBoards))
@@ -147,6 +163,8 @@ func (cn *cacheNode) Step(mcts *mctsSearcher, index int) *cacheNode {
 	if cn.cacheNodes[index] == nil {
 		cn.cacheNodes[index] = newCacheNode(mcts, cn.newBoards[index])
 	} else if cn.cacheNodes[index].baseScores == nil {
+		// If this is rescoring a previously already played match,
+		// the only thing missing will be rescorign the baseScores.
 		cn.cacheNodes[index].UpdateBaseScores(mcts)
 	}
 	return cn.cacheNodes[index]
@@ -176,8 +194,7 @@ func (cn *cacheNode) RecursivelyClearScores(mcts *mctsSearcher) {
 }
 
 // Sample picks the next step, with probability weighted
-// by expected score. If using UCT, simply picks the one with
-// highest upper bound.
+// by expected score. Not used if useUCT is set.
 func (cn *cacheNode) Sample(mcts *mctsSearcher) int {
 	cn.mu.Lock()
 	defer cn.mu.Unlock()
@@ -292,7 +309,7 @@ func (cn *cacheNode) UpperBoundScores(mcts *mctsSearcher) (scores []float32) {
 
 // Traverse traverses the game tree up to the given depth, and returns the
 // sampled (random MCTS) or expected (UCT) score.
-func (cn *cacheNode) Traverse(mcts *mctsSearcher, depth int) float32 {
+func (cn *cacheNode) Traverse(mcts *mctsSearcher, depth int, depthThresholded int) float32 {
 	if cn.baseScores == nil {
 		log.Panic("cn::Traverse(): cacheNode has no baseScores")
 	}
@@ -300,6 +317,15 @@ func (cn *cacheNode) Traverse(mcts *mctsSearcher, depth int) float32 {
 	// Sample/select according to current scores.
 	var ii int
 	if mcts.useUCT {
+		// Threshold at given max score.
+		if depth <= depthThresholded {
+			_, score := cn.FindBestScore(mcts)
+			if score > mcts.maxScore {
+				return score
+			} else if score < -mcts.maxScore {
+				return score
+			}
+		}
 		ii = cn.FindHighestUpperBound(mcts)
 	} else {
 		ii = cn.Sample(mcts)
@@ -311,7 +337,7 @@ func (cn *cacheNode) Traverse(mcts *mctsSearcher, depth int) float32 {
 
 	// Traverse down the sampled variation.
 	nextCN := cn.Step(mcts, ii)
-	score := -nextCN.Traverse(mcts, depth-1)
+	score := -nextCN.Traverse(mcts, depth-1, depthThresholded)
 
 	// Propagate back the score.
 	cn.mu.Lock()
@@ -334,11 +360,38 @@ func (cn *cacheNode) Traverse(mcts *mctsSearcher, depth int) float32 {
 	return score
 }
 
+func (mcts *mctsSearcher) measuredRunOnCN(cn *cacheNode) {
+	start := time.Now()
+	beforeCacheNodes := mcts.numCacheNodes
+	beforeBoards := mcts.numBoards
+
+	mcts.runOnCN(cn)
+
+	searchCacheNodes := mcts.numCacheNodes - beforeCacheNodes
+	searchBoards := mcts.numBoards - beforeBoards
+	glog.V(1).Infof("States serached in this move:    \t%d CacheNodes,  \t%d Boards",
+		searchCacheNodes, searchBoards)
+
+	elapsedTime := time.Since(start)
+	cacheNodesPerSec := float64(searchCacheNodes) / float64(elapsedTime.Seconds())
+	boardsPerSec := float64(searchBoards) / float64(elapsedTime.Seconds())
+	glog.V(1).Infof("Rate of evaluations in this move:\t%.1f CacheNodes/s,\t%.1f Boards/s",
+		cacheNodesPerSec, boardsPerSec)
+
+	glog.V(1).Infof("States serached in match so far: \t%d CacheNodes,  \t%d Boards",
+		mcts.numCacheNodes, mcts.numBoards)
+}
+
 // Search implements the Searcher interface.
 func (mcts *mctsSearcher) Search(b *Board) (
 	action Action, board *Board, score float32) {
 	cn := newCacheNode(mcts, b)
-	mcts.runOnCN(cn)
+	if glog.V(1) {
+		// Measure time and boards evaluated.
+		mcts.measuredRunOnCN(cn)
+	} else {
+		mcts.runOnCN(cn)
+	}
 
 	if glog.V(2) {
 		if mcts.useUCT {
@@ -399,7 +452,7 @@ func (mcts *mctsSearcher) runOnCN(cn *cacheNode) {
 			semaphore <- true
 			go func() {
 				glog.V(3).Infof("MCTS: starting traverse")
-				cn.Traverse(mcts, mcts.maxDepth)
+				cn.Traverse(mcts, mcts.maxDepth, mcts.maxDepth-4)
 				glog.V(3).Infof("MCTS: done traverse")
 				<-semaphore
 				wg.Done()

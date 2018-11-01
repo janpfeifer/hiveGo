@@ -4,12 +4,12 @@ import "fmt"
 
 var _ = fmt.Printf
 
-// EmptyAndConnectedNeighbours returns neighbouring positions that are empty but still connected to
-// the graph.
+// EmptyAndConnectedNeighbours returns neighbouring positions that are empty but
+// still connected to the graph.
 //
-// It also checks that piece is not "squeezing" through two other pieces, or that it moves
-// loosing touch to pieces -- that is, the intersection of neighboring pieces before and after
-// the move must be non-empty.
+// It also checks that piece is not "squeezing" through two other pieces, or that
+// it moves loosing touch to pieces -- that is, the intersection of neighboring
+// pieces before and after the move must be non-empty.
 //
 // Args:
 //   srcPos: from where this move starts.
@@ -66,7 +66,7 @@ func (b *Board) spiderMoves(srcPos Pos) (poss []Pos) {
 	endPos := map[Pos]bool{}
 	visitedPath := map[Pos]bool{srcPos: true}
 	b.spiderMovesDFS(srcPos, srcPos, 3, endPos, visitedPath)
-	for pos, _ := range endPos {
+	for pos := range endPos {
 		poss = append(poss, pos)
 	}
 	return poss
