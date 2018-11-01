@@ -36,7 +36,7 @@ func Unselect() {
 }
 
 func (pons *PieceOnScreen) OnSelectOffBoard() {
-	if board.IsFinished() {
+	if !IsRunning {
 		return
 	}
 
@@ -44,14 +44,17 @@ func (pons *PieceOnScreen) OnSelectOffBoard() {
 	// than one is selected.
 	pieces := piecesOffBoard[pons.Player][pons.Piece]
 	stackPos := len(pieces) - 1
-	pons = pieces[stackPos]
+	pieces[stackPos].stackTopOnSelectOffBoard(stackPos)
+}
+
+func (pons *PieceOnScreen) stackTopOnSelectOffBoard(stackPos int) {
 	deselect := SourceOffBoardPOnS == pons
 
 	// First deselect previous selection, if any.
 	Unselect()
 
 	// If the wrong player's turn, then just deselect.
-	if pons.Player != board.NextPlayer {
+	if pons.Player != Board.NextPlayer {
 		return
 	}
 
@@ -64,13 +67,13 @@ func (pons *PieceOnScreen) OnSelectOffBoard() {
 	// Collects valid target positions and checks if piece
 	// can actually be put into play.
 	validTargets := make(map[state.Pos]state.Action)
-	for _, action := range board.Derived.Actions {
+	for _, action := range Board.Derived.Actions {
 		if !action.Move && action.Piece == pons.Piece {
 			validTargets[action.TargetPos] = action
 		}
 	}
 	if len(validTargets) == 0 {
-		fmt.Println("Can not place %s\n", pons.Piece)
+		fmt.Printf("Can not place %s\n", pons.Piece)
 		return
 	}
 
@@ -89,8 +92,9 @@ func (pons *PieceOnScreen) OnSelectOffBoard() {
 	MarkTargetActions(validTargets)
 }
 
+// OnSelectOnBoard first picks the top piece of the stack selected.
 func (pons *PieceOnScreen) OnSelectOnBoard(pos state.Pos) {
-	if board.IsFinished() {
+	if !IsRunning {
 		return
 	}
 
@@ -98,14 +102,17 @@ func (pons *PieceOnScreen) OnSelectOnBoard(pos state.Pos) {
 	// than one is selected.
 	pieces := piecesOnBoard[pos]
 	stackPos := len(pieces) - 1
-	pons = pieces[stackPos]
+	pieces[stackPos].stackTopOnSelectOnBoard(pos, stackPos)
+}
+
+func (pons *PieceOnScreen) stackTopOnSelectOnBoard(pos state.Pos, stackPos int) {
 	deselect := SourceOnBoardPOnS == pons
 
 	// First deselect previous selection, if any.
 	Unselect()
 
 	// If the wrong player's turn, then just deselect.
-	if pons.Player != board.NextPlayer {
+	if pons.Player != Board.NextPlayer {
 		return
 	}
 
@@ -118,7 +125,7 @@ func (pons *PieceOnScreen) OnSelectOnBoard(pos state.Pos) {
 	// Collects valid target positions and checks if piece
 	// can actually be moved.
 	validTargets := make(map[state.Pos]state.Action)
-	for _, action := range board.Derived.Actions {
+	for _, action := range Board.Derived.Actions {
 		if action.Move && action.SourcePos == pos {
 			validTargets[action.TargetPos] = action
 		}
@@ -194,10 +201,10 @@ func SelectionsOnChangeOfUIParams() {
 func OnTargetClick(action state.Action) {
 	Unselect()
 	fmt.Printf("Selected action: %v\n", action)
-	player := board.NextPlayer
+	player := Board.NextPlayer
 
 	if action.Move {
-		RemovePiece(player, action)
+		RemovePiece(action)
 	} else {
 		RemoveOffBoardPiece(player, action)
 	}

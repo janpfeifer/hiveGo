@@ -17,7 +17,6 @@ var (
 
 	// Map of all pieces currently on board.
 	piecesOnBoard      = make(map[state.Pos][]*PieceOnScreen)
-	piecesOnBoardStack []*PieceOnScreen
 	piecesOnBoardIndex = 0
 )
 
@@ -72,7 +71,7 @@ func createPiecesPatternsAndImages(prefix string) (patterns []*js.Object, images
 		})
 		images = append(images, image)
 		jq(pattern).Append(image)
-		svgDefs.Append(pattern)
+		SvgDefs.Append(pattern)
 	}
 	return patterns, images
 }
@@ -195,14 +194,14 @@ func Place(player uint8, action state.Action) {
 	var ponsAbove *PieceOnScreen
 	for _, pieces := range piecesOnBoard {
 		if len(pieces) > stackPos+1 {
-			for _, tmpPons := range pieces[stackPos+1 : len(pieces)] {
+			for _, tmpPons := range pieces[stackPos+1:] {
 				if ponsAbove == nil || tmpPons.Index < ponsAbove.Index {
 					ponsAbove = tmpPons
 				}
 			}
 		}
 	}
-	if ponsAbove == nil || true {
+	if ponsAbove == nil {
 		fmt.Printf("Appending piece: %v\n", pons.Hex)
 		BoardGroup.Append(pons.Hex)
 		BoardGroup.Append(pons.Rect)
@@ -218,7 +217,7 @@ func Place(player uint8, action state.Action) {
 	})
 }
 
-func RemovePiece(player uint8, action state.Action) {
+func RemovePiece(action state.Action) {
 	pos := action.SourcePos
 	stack := piecesOnBoard[pos]
 	if len(stack) == 0 {

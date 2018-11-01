@@ -13,9 +13,6 @@ import (
 var jq = jquery.NewJQuery
 
 const (
-	INPUT  = "input#name"
-	OUTPUT = "span#output"
-
 	CANVAS_SVG = "svg#canvas"
 	SVG_DEFS   = "defs#svgdefs"
 
@@ -23,11 +20,10 @@ const (
 )
 
 var (
-	window    = js.Global
-	document  = js.Global.Get("document")
-	canvas    = jq(CANVAS_SVG)
-	canvasObj = Obj(canvas)
-	svgDefs   = jq(SVG_DEFS)
+	window   = js.Global
+	document = js.Global.Get("document")
+	Canvas   = jq(CANVAS_SVG)
+	SvgDefs  = jq(SVG_DEFS)
 )
 
 type UIParams struct {
@@ -58,8 +54,8 @@ func NewUIParams() *UIParams {
 		// the PixelRatio without us needing to do anything. So fixed to 1.
 		// for now.
 		PixelRatio: 1.0,
-		Width:      canvas.InnerWidth(),
-		Height:     canvas.InnerHeight(),
+		Width:      Canvas.InnerWidth(),
+		Height:     Canvas.InnerHeight(),
 		Scale:      window.Get("devicePixelRatio").Float(),
 		ShiftX:     0,
 		ShiftY:     0,
@@ -137,7 +133,7 @@ func DragOnMouseDown(e jquery.Event) {
 	DragX, DragY = e.PageX, e.PageY
 }
 
-func DragOnMouseUp(e jquery.Event) {
+func DragOnMouseUp(_ jquery.Event) {
 	DragStarted = false
 }
 
@@ -165,7 +161,7 @@ func createBoardRects() {
 		"width":  "100%",
 		"height": "100%",
 	}))
-	canvas.Append(BoardGroup)
+	Canvas.Append(BoardGroup)
 
 	for ii := 0; ii < 2; ii++ {
 		OffBoardGroups[ii] = jq(CreateSVG("g", Attrs{
@@ -174,7 +170,7 @@ func createBoardRects() {
 			"width":  "100%",
 			"height": "100%",
 		}))
-		canvas.Append(OffBoardGroups[ii])
+		Canvas.Append(OffBoardGroups[ii])
 		OffBoardRects[ii] = CreateSVG("rect", Attrs{
 			"stroke": "firebrick",
 			"fill":   "moccasin",
@@ -188,13 +184,13 @@ func MarkNextPlayer() {
 	for ii := uint8(0); ii < state.NUM_PLAYERS; ii++ {
 		width := 2.0 * ui.PixelRatio
 		stroke := "firebrick"
-		if board.IsFinished() {
-			if board.Draw() || board.Winner() == ii {
+		if Board.IsFinished() {
+			if Board.Draw() || Board.Winner() == ii {
 				stroke = "url(#colors)"
 				width = 12 * ui.PixelRatio
 			}
 		} else {
-			if board.NextPlayer == ii {
+			if Board.NextPlayer == ii {
 				width = 6 * ui.PixelRatio
 			}
 		}
@@ -203,6 +199,70 @@ func MarkNextPlayer() {
 			"stroke":       stroke,
 		})
 	}
+}
+
+var (
+	// Reference to splash screen objects. Created at the beginning.
+	HasSplashScreen                        = false
+	SplashRect, SplashPattern, SplashImage jquery.JQuery
+)
+
+func CreateSplashScreen() {
+	SplashPattern = jq(CreateSVG("pattern", Attrs{
+		"id":           "splash",
+		"patternUnits": "objectBoundingBox",
+		"width":        "1.0",
+		"height":       "1.0",
+		"x":            "-0.040",
+		"y":            "0",
+	}))
+	SplashImage = jq(CreateSVG("image", Attrs{
+		"href":   "/github.com/janpfeifer/hiveGo/images/Grasshopper.png",
+		"width":  1024,
+		"height": 1024,
+	}))
+	SvgDefs.Append(SplashPattern)
+	SplashPattern.Append(SplashImage)
+	SplashRect = jq(CreateSVG("rect", Attrs{
+		"stroke":         "black",
+		"stroke-width":   0,
+		"border":         0,
+		"padding":        0,
+		"fill":           "url(#splash)",
+		"pointer-events": "none",
+	}))
+	Canvas.Append(SplashRect)
+	HasSplashScreen = true
+	AdjustSplashScreen()
+}
+
+func AdjustSplashScreen() {
+	if !HasSplashScreen {
+		return
+	}
+
+	// SplashScreen will have at most 1024 "face" size. It's a square
+	// so this will be the width and height.
+	face := ui.Height - 2*ui.OffBoardHeight()
+	if ui.Width < face {
+		face = ui.Width
+	}
+	if face > 1024 {
+		face = 1024
+	}
+
+	// Adjust rect.
+	SetAttrs(Obj(SplashRect), Attrs{
+		"width": face, "height": face,
+		"x": (ui.Width - face) / 2,
+		"y": (ui.Height - face) / 2,
+	})
+	SetAttrs(Obj(SplashImage), Attrs{"width": face, "height": face})
+}
+
+func RemoveSplashScreen() {
+	Canvas.Remove(SplashRect)
+	HasSplashScreen = false
 }
 
 var (
@@ -220,7 +280,7 @@ func ShowEndGameMessage(text string) {
 		"pointer-events":     "none",
 	}))
 	EndGameMessage.Append(text)
-	canvas.Append(EndGameMessage)
+	Canvas.Append(EndGameMessage)
 	HasEndGameMessage = true
 	AdjustEndGameMessagePosition()
 }
@@ -228,9 +288,9 @@ func ShowEndGameMessage(text string) {
 func AdjustEndGameMessagePosition() {
 	if HasEndGameMessage {
 		var y float64
-		if board.Draw() {
+		if Board.Draw() {
 			y = float64(ui.Height) / 2.0
-		} else if board.Winner() == 0 {
+		} else if Board.Winner() == 0 {
 			y = float64(ui.OffBoardHeight()) + 50*ui.PixelRatio
 		} else {
 			y = float64(ui.Height-ui.OffBoardHeight()) - 50*ui.PixelRatio
@@ -252,8 +312,8 @@ func GetDocumentById(id string) *js.Object {
 }
 
 func OnCanvasResize() {
-	ui.Width = canvas.InnerWidth()
-	ui.Height = canvas.InnerHeight()
+	ui.Width = Canvas.InnerWidth()
+	ui.Height = Canvas.InnerHeight()
 
 	// OffBoard space.
 	offboardHeight := ui.OffBoardHeight()
@@ -272,6 +332,7 @@ func OnCanvasResize() {
 	})
 	MarkNextPlayer()
 	AdjustOffBoardPieces()
+	AdjustSplashScreen()
 	AdjustEndGameMessagePosition()
 
 	// Adjust all elements on page.
@@ -289,26 +350,28 @@ func Obj(jo jquery.JQuery) *js.Object {
 
 // Game information.
 var (
-	board *state.Board
+	Board     *state.Board
+	IsRunning = false
 )
 
 func ExecuteAction(action state.Action) {
-	board = board.Act(action)
-	if board.IsFinished() {
+	Board = Board.Act(action)
+	if Board.IsFinished() {
 		MarkNextPlayer()
 		var msg string
-		if board.Draw() {
+		if Board.Draw() {
 			msg = "Draw !!!"
-		} else if board.Winner() == 0 {
+		} else if Board.Winner() == 0 {
 			msg = "Top Player Wins !!!"
 		} else {
 			msg = "Bottom Player Wins !!!"
 		}
 		ShowEndGameMessage(msg)
+		IsRunning = false
 		return
 	}
 
-	if len(board.Derived.Actions) == 0 {
+	if len(Board.Derived.Actions) == 0 {
 		// Auto-execute skip action.
 		if action.Piece == state.NO_PIECE {
 			// Two skip actions in a row.
@@ -329,28 +392,20 @@ func main() {
 	print("Your current jQuery version is: " + jq().Jquery)
 
 	// Create board parts.
-	board = state.NewBoard()
+	Board = state.NewBoard()
+	IsRunning = true
 
 	// Create UIParams.
 	ui = NewUIParams()
 	createBoardRects()
-	PlaceOffBoardPieces(board)
+	//CreateSplashScreen()
+	PlaceOffBoardPieces(Board)
 	OnCanvasResize()
 
-	canvas.On("wheel", ZoomOnWheel)
-	canvas.On(jquery.MOUSEDOWN, DragOnMouseDown)
-	canvas.On(jquery.MOUSEUP, DragOnMouseUp)
-	canvas.On(jquery.MOUSEMOVE, DragOnMouseMove)
+	Canvas.On("wheel", ZoomOnWheel)
+	Canvas.On(jquery.MOUSEDOWN, DragOnMouseDown)
+	Canvas.On(jquery.MOUSEUP, DragOnMouseUp)
+	Canvas.On(jquery.MOUSEMOVE, DragOnMouseMove)
 	jq(window).On(jquery.RESIZE, OnCanvasResize)
 
-}
-
-func ExamplePieces() {
-	for ii := state.ANT; ii < state.LAST_PIECE_TYPE; ii++ {
-		action := state.Action{
-			Move:      false,
-			Piece:     ii,
-			TargetPos: state.Pos{int8(ii) - 3, 0}}
-		Place(uint8(ii)%2, action)
-	}
 }
