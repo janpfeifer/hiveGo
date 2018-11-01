@@ -7,8 +7,9 @@
 	  src="https://code.jquery.com/jquery-2.2.4.min.js"
 	  integrity="sha256-BbhdlvQf/xTY9gja0Dq3HiwQF8LaCRTXxZKRutelT44="
 	  crossorigin="anonymous"></script>
-	  <link rel="icon" href="/github.com/janpfeifer/hiveGo/images/Icon.png"/>
-	  <link href="https://fonts.googleapis.com/css?family=Indie+Flower" rel="stylesheet">
+    <link rel="icon" href="/github.com/janpfeifer/hiveGo/images/Icon.png"/>
+    <link href="https://fonts.googleapis.com/css?family=Indie+Flower" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Comfortaa" rel="stylesheet">
 <style>
 .fullscreen {
   position: fixed;
@@ -21,7 +22,20 @@
   min-height: 100%;
   min-width: 100%;
   overflow: auto;
-  margin: 0px 0px;
+  margin: auto;
+  border: 3px solid black;
+}
+.dialog {
+    position: relative;
+    margin: auto;
+    border: 3px solid #28293b;
+    vertical-align: middle;
+    width:50%;
+    background: #a1c7a7;
+    padding: 1em;
+    font-family: 'Comfortaa', cursive;
+    font-size: 16px;
+    alignment-baseline: middle;
 }
 .end_game_message_class { 
 	font-size: 65px;
@@ -30,6 +44,7 @@
 	font-weight: bold;
 	user-select: none;
 }
+
 </style>
 </head>	
 <body>
@@ -40,6 +55,28 @@
     	</pattern>
     </defs>		
 	</svg>
+    <div id="new_game" class="fullscreen" style="display: none;">
+        <div class="dialog" style="top:150px;">
+            <form>
+                <h3>New Game</h3>
+                <input type="radio" name="game_type" id="game_vs_ai" value="ai" checked>Play with computer
+                <input type="radio" name="game_type" id="game_vs_human" value="hotseat">Play with friend (hotseat)<br>
+                <p>Parameters for AI (if playing against computer):</p>
+                <input type="text" name="ai_config" size="80" value="ab,max_depth=2">
+                <ul>
+                    <li>Enter a comma separated list of options.</li>
+                    <li>Tree search type: "<i>ab</i>", "<i>mcts</i>" or "<i>mcts,use_uct</i>", for alpha-beta pruning, monte carlo tree search (MCTS), and MCTS UCT version.</li>
+                    <li>AI type: "linear" (the default) or "tf" (tensorflow).</li>
+                    <li><i>max_depth</i>: max depth to search in both alpha-beta pruning and MCTS</li>
+                    <li><i>max_time</i>: max time in seconds used by MCTS search algorithm (no effect in alpha-beta pruning).</li>
+                    <li><i>max_traverses</i>: how many times MCTS will traverse the tree, from current position (no effect in alpha-beta pruning).</li>
+                    <li><i>max_score</i>: during MCTS traverse, if the score gets to this value (< 10) the traverse is pruned there and the value is returned.</li>
+                    <li>For <b>easy AI</b> try: "ab,max_depth=2". You can make it <b>harder</b> with "ab,max_depth=3".</li>
+                </ul>
+                <p><button type="button" id="start" style="font-size: large;">Start</button></p>
+            </form>
+        </div>
+    </div>
     <script src="web_ui.js"></script>
 </body>
 </html>

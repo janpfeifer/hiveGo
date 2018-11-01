@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"math"
 
@@ -224,14 +225,17 @@ func CreateSplashScreen() {
 	SvgDefs.Append(SplashPattern)
 	SplashPattern.Append(SplashImage)
 	SplashRect = jq(CreateSVG("rect", Attrs{
-		"stroke":         "black",
-		"stroke-width":   0,
-		"border":         0,
-		"padding":        0,
-		"fill":           "url(#splash)",
-		"pointer-events": "none",
+		"stroke":       "black",
+		"stroke-width": 0,
+		"border":       0,
+		"padding":      0,
+		"fill":         "url(#splash)",
 	}))
 	Canvas.Append(SplashRect)
+	SplashRect.On(jquery.MOUSEUP, func(e jquery.Event) {
+		RemoveSplashScreen()
+		OpenStartGameDialog()
+	})
 	HasSplashScreen = true
 	AdjustSplashScreen()
 }
@@ -261,8 +265,37 @@ func AdjustSplashScreen() {
 }
 
 func RemoveSplashScreen() {
-	Canvas.Remove(SplashRect)
+	SplashRect.Remove()
 	HasSplashScreen = false
+}
+
+var (
+	StartGameDialog = struct {
+		Div, Button jquery.JQuery
+	}{
+		jq("div#new_game"),
+		jq("button#start"),
+	}
+)
+
+func OpenStartGameDialog() {
+	StartGameDialog.Div.SetCss("display", "block")
+	StartGameDialog.Button.On(jquery.CLICK, func(e jquery.Event) {
+		StartGameDialogDone()
+	})
+}
+
+func StartGameDialogDone() {
+	// TODO: clean and restart board and UI pieces.
+	gameType := jq("input[name=game_type]:checked").Val()
+	fmt.Printf("gameType=%s\n", gameType)
+	if gameType == "hotseat" {
+		IsRunning = true
+		StartGameDialog.Div.SetCss("display", "none")
+	} else {
+		// TOOD: Implement AI game.
+		fmt.Printf("Game vs computer not implemented yet.")
+	}
 }
 
 var (
@@ -393,12 +426,12 @@ func main() {
 
 	// Create board parts.
 	Board = state.NewBoard()
-	IsRunning = true
+	IsRunning = false
 
 	// Create UIParams.
 	ui = NewUIParams()
 	createBoardRects()
-	//CreateSplashScreen()
+	CreateSplashScreen()
 	PlaceOffBoardPieces(Board)
 	OnCanvasResize()
 
