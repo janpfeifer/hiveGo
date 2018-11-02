@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 
+	// TensorFlow is included so it shows up as an option for scorers.
+	_ "github.com/janpfeifer/hiveGo/ai/tensorflow"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
 	. "github.com/janpfeifer/hiveGo/state"
 )

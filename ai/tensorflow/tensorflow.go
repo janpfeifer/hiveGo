@@ -43,6 +43,7 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
+	"github.com/janpfeifer/hiveGo/ai/players"
 	. "github.com/janpfeifer/hiveGo/state"
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
@@ -63,9 +64,42 @@ type Scorer struct {
 	version int // Uses the number of input features used.
 }
 
+// Data used for parsing of player options.
+type ParsingData struct {
+	UseTensorFlow, ForceCPU bool
+}
+
+func NewParsingData() (data interface{}) {
+	return &ParsingData{}
+}
+
+func FinalizeParsing(data interface{}, player *players.SearcherScorerPlayer) {
+	d := data.(*ParsingData)
+	if d.UseTensorFlow {
+		player.Learner = New(player.ModelFile, d.ForceCPU)
+		player.Scorer = player.Learner
+	}
+}
+
+func ParseParam(data interface{}, key, value string) {
+	d := data.(*ParsingData)
+	if key == "tf" {
+		d.UseTensorFlow = true
+	} else if key == "tf_cpu" {
+		d.ForceCPU = true
+	} else {
+		log.Panicf("Unknown parameter '%s=%s' passed to tensorflow module.", key, value)
+	}
+}
+
+func init() {
+	players.RegisterPlayerParameter("tf", "tf", NewParsingData, ParseParam, FinalizeParsing)
+	players.RegisterPlayerParameter("tf", "tf_cpu", NewParsingData, ParseParam, FinalizeParsing)
+}
+
 // New creates a new Scorer by reading model's graph `basename`.pb,
 // and checkpoints from `basename`.checkpoint
-func New(basename string, cpu bool) *Scorer {
+func New(basename string, forceCPU bool) *Scorer {
 	// Load graph definition (as bytes) and import into current graph.
 	graphDefFilename := fmt.Sprintf("%s.pb", basename)
 	graphDef, err := ioutil.ReadFile(graphDefFilename)
@@ -76,7 +110,7 @@ func New(basename string, cpu bool) *Scorer {
 	// Create the one graph and session we will use all time.
 	graph := tf.NewGraph()
 	sessionOptions := &tf.SessionOptions{}
-	if CpuOnly {
+	if forceCPU || CpuOnly {
 		// TODO this doesn't work .... :(
 		// Instead use:
 		//    export CUDA_VISIBLE_DEVICES=-1

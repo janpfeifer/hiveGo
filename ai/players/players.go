@@ -10,7 +10,6 @@ import (
 	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
 	"github.com/janpfeifer/hiveGo/ai/search"
-	"github.com/janpfeifer/hiveGo/ai/tensorflow"
 	. "github.com/janpfeifer/hiveGo/state"
 )
 
@@ -41,6 +40,37 @@ func (p *SearcherScorerPlayer) Play(b *Board) (action Action, board *Board, scor
 	return
 }
 
+// External model registration functions.
+type PlayerModuleInitFn func() (data interface{})
+type PlayerParameterFn func(data interface{}, key, value string)
+type PlayerModuleFinalizeFn func(data interface{}, player *SearcherScorerPlayer)
+
+// Registration of an external module for a keyword.
+type externalModuleRegistration struct {
+	module string
+	fn     PlayerParameterFn
+}
+
+var (
+	// Registered external modules.
+	externalModulesInitFns     = make(map[string]PlayerModuleInitFn)
+	externalModulesFinalizeFns = make(map[string]PlayerModuleFinalizeFn)
+	keywordToModule            = make(map[string]externalModuleRegistration)
+)
+
+// Register function to process given parameter for given module. This allows
+// external modules to change the behavior of NewAIPlayer.
+// For each module, initFn will be called at the start of the parsing.
+// Then paramFn is called or each key/value pair (value may be empty).
+// Finally finalFn is called, where the external module can change the resulting
+// player object.
+func RegisterPlayerParameter(module, key string, initFn PlayerModuleInitFn, paramFn PlayerParameterFn,
+	finalFn PlayerModuleFinalizeFn) {
+	externalModulesInitFns[module] = initFn
+	externalModulesFinalizeFns[module] = finalFn
+	keywordToModule[key] = externalModuleRegistration{module, paramFn}
+}
+
 // NewAIPlayer creates a new AI player given the configuration string.
 //
 // Args:
@@ -54,6 +84,12 @@ func (p *SearcherScorerPlayer) Play(b *Board) (action Action, board *Board, scor
 //         hence more exploration.
 //
 func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
+	// Initialize external modules data.
+	moduleToData := make(map[string]interface{})
+	for module, initFn := range externalModulesInitFns {
+		moduleToData[module] = initFn()
+	}
+
 	// Break config in parts.
 	params := make(map[string]string)
 	parts := strings.Split(config, ",")
@@ -70,27 +106,35 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 		}
 	}
 
-	// Scorer.
-	useTF := false
-	cpu := false
-	modelFile := ""
+	// External modules parsing.
+	paramsLeft := make(map[string]string)
+	for key, value := range params {
+		if registration, ok := keywordToModule[key]; ok {
+			data := moduleToData[registration.module]
+			registration.fn(data, key, value)
+		} else {
+			paramsLeft[key] = value
+		}
+	}
+	params = paramsLeft
+
+	// Shared parameters.
+	player := &SearcherScorerPlayer{Parallelized: parallelized}
 	if value, ok := params["model"]; ok {
-		modelFile = value
+		player.ModelFile = value
 		delete(params, "model")
 	}
-	if _, ok := params["tf"]; ok {
-		useTF = true
-		delete(params, "tf")
+
+	// External modules make their modifications to the player object.
+	for module, finalFn := range externalModulesFinalizeFns {
+		data := moduleToData[module]
+		finalFn(data, player)
 	}
-	if _, ok := params["cpu"]; ok {
-		cpu = true
-		delete(params, "cpu")
-	}
-	var model ai.LearnerScorer
-	if useTF {
-		model = tensorflow.New(modelFile, cpu)
-	} else {
-		model = ai.NewLinearScorerFromFile(modelFile)
+
+	// Default scorer.
+	if player.Scorer == nil {
+		player.Learner = ai.NewLinearScorerFromFile(player.ModelFile)
+		player.Scorer = player.Learner
 	}
 
 	// Configure searcher.
@@ -136,9 +180,9 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 	if _, ok := params["use_uct"]; ok {
 		delete(params, "use_uct")
 		useUCT = true
-		if parallelized {
+		if player.Parallelized {
 			glog.Errorf("UCT version of MCST ('use_uct') cannot be parallelized.")
-			parallelized = false // UCT doesnt' work parallelized (not yet at least)
+			player.Parallelized = false // UCT doesn't work parallelized (not yet at least)
 		}
 	}
 	if value, ok := params["max_score"]; ok {
@@ -165,7 +209,7 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 		}
 		searcher = search.NewMonteCarloTreeSearcher(
 			maxDepth, maxTime, maxTraverses, useUCT, maxScore,
-			model, randomness, parallelized)
+			player.Scorer, randomness, player.Parallelized)
 	}
 	if _, ok := params["ab"]; ok {
 		delete(params, "ab")
@@ -178,11 +222,11 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 		}
 
 		if randomness <= 0 {
-			searcher = search.NewAlphaBetaSearcher(maxDepth, parallelized, model)
+			searcher = search.NewAlphaBetaSearcher(maxDepth, player.Parallelized, player.Scorer)
 		} else {
 			// Randomized searcher.
-			searcher = search.NewAlphaBetaSearcher(maxDepth, false, model)
-			searcher = search.NewRandomizedSearcher(searcher, model, randomness)
+			searcher = search.NewAlphaBetaSearcher(maxDepth, false, player.Scorer)
+			searcher = search.NewRandomizedSearcher(searcher, player.Scorer, randomness)
 		}
 	}
 
@@ -193,12 +237,7 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 		}
 		panic("Cannot continue")
 	}
+	player.Searcher = searcher
 
-	return &SearcherScorerPlayer{
-		Searcher:     searcher,
-		Scorer:       model,
-		Learner:      model,
-		ModelFile:    modelFile,
-		Parallelized: parallelized,
-	}
+	return player
 }
