@@ -12,6 +12,13 @@ import (
 
 var _ = log.Printf
 
+var (
+	// Channel that if created, will be read before each chunk of search is
+	// done. This allow for processing to happens in the idle callbacks
+	// when running in javascript (via GopherJS)
+	IdleChan chan bool
+)
+
 // Searcher is a the interface that any of the search algoriactionthms
 // must adhere to be valid.
 type Searcher interface {

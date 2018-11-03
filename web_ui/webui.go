@@ -287,14 +287,21 @@ func OpenStartGameDialog() {
 
 func StartGameDialogDone() {
 	// TODO: clean and restart board and UI pieces.
+	Board = state.NewBoard()
+	IsRunning = true
+
+	// Prepare game.
 	gameType := jq("input[name=game_type]:checked").Val()
-	fmt.Printf("gameType=%s\n", gameType)
-	if gameType == "hotseat" {
-		IsRunning = true
-		StartGameDialog.Div.SetCss("display", "none")
-	} else {
-		// TOOD: Implement AI game.
-		fmt.Printf("Game vs computer not implemented yet.")
+	StartGameDialog.Div.SetCss("display", "none")
+	if gameType == "ai" {
+		aiConfig := jq("input[name=ai_config]").Val()
+		fmt.Printf("AI: config=%s, starts=%s\n", aiConfig,
+			jq("input[name=ai_starts]:checked").Val())
+		aiPlayer := 1
+		if jq("input[name=ai_starts]:checked").Val() == "on" {
+			aiPlayer = 0
+		}
+		StartAI(aiConfig, aiPlayer)
 	}
 }
 
@@ -367,6 +374,7 @@ func OnCanvasResize() {
 	AdjustOffBoardPieces()
 	AdjustSplashScreen()
 	AdjustEndGameMessagePosition()
+	AdjustBusyBoxPosition()
 
 	// Adjust all elements on page.
 	OnChangeOfUIParams()
@@ -388,6 +396,17 @@ var (
 )
 
 func ExecuteAction(action state.Action) {
+	// Animate action.
+	if action.Piece != state.NO_PIECE {
+		player := Board.NextPlayer
+		if action.Move {
+			RemovePiece(action)
+		} else {
+			RemoveOffBoardPiece(player, action)
+		}
+		Place(player, action)
+	}
+
 	Board = Board.Act(action)
 	if Board.IsFinished() {
 		MarkNextPlayer()
@@ -418,6 +437,7 @@ func ExecuteAction(action state.Action) {
 
 	// Select next player.
 	MarkNextPlayer()
+	ScheduleAIPlay()
 }
 
 func main() {

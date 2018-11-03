@@ -45,6 +45,11 @@
 	user-select: none;
 }
 
+.busy_class {
+    position: fixed;
+}
+
+
 </style>
 </head>	
 <body>
@@ -62,21 +67,25 @@
                 <input type="radio" name="game_type" id="game_vs_ai" value="ai" checked>Play with computer
                 <input type="radio" name="game_type" id="game_vs_human" value="hotseat">Play with friend (hotseat)<br>
                 <p>Parameters for AI (if playing against computer):</p>
-                <input type="text" name="ai_config" size="80" value="ab,max_depth=2">
+                <p><input type="text" name="ai_config" size="80" value="ab,max_depth=3"></p>
+                <input type="checkbox" name="ai_starts">Computer starts<br>
                 <ul>
                     <li>Enter a comma separated list of options.</li>
-                    <li>Tree search type: "<i>ab</i>", "<i>mcts</i>" or "<i>mcts,use_uct</i>", for alpha-beta pruning, monte carlo tree search (MCTS), and MCTS UCT version.</li>
-                    <li>AI type: "linear" (the default) or "tf" (tensorflow).</li>
+                    <li>Tree search type: "<i>ab</i>", <strike>"<i>mcts</i>" or "<i>mcts,use_uct</i>", for alpha-beta pruning, monte carlo tree search (MCTS), and MCTS UCT version.</strike></li>
+                    <li>AI type: "linear" (the default) <strike>or "tf" (tensorflow)</strike>.</li>
                     <li><i>max_depth</i>: max depth to search in both alpha-beta pruning and MCTS</li>
+                    <!--
                     <li><i>max_time</i>: max time in seconds used by MCTS search algorithm (no effect in alpha-beta pruning).</li>
                     <li><i>max_traverses</i>: how many times MCTS will traverse the tree, from current position (no effect in alpha-beta pruning).</li>
                     <li><i>max_score</i>: during MCTS traverse, if the score gets to this value (< 10) the traverse is pruned there and the value is returned.</li>
+                    -->
                     <li>For <b>easy AI</b> try: "ab,max_depth=2". You can make it <b>harder</b> with "ab,max_depth=3".</li>
                 </ul>
                 <p><button type="button" id="start" style="font-size: large;">Start</button></p>
             </form>
         </div>
     </div>
+    <img src="/github.com/janpfeifer/hiveGo/images/busy.gif" id="busy" class="busy_class" style="display: none;" width="64" height="64"/>
     <script src="web_ui.js"></script>
 </body>
 </html>

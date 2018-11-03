@@ -36,7 +36,7 @@ func Unselect() {
 }
 
 func (pons *PieceOnScreen) OnSelectOffBoard() {
-	if !IsRunning {
+	if !IsRunning || IsAITurn {
 		return
 	}
 
@@ -94,7 +94,7 @@ func (pons *PieceOnScreen) stackTopOnSelectOffBoard(stackPos int) {
 
 // OnSelectOnBoard first picks the top piece of the stack selected.
 func (pons *PieceOnScreen) OnSelectOnBoard(pos state.Pos) {
-	if !IsRunning {
+	if !IsRunning || IsAITurn {
 		return
 	}
 
@@ -201,17 +201,5 @@ func SelectionsOnChangeOfUIParams() {
 func OnTargetClick(action state.Action) {
 	Unselect()
 	fmt.Printf("Selected action: %v\n", action)
-	player := Board.NextPlayer
-
-	if action.Move {
-		RemovePiece(action)
-	} else {
-		RemoveOffBoardPiece(player, action)
-	}
-
-	// Place piece on target position.
-	Place(player, action)
-
-	// Finally execute action in the virtual board.
 	ExecuteAction(action)
 }

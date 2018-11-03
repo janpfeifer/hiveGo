@@ -63,6 +63,10 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 	bestBoard = nil
 	bestAction = Action{}
 	for ii := range actions {
+		if IdleChan != nil {
+			// Wait for an "idle" signal before each search.
+			<-IdleChan
+		}
 		if maxDepth > 1 && !newBoards[ii].IsFinished() {
 			// Runs alphaBeta for opponent player, so the alpha/beta are reversed.
 			_, _, score := alphaBetaRecursive(newBoards[ii], scorer, maxDepth-1, beta, bestScore)
