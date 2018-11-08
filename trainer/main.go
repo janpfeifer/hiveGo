@@ -130,7 +130,8 @@ func runMatch(matchNum int) *Match {
 		if swapped {
 			player = 1 - player
 		}
-		glog.V(1).Infof("\n\nMatch %d: player %d at turn %d\n\n", matchNum, player, board.MoveNumber)
+		glog.V(1).Infof("\n\nMatch %d: player %d at turn %d (#actions=%d)\n\n",
+			matchNum, player, board.MoveNumber, len(board.Derived.Actions))
 		var action Action
 		score := float32(0)
 		if len(board.Derived.Actions) == 0 {

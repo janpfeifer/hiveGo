@@ -10,7 +10,7 @@ import (
 // Enum of feature.
 type FeatureId int
 
-// FeatureSetter is the signarure of a feature setter. f is the slice where to store the
+// FeatureSetter is the signature of a feature setter. f is the slice where to store the
 // results.
 // fId is the id of the
 type FeatureSetter func(b *Board, def *FeatureDef, f []float32)

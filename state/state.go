@@ -214,7 +214,7 @@ func (b *Board) Available(player uint8, piece Piece) uint8 {
 	return b.available[player][piece-1]
 }
 
-// SetAvailable sets teh number of pieces available for the given type for the
+// SetAvailable sets the number of pieces available for the given type for the
 // given player.
 func (b *Board) SetAvailable(player uint8, piece Piece, value uint8) {
 	b.available[player][piece-1] = uint8(value)
