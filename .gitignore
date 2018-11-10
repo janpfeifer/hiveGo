@@ -9,8 +9,7 @@ bench*
 cpuprof.out
 linear*
 tf_model*
-
-
+.idea/
 
 
 
