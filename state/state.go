@@ -75,6 +75,10 @@ func (pos Pos) Y() int8 {
 	return pos[1]
 }
 
+func (pos Pos) Equal(pos2 Pos) bool {
+	return pos[0] == pos2[0] && pos[1] == pos2[1]
+}
+
 func (pos Pos) String() string {
 	return fmt.Sprintf("(%d, %d)", pos[0], pos[1])
 }
@@ -318,12 +322,12 @@ func (pos Pos) Neighbours() []Pos {
 	x, y := pos[0], pos[1]
 	if x%2 == 0 {
 		return []Pos{
-			Pos{x, y - 1}, Pos{x + 1, y - 1}, Pos{x + 1, y},
-			Pos{x, y + 1}, Pos{x - 1, y}, Pos{x - 1, y - 1}}
+			{x, y - 1}, {x + 1, y - 1}, {x + 1, y},
+			{x, y + 1}, {x - 1, y}, {x - 1, y - 1}}
 	} else {
 		return []Pos{
-			Pos{x, y - 1}, Pos{x + 1, y}, Pos{x + 1, y + 1},
-			Pos{x, y + 1}, Pos{x - 1, y + 1}, Pos{x - 1, y}}
+			{x, y - 1}, {x + 1, y}, {x + 1, y + 1},
+			{x, y + 1}, {x - 1, y + 1}, {x - 1, y}}
 	}
 }
 
