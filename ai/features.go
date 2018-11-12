@@ -111,10 +111,14 @@ func init() {
 type LabeledExample struct {
 	Features []float32
 	Label    float32
+
+	ActionsFeatures [][]float32 // Optional
+	ActionLabels    [][]float32
 }
 
 func MakeLabeledExample(board *Board, label float32, version int) LabeledExample {
-	return LabeledExample{FeatureVector(board, version), label}
+	return LabeledExample{
+		FeatureVector(board, version), label, nil, nil}
 }
 
 // FeatureVector calculates the feature vector, of length AllFeaturesDim, for the given

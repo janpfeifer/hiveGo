@@ -139,7 +139,7 @@ func (cn *cacheNode) UpdateBaseScores(mcts *mctsSearcher) {
 	// Score non-end-of-game, using scorer.
 	if len(boardsToScore) > 0 {
 		// Score other boards.
-		scored := mcts.scorer.BatchScore(boardsToScore)
+		scored, _ := mcts.scorer.BatchScore(boardsToScore)
 		scoredIdx := 0
 		for ii := range cn.baseScores {
 			if !cn.newBoards[ii].IsFinished() {

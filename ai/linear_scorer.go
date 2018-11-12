@@ -58,17 +58,18 @@ func SigmoidTo10(x float32) float32 {
 	return sign * abs
 }
 
-func (w LinearScorer) Score(b *Board) float32 {
+func (w LinearScorer) Score(b *Board) (score float32, actionProbs []float32) {
 	features := FeatureVector(b, w.Version())
-	return SigmoidTo10(w.UnlimitedScore(features))
+	return SigmoidTo10(w.UnlimitedScore(features)), nil
 }
 
-func (w LinearScorer) BatchScore(boards []*Board) []float32 {
-	scores := make([]float32, len(boards))
+func (w LinearScorer) BatchScore(boards []*Board) (scores []float32, actionProbsBatch [][]float32) {
+	scores = make([]float32, len(boards))
+	actionProbsBatch = nil
 	for ii, board := range boards {
-		scores[ii] = w.Score(board)
+		scores[ii], _ = w.Score(board)
 	}
-	return scores
+	return
 }
 
 func (w LinearScorer) String() string {
@@ -349,7 +350,7 @@ var (
 		-0.2442, 0.3755,
 
 		// QueenIsCovered -> 2
-		0, 0,  // -10, 10,
+		0, 0, // -10, 10,
 
 		// Bias -> 1
 		-0.7409,

@@ -217,7 +217,7 @@ func (s *Scorer) Version() int {
 	return s.version
 }
 
-func (s *Scorer) UnlimitedBatchScore(batch [][]float32) []float32 {
+func (s *Scorer) UnlimitedBatchScore(batch [][]float32) (scores []float32, actionProbsBatch [][]float32) {
 	glog.V(2).Infof("UnlimitedBatchScore: batch.size=[%d, %d]", len(batch), len(batch[0]))
 	batchTensor, err := tf.NewTensor(batch)
 	if err != nil {
@@ -231,16 +231,19 @@ func (s *Scorer) UnlimitedBatchScore(batch [][]float32) []float32 {
 	if err != nil {
 		log.Panicf("Prediction failed: %v", err)
 	}
-	return results[0].Value().([]float32)
+	return results[0].Value().([]float32), nil
 }
 
-func (s *Scorer) Score(b *Board) float32 {
+func (s *Scorer) Score(b *Board) (score float32, actionProbs []float32) {
 	features := [][]float32{ai.FeatureVector(b, s.version)}
-	scores := s.UnlimitedBatchScore(features)
-	return scores[0]
+	scores, actionProbsBatch := s.UnlimitedBatchScore(features)
+	if actionProbsBatch == nil {
+		return scores[0], nil
+	}
+	return scores[0], actionProbsBatch[0]
 }
 
-func (s *Scorer) BatchScore(boards []*Board) []float32 {
+func (s *Scorer) BatchScore(boards []*Board) (scores []float32, actionProbsBatch [][]float32) {
 	features := make([][]float32, len(boards))
 	for ii, board := range boards {
 		features[ii] = ai.FeatureVector(board, s.version)

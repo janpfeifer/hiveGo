@@ -79,7 +79,7 @@ func ScoredActions(b *Board, scorer ai.BatchScorer) ([]Action, []*Board, []float
 	if len(boardsToScore) > 0 {
 		// Score other boards.
 		// TODO: Use "Principal Variation" to estimate the score.
-		scored := scorer.BatchScore(boardsToScore)
+		scored, _ := scorer.BatchScore(boardsToScore)
 		scoredIdx := 0
 		for ii := range scores {
 			if !newBoards[ii].IsFinished() {

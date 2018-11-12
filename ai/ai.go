@@ -4,11 +4,13 @@ import (
 	. "github.com/janpfeifer/hiveGo/state"
 )
 
-// Scorer scores: the convention is that victory/defeat are assigned to
-// +10 and -10 respectivelly. Values used on a softmax when used to
-// determine probabilistic moves.
+// Scorer returns two scores:
+//   value: how likely the current player is to win, in the form of
+//     a score from +10 and -10.
+//   policy: Probability for each of the action. This is optional, and
+//     some models may not return it.
 type Scorer interface {
-	Score(board *Board) float32
+	Score(board *Board) (score float32, actionProbs []float32)
 
 	// Version returns the version of the Scorer: usually the number of features
 	// used -- so system can maintain backwards compatibility.
@@ -20,7 +22,7 @@ type BatchScorer interface {
 	Scorer
 
 	// BatchScore aggregate scoring in batches -- presumable more efficient.
-	BatchScore(boards []*Board) []float32
+	BatchScore(boards []*Board) (scores []float32, actionProbsBatch [][]float32)
 }
 
 type LearnerScorer interface {
@@ -36,12 +38,20 @@ type BatchScorerWrapper struct {
 	Scorer
 }
 
-func (s BatchScorerWrapper) BatchScore(boards []*Board) []float32 {
-	scores := make([]float32, len(boards))
+func (s BatchScorerWrapper) BatchScore(boards []*Board) (scores []float32, actionProbsBatch [][]float32) {
+	scores = make([]float32, len(boards))
+	actionProbsBatch = nil
 	for ii, board := range boards {
-		scores[ii] = s.Score(board)
+		var actionProbs []float32
+		scores[ii], actionProbs = s.Score(board)
+		if actionProbs != nil {
+			if actionProbsBatch == nil {
+				actionProbsBatch = make([][]float32, len(boards))
+			}
+			actionProbsBatch[ii] = actionProbs
+		}
 	}
-	return scores
+	return
 }
 
 // Returns weather it's the end of the game, and the hard-coded score of a win/loss/draw
