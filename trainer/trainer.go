@@ -28,8 +28,9 @@ func rescore(matches []*Match) {
 				from = len(match.Actions) - *flag_lastActions
 			}
 			glog.V(2).Infof("Rescoring match %d", matchNum)
-			newScores := players[0].Searcher.ScoreMatch(match.Boards[from], match.Actions[from:len(match.Actions)])
+			newScores, bestActionsIndices := players[0].Searcher.ScoreMatch(match.Boards[from], match.Actions[from:len(match.Actions)])
 			copy(match.Scores[from:from+len(newScores)-1], newScores)
+			copy(match.BestActionIndices[from:from+len(bestActionsIndices)-1], bestActionsIndices)
 			glog.V(2).Infof("Match %d rescored.", matchNum)
 		}(matchNum, match)
 	}

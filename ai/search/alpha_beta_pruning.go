@@ -147,11 +147,18 @@ func NewAlphaBetaSearcher(maxDepth int, parallelized bool, scorer ai.BatchScorer
 
 // ScoreMatch will score the board at each board position, starting from the current one,
 // and following each one of the actions. In the end, len(scores) == len(actions)+1.
-func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action) (scores []float32) {
+func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action) (
+	scores []float32, bestActionsIndices []int) {
 	scores = make([]float32, 0, len(actions)+1)
 	for _, action := range actions {
 		bestAction, newBoard, score := AlphaBeta(b, ab.scorer, ab.maxDepth, ab.parallelized)
 		scores = append(scores, score)
+		if len(b.Derived.Actions) > 0 {
+			bestActionIdx := b.FindAction(bestAction)
+			bestActionsIndices = append(bestActionsIndices, bestActionIdx)
+		} else {
+			bestActionsIndices = append(bestActionsIndices, -1)
+		}
 		glog.V(1).Infof("Move %d, Player %d, Score %.2f", b.MoveNumber, b.NextPlayer, score)
 		if action == bestAction {
 			glog.V(1).Infof("  Action: %s", action)

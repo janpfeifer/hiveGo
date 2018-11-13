@@ -236,6 +236,10 @@ func (cn *cacheNode) FindBestScore(mcts *mctsSearcher) (bestIdx int, bestScore f
 	// Select best action.
 	bestIdx = 0
 	bestScore = cn.EstimatedScore(mcts, 0)
+	if len(cn.actions) == 0 {
+		// TODO: fix this ... cn.EstimatedScore(mcts, 0) wouldn't work.
+		return -1, bestScore
+	}
 	for ii := 1; ii < len(cn.actions); ii++ {
 		score := cn.EstimatedScore(mcts, ii)
 		if score > bestScore {
@@ -466,15 +470,17 @@ func (mcts *mctsSearcher) runOnCN(cn *cacheNode) {
 
 // ScoreMatch will score the board at each board position, starting from the current one,
 // and following each one of the actions. In the end, len(scores) == len(actions)+1.
-func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action) (scores []float32) {
+func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action) (
+	scores []float32, bestActionsIndices []int) {
 	var cn *cacheNode
 	cn = newCacheNode(mcts, b)
 
 	for _, action := range actions {
 		mcts.runOnCN(cn)
 		// Score of this node, is the score of the best action.
-		_, score := cn.FindBestScore(mcts)
+		bestActionIdx, score := cn.FindBestScore(mcts)
 		scores = append(scores, score)
+		bestActionsIndices = append(bestActionsIndices, bestActionIdx)
 
 		// The action taken may be different than the best action, specially
 		// as the model evolves.

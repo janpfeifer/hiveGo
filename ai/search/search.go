@@ -29,7 +29,9 @@ type Searcher interface {
 
 	// ScoreMatch will score the board at each board position, starting from the current one,
 	// and following each one of the actions. In the end, len(scores) == len(actions)+1.
-	ScoreMatch(b *Board, actions []Action) (scores []float32)
+	// It also outputs what would be the best action for each position, which may
+	// be different than the actions played.
+	ScoreMatch(b *Board, actions []Action) (scores []float32, bestActionsIndices []int)
 }
 
 // ScoredActions enumerates each of the available actions, along with the boards
@@ -162,7 +164,8 @@ func (rs *randomizedSearcher) Search(b *Board) (Action, *Board, float32) {
 	return Action{}, nil, 0.0
 }
 
-func (rs *randomizedSearcher) ScoreMatch(b *Board, actions []Action) (scores []float32) {
+func (rs *randomizedSearcher) ScoreMatch(b *Board, actions []Action) (
+	scores []float32, bestActionsIndices []int) {
 	log.Panicf("ScoreMatch not implemented for RandomizedSearcher")
 	return
 }
