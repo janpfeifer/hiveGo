@@ -108,7 +108,7 @@ def BuildBoardModel(board_embeddings, board_labels, initializer):
             board_values = tf.layers.dense(board_embeddings, 1, activation=None,
                                            name="linear_layer", kernel_initializer=initializer)
         # Adjust prediction.
-        board_predictions= SigmoidTo10(board_values)
+        board_predictions = SigmoidTo10(board_values)
         board_labels = tf.cast(board_labels, MODEL_DTYPE)
         reshaped_labels = tf.reshape(board_labels, [-1, 1])
         board_losses = tf.losses.mean_squared_error(reshaped_labels, board_values,
@@ -152,12 +152,10 @@ def BuildActionsModel(board_embeddings,
         actions_labels = tf.cast(actions_labels, MODEL_DTYPE)
 
         # Broadcast board_embeddings to each action.
-        broadcasted_board_embeddings_shape = [
-            tf.cast(tf.shape(actions_board_indices)[0], dtype=tf.int64),
-            board_embeddings.shape[1]]
-        broadcasted_board_embeddings = tf.manip.scatter_nd(
-            actions_board_indices, updates=board_embeddings,
-            shape=broadcasted_board_embeddings_shape)
+        broadcasted_board_embeddings = tf.manip.gather_nd(
+            params=board_embeddings, indices=tf.expand_dims(actions_board_indices, axis=-1))
+        # gather_nd loses the last dimension (it should keep it):
+        broadcasted_board_embeddings = tf.reshape(broadcasted_board_embeddings, [-1, board_embeddings.shape[1]])
 
         # Build embeddings from neighbourhoods.
         with tf.variable_scope("source_pos", reuse=tf.AUTO_REUSE):
@@ -178,7 +176,7 @@ def BuildActionsModel(board_embeddings,
 
         # Build loss and predictions.
         with tf.variable_scope("actions_kernel"):
-            actions_logits = tf.layers.dense(actions_logits, 1, activation=None, name="linear_layer",
+            actions_logits = tf.layers.dense(inputs=actions_logits, units=1, activation=None, name="linear_layer",
                                              kernel_initializer=initializer)
         log_soft_max = SparseLogSoftMax(tf.reshape(actions_logits,[-1]), actions_board_indices)
         actions_predictions = tf.exp(log_soft_max)
@@ -220,7 +218,8 @@ def main(argv=None):  # pylint: disable=unused-argument
     board_embeddings = BuildBoardEmbeddings(board_features, initializer)
     board_predictions, board_losses = BuildBoardModel(board_embeddings, board_labels, initializer)
     total_losses = board_losses
-    board_predictions = tf.identity(tf.cast(board_predictions, tf.float32), name='board_predictions')
+    board_predictions = tf.identity(
+        tf.cast(tf.reshape(board_predictions, [-1]), tf.float32), name='board_predictions')
     board_losses = tf.identity(tf.cast(board_losses, tf.float32), name='board_losses')
     print('Board outputs:')
     print('\t{}\t{}\n'.format(board_predictions.name, board_losses.name))
@@ -229,7 +228,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     # All inputs are sparse, since the number of actions is variable.
     # The input `actions_board_indices` list for each actions_features what is the
     # corresponding board -- so the indices are from 0 to len(board_features)-1.
-    actions_board_indices = tf.placeholder(tf.float32, shape=[None], name='actions_board_indices')
+    actions_board_indices = tf.placeholder(tf.int64, shape=[None], name='actions_board_indices')
     actions_features = tf.placeholder(tf.float32, shape=[None, 1], name='actions_features')
     actions_source_center = tf.placeholder(tf.float32, shape=[None, FEATURES_PER_POSITION],
                                            name='actions_source_center')
@@ -244,11 +243,11 @@ def main(argv=None):  # pylint: disable=unused-argument
     actions_labels = tf.placeholder(tf.float32, shape=[None], name='actions_labels')
 
     print('Action Inputs:')
-    input_names = [x.name for x in (actions_board_indices, actions_features,
+    input_names = ["{}: {}".format(x.name, x.dtype) for x in (actions_board_indices, actions_features,
                                     actions_source_center, actions_source_neighbourhood,
                                     actions_target_center, actions_target_neighbourhood,
                                     actions_labels)]
-    print('\t{}\n'.format("\t".join(input_names)))
+    print('\t{}\n'.format('\n\t'.join(input_names)))
 
     # Build actions model.
     actions_predictions, actions_losses = BuildActionsModel(
@@ -257,7 +256,8 @@ def main(argv=None):  # pylint: disable=unused-argument
         actions_target_center, actions_target_neighbourhood,
         actions_labels, initializer)
     total_losses += actions_losses
-    actions_predictions = tf.identity(tf.cast(actions_predictions, tf.float32), name='actions_predictions')
+    actions_predictions = tf.identity(
+        tf.cast(tf.reshape(actions_predictions, [-1]), tf.float32), name='actions_predictions')
     actions_losses = tf.identity(tf.cast(actions_losses, tf.float32), name='actions_losses')
     print('Actions outputs:')
     print('\t{}'.format(actions_predictions.name))

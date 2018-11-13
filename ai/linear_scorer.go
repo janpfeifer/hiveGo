@@ -94,32 +94,39 @@ var (
 	muLinearModels     sync.Mutex
 )
 
-func (w LinearScorer) Learn(learningRate float32, examples []LabeledExample, steps int) float32 {
+func (w LinearScorer) Learn(boards []*Board, boardLabels []float32,
+	actionLabels []int, learningRate float32, steps int) (loss float32) {
+	// Bulid features.
+	boardFeatures := make([][]float32, len(boards))
+	for boardIdx, board := range boards {
+		boardFeatures[boardIdx] = FeatureVector(board, w.Version())
+	}
+
 	var totalLoss float32
 	for step := 0; step < steps || step == 0; step++ {
 		grad := make([]float32, len(w))
 		totalLoss = 0
-		for _, example := range examples {
+		for boardIdx, features := range boardFeatures {
 			// Loss = Sqr(label - score)
 			// dLoss/dw_i = 2*(label-score)*x_i
 			// dLoss/b = 2*(label-score)
-			score := w.UnlimitedScore(example.Features)
-			loss := example.Label - score
+			score := w.UnlimitedScore(features)
+			loss := boardLabels[boardIdx] - score
 			loss = loss * loss
 			totalLoss += loss
-			c := learningRate * 2 * (example.Label - score)
-			for ii, feature := range example.Features {
+			c := learningRate * 2 * (boardLabels[boardIdx] - score)
+			for ii, feature := range features {
 				grad[ii] += c * feature
 			}
 			grad[len(grad)-1] += c
 		}
-		totalLoss /= float32(len(examples))
+		totalLoss /= float32(len(boards))
 		totalLoss = float32(math.Sqrt(float64(totalLoss)))
 
 		// Sum gradient and regularization.
 		if step < steps {
 			for ii := range grad {
-				grad[ii] /= float32(len(examples))
+				grad[ii] /= float32(len(boards))
 			}
 			clip(grad, 0.1)
 			for ii := range grad {

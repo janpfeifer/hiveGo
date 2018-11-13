@@ -13,7 +13,6 @@ import (
 	"sync"
 
 	"github.com/golang/glog"
-	"github.com/janpfeifer/hiveGo/ai"
 	ai_players "github.com/janpfeifer/hiveGo/ai/players"
 	"github.com/janpfeifer/hiveGo/ai/tensorflow"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
@@ -82,16 +81,17 @@ func (m *Match) Encode(enc *gob.Encoder) {
 }
 
 // AppendLabeledExamples will add examples for learning _for Player 0 only_.
-func (m *Match) AppendLabeledExamples(examples []ai.LabeledExample) []ai.LabeledExample {
+func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []float32) ([]*Board, []float32) {
 	from := 0
 	if *flag_lastActions > 1 && *flag_lastActions < len(m.Actions) {
 		from = len(m.Actions) - *flag_lastActions
 	}
 	glog.V(2).Infof("Making LabeledExample, version=%d", players[0].Scorer.Version())
 	for ii := from; ii < len(m.Actions); ii++ {
-		examples = append(examples, ai.MakeLabeledExample(m.Boards[ii], m.Scores[ii], players[0].Scorer.Version()))
+		boardExamples = append(boardExamples, m.Boards[ii])
+		boardLabels = append(boardLabels, m.Scores[ii])
 	}
-	return examples
+	return boardExamples, boardLabels
 }
 
 func MatchDecode(dec *gob.Decoder) (match *Match, err error) {
@@ -314,7 +314,10 @@ func reportMatches(matches chan *Match) {
 	}()
 
 	count := 0
-	var labeledExamples []ai.LabeledExample
+	var (
+		boardExamples []*Board
+		boardLabels   []float32
+	)
 	ui := ascii_ui.NewUI(true, false)
 	for match := range matches {
 		count++
@@ -322,7 +325,7 @@ func reportMatches(matches chan *Match) {
 			match.Encode(enc)
 		}
 		if *flag_train {
-			labeledExamples = match.AppendLabeledExamples(labeledExamples)
+			boardExamples, boardLabels = match.AppendLabeledExamples(boardExamples, boardLabels)
 		}
 
 		// Accounting.
@@ -352,7 +355,7 @@ func reportMatches(matches chan *Match) {
 
 	// Train with examples.
 	if *flag_train {
-		trainFromExamples(labeledExamples)
+		trainFromExamples(boardExamples, boardLabels)
 	}
 
 	// Print totals.

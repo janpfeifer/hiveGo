@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/janpfeifer/hiveGo/state"
 	"log"
 	"runtime"
 	"sync"
@@ -38,15 +39,18 @@ func rescore(matches []*Match) {
 }
 
 // trainFromExamples: only player[0] is trained.
-func trainFromExamples(labeledExamples []ai.LabeledExample) {
+func trainFromExamples(boards []*state.Board, boardLabels []float32) {
 	learningRate := float32(*flag_learningRate)
-	log.Printf("Number of labeled examples: %d", len(labeledExamples))
-	loss := players[0].Learner.Learn(learningRate, labeledExamples, 0)
+	learn := func(steps int) float32 {
+		return players[0].Learner.Learn(boards, boardLabels, nil, learningRate, steps)
+	}
+	log.Printf("Number of labeled examples: %d", len(boards))
+	loss := learn(0)
 	log.Printf("  Loss before train loop: %.2f", loss)
 	if *flag_trainLoops > 0 {
-		loss = players[0].Learner.Learn(learningRate, labeledExamples, *flag_trainLoops)
+		loss = learn(*flag_trainLoops)
 		log.Printf("  Loss after %dth train loop: %.2f", *flag_trainLoops, loss)
-		loss = players[0].Learner.Learn(learningRate, labeledExamples, 0)
+		loss = learn(0)
 		log.Printf("  Loss after train loop: %.2f", loss)
 	}
 	if players[0].ModelFile != "" {
@@ -67,10 +71,13 @@ func loopRescoreAndRetrainMatches(matchesChan chan *Match) {
 
 	for rescoreIdx := 0; rescoreIdx < *flag_rescore; rescoreIdx++ {
 		rescore(matches)
-		var labeledExamples []ai.LabeledExample
+		var (
+			boardExamples []*state.Board
+			boardLabels   []float32
+		)
 		for _, match := range matches {
-			labeledExamples = match.AppendLabeledExamples(labeledExamples)
+			boardExamples, boardLabels = match.AppendLabeledExamples(boardExamples, boardLabels)
 		}
-		trainFromExamples(labeledExamples)
+		trainFromExamples(boardExamples, boardLabels)
 	}
 }

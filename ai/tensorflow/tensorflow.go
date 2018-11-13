@@ -57,9 +57,16 @@ type Scorer struct {
 	sess     *tf.Session
 	mu       sync.Mutex
 
-	input, label, learningRate, checkpointFile tf.Output
-	output, loss                               tf.Output
-	initOp, trainOp, saveOp, restoreOp         *tf.Operation
+	BoardFeatures, BoardLabels    tf.Output
+	BoardPredictions, BoardLosses tf.Output
+
+	ActionsBoardIndices, ActionsFeatures             tf.Output
+	ActionsSourceCenter, ActionsSourceNeighbourhood  tf.Output
+	ActionsTargetCenter, ActionsTargetNeighbourhood  tf.Output
+	ActionsPredictions, ActionsLosses, ActionsLabels tf.Output
+
+	LearningRate, CheckpointFile, TotalLoss tf.Output
+	InitOp, TrainOp, SaveOp, RestoreOp      *tf.Operation
 
 	version int // Uses the number of input features used.
 }
@@ -95,6 +102,23 @@ func ParseParam(data interface{}, key, value string) {
 func init() {
 	players.RegisterPlayerParameter("tf", "tf", NewParsingData, ParseParam, FinalizeParsing)
 	players.RegisterPlayerParameter("tf", "tf_cpu", NewParsingData, ParseParam, FinalizeParsing)
+}
+
+var dataTypeMap = map[tf.DataType]string{
+	tf.Float:  "tf.float32",
+	tf.Double: "tf.float64",
+	tf.Int32:  "tf.int32",
+	tf.Int64:  "tf.int64",
+	tf.String: "tf.string",
+}
+
+func dataType(t tf.Output) string {
+	dt := t.DataType()
+	str, ok := dataTypeMap[dt]
+	if !ok {
+		return fmt.Sprintf("type_%d?", int(dt))
+	}
+	return str
 }
 
 // New creates a new Scorer by reading model's graph `basename`.pb,
@@ -139,30 +163,56 @@ func New(basename string, forceCPU bool) *Scorer {
 		log.Panicf("Unknown absolute path for %s: %v", basename, err)
 	}
 
+	t0 := func(tensorName string) (to tf.Output) {
+		op := graph.Operation(tensorName)
+		if op == nil {
+			log.Fatalf("Failed to find tensor [%s]", tensorName)
+		}
+		return op.Output(0)
+	}
+	op := func(tensorName string) *tf.Operation {
+		return graph.Operation(tensorName)
+	}
+
 	s := &Scorer{
 		Basename: absBasename,
 		graph:    graph,
 		sess:     sess,
 
-		// Input tensors, placeholders.
-		input:          graph.Operation("input").Output(0),
-		label:          graph.Operation("label").Output(0),
-		learningRate:   graph.Operation("learning_rate").Output(0),
-		checkpointFile: graph.Operation("save/Const").Output(0),
+		// Board tensors.
+		BoardFeatures:    t0("board_features"),
+		BoardLabels:      t0("board_labels"),
+		BoardPredictions: t0("board_predictions"),
+		BoardLosses:      t0("board_losses"),
 
-		// Output tensors.
-		output: graph.Operation("output").Output(0),
-		loss:   graph.Operation("loss").Output(0),
+		// Actions related tensors.
+		ActionsBoardIndices:        t0("actions_board_indices"),
+		ActionsFeatures:            t0("actions_features"),
+		ActionsSourceCenter:        t0("actions_source_center"),
+		ActionsSourceNeighbourhood: t0("actions_source_neighbourhood"),
+		ActionsTargetCenter:        t0("actions_target_center"),
+		ActionsTargetNeighbourhood: t0("actions_target_neighbourhood"),
+		ActionsPredictions:         t0("actions_predictions"),
+		ActionsLosses:              t0("actions_losses"),
+		ActionsLabels:              t0("actions_labels"),
 
-		// Ops
-		initOp:    graph.Operation("init"),
-		trainOp:   graph.Operation("train"),
-		saveOp:    graph.Operation("save/control_dependency"),
-		restoreOp: graph.Operation("save/restore_all"),
+		// Global parameters.
+		LearningRate:   t0("learning_rate"),
+		CheckpointFile: t0("save/Const"),
+		TotalLoss:      t0("mean_loss"),
+
+		// Ops.
+		InitOp:    op("init"),
+		TrainOp:   op("train"),
+		SaveOp:    op("save/control_dependency"),
+		RestoreOp: op("save/restore_all"),
 	}
+	// Notice there must be a bug in the library that prevents it from taking
+	// tf.int32.
+	glog.V(2).Infof("ActionsBoardIndices: type=%s", dataType(s.ActionsBoardIndices))
 
 	// Set version to the size of the input.
-	s.version = int(s.input.Shape().Size(1))
+	s.version = int(s.BoardFeatures.Shape().Size(1))
 	glog.V(1).Infof("TensorFlow model's version=%d", s.version)
 
 	// Either restore or initialize the network.
@@ -175,7 +225,10 @@ func New(basename string, forceCPU bool) *Scorer {
 		}
 	} else if os.IsNotExist(err) {
 		glog.Infof("Initializing model randomly, since %s not found", s.CheckpointBase())
-		s.Init()
+		err = s.Init()
+		if err != nil {
+			log.Panicf("Failed to initialize model: %v", err)
+		}
 	} else {
 		log.Panicf("Cannot checkpoint file %s: %v", s.CheckpointBase(), err)
 	}
@@ -202,14 +255,14 @@ func (s *Scorer) Restore() error {
 		log.Panicf("Failed to create tensor: %v", err)
 	}
 	feeds := map[tf.Output]*tf.Tensor{
-		s.checkpointFile: t,
+		s.CheckpointFile: t,
 	}
-	_, err = s.sess.Run(feeds, nil, []*tf.Operation{s.restoreOp})
+	_, err = s.sess.Run(feeds, nil, []*tf.Operation{s.RestoreOp})
 	return err
 }
 
 func (s *Scorer) Init() error {
-	_, err := s.sess.Run(nil, nil, []*tf.Operation{s.initOp})
+	_, err := s.sess.Run(nil, nil, []*tf.Operation{s.InitOp})
 	return err
 }
 
@@ -217,80 +270,126 @@ func (s *Scorer) Version() int {
 	return s.version
 }
 
-func (s *Scorer) UnlimitedBatchScore(batch [][]float32) (scores []float32, actionProbsBatch [][]float32) {
-	glog.V(2).Infof("UnlimitedBatchScore: batch.size=[%d, %d]", len(batch), len(batch[0]))
-	batchTensor, err := tf.NewTensor(batch)
-	if err != nil {
-		log.Panicf("Failed to create tensor: %v", err)
-	}
-	feeds := map[tf.Output]*tf.Tensor{s.input: batchTensor}
-	fetches := []tf.Output{s.output}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	results, err := s.sess.Run(feeds, fetches, nil)
-	if err != nil {
-		log.Panicf("Prediction failed: %v", err)
-	}
-	return results[0].Value().([]float32), nil
-}
-
 func (s *Scorer) Score(b *Board) (score float32, actionProbs []float32) {
-	features := [][]float32{ai.FeatureVector(b, s.version)}
-	scores, actionProbsBatch := s.UnlimitedBatchScore(features)
-	if actionProbsBatch == nil {
-		return scores[0], nil
-	}
+	boards := []*Board{b}
+	scores, actionProbsBatch := s.BatchScore(boards)
 	return scores[0], actionProbsBatch[0]
 }
 
-func (s *Scorer) BatchScore(boards []*Board) (scores []float32, actionProbsBatch [][]float32) {
-	features := make([][]float32, len(boards))
-	for ii, board := range boards {
-		features[ii] = ai.FeatureVector(board, s.version)
+// Quick utility to create a tensor out of value. Dies if there is an error.
+func mustTensor(value interface{}) *tf.Tensor {
+	tensor, err := tf.NewTensor(value)
+	if err != nil {
+		log.Panicf("Cannot convert to tensor: %v", err)
 	}
-	return s.UnlimitedBatchScore(features)
+	return tensor
 }
 
-func (s *Scorer) Learn(learningRate float32, examples []ai.LabeledExample, steps int) float32 {
-	glog.V(1).Infof("Learn: batch.size=[%d, %d]", len(examples), len(examples[0].Features))
+func (s *Scorer) buildFeeds(boards []*Board) (feeds map[tf.Output]*tf.Tensor, totalNumActions int) {
+	totalNumActions = 0
+	for _, board := range boards {
+		totalNumActions += len(board.Derived.Actions)
+	}
+	glog.V(2).Infof("BatchScore: #boards, #actions=[%d, %d]", len(boards), totalNumActions)
 
-	// Extract features and labels.
-	features := make([][]float32, len(examples))
-	labels := make([]float32, len(examples))
-	for ii, example := range examples {
-		features[ii] = example.Features
-		labels[ii] = example.Label
+	// Initialize Go objects, that need to be copied to tensors.
+	boardFeatures := make([][]float32, len(boards))
+	actionsBoardIndices := make([]int64, 0, totalNumActions) // Go tensorflow implementation is broken for int32.
+	actionsFeatures := make([][1]float32, 0, totalNumActions)
+	actionsSourceCenter := make([][]float32, 0, totalNumActions)
+	actionsSourceNeighbourhood := make([][6][]float32, 0, totalNumActions)
+	actionsTargetCenter := make([][]float32, 0, totalNumActions)
+	actionsTargetNeighbourhood := make([][6][]float32, 0, totalNumActions)
+
+	// Generate features in Go slices.
+	for boardIdx, board := range boards {
+		boardFeatures[boardIdx] = ai.FeatureVector(board, s.version)
+		for _, action := range board.Derived.Actions {
+			af := ai.NewActionFeatures(board, action, s.version)
+			actionsBoardIndices = append(actionsBoardIndices, int64(boardIdx))
+			actionsFeatures = append(actionsFeatures, [1]float32{af.Move})
+			actionsSourceCenter = append(actionsSourceCenter, af.SourceFeatures.Center)
+			actionsSourceNeighbourhood = append(actionsSourceNeighbourhood,
+				af.SourceFeatures.Sections)
+			actionsTargetCenter = append(actionsTargetCenter, af.TargetFeatures.Center)
+			actionsTargetNeighbourhood = append(actionsTargetNeighbourhood,
+				af.TargetFeatures.Sections)
+
+		}
 	}
 
-	// Prepare input feeds.
-	inputTensor, err := tf.NewTensor(features)
+	// Convert Go slices to tensors.
+	feeds = map[tf.Output]*tf.Tensor{
+		s.BoardFeatures:              mustTensor(boardFeatures),
+		s.ActionsBoardIndices:        mustTensor(actionsBoardIndices),
+		s.ActionsFeatures:            mustTensor(actionsFeatures),
+		s.ActionsSourceCenter:        mustTensor(actionsSourceCenter),
+		s.ActionsSourceNeighbourhood: mustTensor(actionsSourceNeighbourhood),
+		s.ActionsTargetCenter:        mustTensor(actionsTargetCenter),
+		s.ActionsTargetNeighbourhood: mustTensor(actionsTargetNeighbourhood),
+	}
+	return
+}
+
+func (s *Scorer) BatchScore(boards []*Board) (scores []float32, actionProbsBatch [][]float32) {
+	// Build feeds to TF model.
+	feeds, totalNumActions := s.buildFeeds(boards)
+	fetches := []tf.Output{s.BoardPredictions, s.ActionsPredictions}
+
+	// Evaluate: at most one evaluation at a same time.
+	s.mu.Lock()
+	results, err := s.sess.Run(feeds, fetches, nil)
+	s.mu.Unlock()
 	if err != nil {
-		log.Panicf("Failed to create tensor: %v", err)
+		log.Panicf("Prediction failed: %v", err)
 	}
-	labelTensor, err := tf.NewTensor(labels)
-	if err != nil {
-		log.Panicf("Failed to create tensor: %v", err)
+
+	// Copy over resulting tensors.
+	scores = results[0].Value().([]float32)
+	actionProbsBatch = make([][]float32, len(boards))
+	allActionsProbs := results[1].Value().([]float32)
+	if len(scores) != len(boards) {
+		log.Panicf("Expected %d scores (=number of boards given), got %d",
+			len(boards), len(scores))
 	}
-	learningRateTensor, err := tf.NewTensor(learningRate)
-	if err != nil {
-		log.Panicf("Failed to create tensor: %v", err)
+	if len(allActionsProbs) != totalNumActions {
+		log.Panicf("Expected %d actions (from %d boards), got %d",
+			totalNumActions, len(boards), len(allActionsProbs))
 	}
-	feeds := map[tf.Output]*tf.Tensor{
-		s.input:        inputTensor,
-		s.label:        labelTensor,
-		s.learningRate: learningRateTensor,
+	for boardIdx, board := range boards {
+		actionProbsBatch[boardIdx] = allActionsProbs[:len(board.Derived.Actions)]
+		allActionsProbs = allActionsProbs[len(board.Derived.Actions):]
 	}
+	return
+}
+
+func (s *Scorer) Learn(boards []*Board, boardLabels []float32, actionsLabels []int, learningRate float32, steps int) (loss float32) {
+	feeds, totalNumActions := s.buildFeeds(boards)
+
+	// Feed also the labels.
+	actionsOneHotLabels := make([]float32, totalNumActions)
+	actionsIdx := 0
+	for boardIdx, board := range boards {
+		actionsOneHotLabels[actionsIdx+actionsLabels[boardIdx]] = 1.0
+		actionsIdx += len(board.Derived.Actions)
+	}
+	if actionsIdx != totalNumActions {
+		log.Panicf("Expected %d actions in total, got %d", totalNumActions, actionsIdx)
+	}
+	feeds[s.BoardLabels] = mustTensor(boardLabels)
+	feeds[s.ActionsPredictions] = mustTensor(actionsOneHotLabels)
+	feeds[s.LearningRate] = mustTensor(learningRate)
 
 	// Loop over steps.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for step := 0; step < steps; step++ {
-		if _, err = s.sess.Run(feeds, nil, []*tf.Operation{s.trainOp}); err != nil {
+		if _, err := s.sess.Run(feeds, nil, []*tf.Operation{s.TrainOp}); err != nil {
 			log.Panicf("TensorFlow trainOp failed: %v", err)
 		}
 	}
 
-	fetches := []tf.Output{s.loss}
+	fetches := []tf.Output{s.TotalLoss}
 	results, err := s.sess.Run(feeds, fetches, nil)
 	if err != nil {
 		log.Panicf("Loss evaluation failed: %v", err)
@@ -314,8 +413,8 @@ func (s *Scorer) Save() {
 	if err != nil {
 		log.Panicf("Failed to create tensor: %v", err)
 	}
-	feeds := map[tf.Output]*tf.Tensor{s.checkpointFile: t}
-	if _, err := s.sess.Run(feeds, nil, []*tf.Operation{s.saveOp}); err != nil {
+	feeds := map[tf.Output]*tf.Tensor{s.CheckpointFile: t}
+	if _, err := s.sess.Run(feeds, nil, []*tf.Operation{s.SaveOp}); err != nil {
 		log.Panicf("Failed to checkpoint (save) file to %s: %v", s.CheckpointBase(), err)
 	}
 }

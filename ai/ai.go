@@ -28,7 +28,7 @@ type BatchScorer interface {
 type LearnerScorer interface {
 	BatchScorer
 
-	Learn(learningRate float32, examples []LabeledExample, steps int) float32
+	Learn(boards []*Board, boardLabels []float32, actionLabels []int, learningRate float32, steps int) (loss float32)
 	Save()
 	String() string
 }
