@@ -5,7 +5,10 @@
 // good game play, useful information for the UI, etc.
 package state
 
-import "fmt"
+import (
+	"fmt"
+	"log"
+)
 
 var _ = fmt.Printf
 
@@ -101,6 +104,16 @@ func (b *Board) ValidActions(player uint8) (actions []Action) {
 	actions = b.addPlacementActions(player, actions)
 	actions = b.addMoveActions(player, actions)
 	return
+}
+
+func (b *Board) FindAction(action Action) int {
+	for ii, action2 := range b.Derived.Actions {
+		if action == action2 {
+			return ii
+		}
+	}
+	log.Panicf("Action %s chosen not found. Available: %v", action, b.Derived.Actions)
+	return -1
 }
 
 // placementPositions enumerate placement positions.

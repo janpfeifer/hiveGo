@@ -39,10 +39,10 @@ func rescore(matches []*Match) {
 }
 
 // trainFromExamples: only player[0] is trained.
-func trainFromExamples(boards []*state.Board, boardLabels []float32) {
+func trainFromExamples(boards []*state.Board, boardLabels []float32, actionsLabels []int) {
 	learningRate := float32(*flag_learningRate)
 	learn := func(steps int) float32 {
-		return players[0].Learner.Learn(boards, boardLabels, nil, learningRate, steps)
+		return players[0].Learner.Learn(boards, boardLabels, actionsLabels, learningRate, steps)
 	}
 	log.Printf("Number of labeled examples: %d", len(boards))
 	loss := learn(0)
@@ -74,10 +74,12 @@ func loopRescoreAndRetrainMatches(matchesChan chan *Match) {
 		var (
 			boardExamples []*state.Board
 			boardLabels   []float32
+			actionsLabels []int
 		)
 		for _, match := range matches {
-			boardExamples, boardLabels = match.AppendLabeledExamples(boardExamples, boardLabels)
+			boardExamples, boardLabels, actionsLabels = match.AppendLabeledExamples(
+				boardExamples, boardLabels, actionsLabels)
 		}
-		trainFromExamples(boardExamples, boardLabels)
+		trainFromExamples(boardExamples, boardLabels, actionsLabels)
 	}
 }

@@ -28,6 +28,8 @@ type BatchScorer interface {
 type LearnerScorer interface {
 	BatchScorer
 
+	// actionLabels is the index of the action that was taken. It should be -1 if there are no valid
+	// actons, that is, when `len(board.Derived.Actions) == 0`.
 	Learn(boards []*Board, boardLabels []float32, actionLabels []int, learningRate float32, steps int) (loss float32)
 	Save()
 	String() string

@@ -370,7 +370,10 @@ func (s *Scorer) Learn(boards []*Board, boardLabels []float32, actionsLabels []i
 	actionsOneHotLabels := make([]float32, totalNumActions)
 	actionsIdx := 0
 	for boardIdx, board := range boards {
-		actionsOneHotLabels[actionsIdx+actionsLabels[boardIdx]] = 1.0
+		// If there are no valid moves, actionsLabels[boardIdx] will be -1.
+		if len(board.Derived.Actions) == 0 || actionsLabels[boardIdx] >= 0 {
+			actionsOneHotLabels[actionsIdx+actionsLabels[boardIdx]] = 1.0
+		}
 		actionsIdx += len(board.Derived.Actions)
 	}
 	if actionsIdx != totalNumActions {

@@ -81,7 +81,8 @@ func (m *Match) Encode(enc *gob.Encoder) {
 }
 
 // AppendLabeledExamples will add examples for learning _for Player 0 only_.
-func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []float32) ([]*Board, []float32) {
+func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []float32, actionsLabels []int) (
+	[]*Board, []float32, []int) {
 	from := 0
 	if *flag_lastActions > 1 && *flag_lastActions < len(m.Actions) {
 		from = len(m.Actions) - *flag_lastActions
@@ -90,8 +91,13 @@ func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []floa
 	for ii := from; ii < len(m.Actions); ii++ {
 		boardExamples = append(boardExamples, m.Boards[ii])
 		boardLabels = append(boardLabels, m.Scores[ii])
+		if len(m.Boards[ii].Derived.Actions) > 1 {
+			actionsLabels = append(actionsLabels, m.Boards[ii].FindAction(m.Actions[ii]))
+		} else {
+			actionsLabels = append(actionsLabels, -1)
+		}
 	}
-	return boardExamples, boardLabels
+	return boardExamples, boardLabels, actionsLabels
 }
 
 func MatchDecode(dec *gob.Decoder) (match *Match, err error) {
@@ -317,6 +323,7 @@ func reportMatches(matches chan *Match) {
 	var (
 		boardExamples []*Board
 		boardLabels   []float32
+		actionsLabels []int
 	)
 	ui := ascii_ui.NewUI(true, false)
 	for match := range matches {
@@ -325,7 +332,8 @@ func reportMatches(matches chan *Match) {
 			match.Encode(enc)
 		}
 		if *flag_train {
-			boardExamples, boardLabels = match.AppendLabeledExamples(boardExamples, boardLabels)
+			boardExamples, boardLabels, actionsLabels = match.AppendLabeledExamples(
+				boardExamples, boardLabels, actionsLabels)
 		}
 
 		// Accounting.
@@ -355,7 +363,7 @@ func reportMatches(matches chan *Match) {
 
 	// Train with examples.
 	if *flag_train {
-		trainFromExamples(boardExamples, boardLabels)
+		trainFromExamples(boardExamples, boardLabels, actionsLabels)
 	}
 
 	// Print totals.
