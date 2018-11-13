@@ -64,6 +64,10 @@ type Match struct {
 	// Match actions, alternating players.
 	Actions []Action
 
+	// Best action index: usually the same as Actions, but could be different
+	// if match rescored.
+	BestActionIndices []int
+
 	// All board states of the game: 1 more than the number of actions.
 	Boards []*Board
 
@@ -91,11 +95,7 @@ func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []floa
 	for ii := from; ii < len(m.Actions); ii++ {
 		boardExamples = append(boardExamples, m.Boards[ii])
 		boardLabels = append(boardLabels, m.Scores[ii])
-		if len(m.Boards[ii].Derived.Actions) > 1 {
-			actionsLabels = append(actionsLabels, m.Boards[ii].FindAction(m.Actions[ii]))
-		} else {
-			actionsLabels = append(actionsLabels, -1)
-		}
+		actionsLabels = append(actionsLabels, m.BestActionIndices[ii])
 	}
 	return boardExamples, boardLabels, actionsLabels
 }
@@ -131,6 +131,7 @@ func runMatch(matchNum int) *Match {
 	}
 
 	// Run match.
+	lastWasSkip := false
 	for !board.IsFinished() {
 		player := board.NextPlayer
 		if swapped {
@@ -140,19 +141,30 @@ func runMatch(matchNum int) *Match {
 			matchNum, player, board.MoveNumber, len(board.Derived.Actions))
 		var action Action
 		score := float32(0)
+		actionIdx := 0
 		if len(board.Derived.Actions) == 0 {
 			// Auto-play skip move.
 			action = Action{Piece: NO_PIECE}
+			actionIdx = -1
 			board = board.Act(action)
+			lastWasSkip = true
 			if len(board.Derived.Actions) == 0 {
 				log.Panicf("No moves to either side!?\n\n%v\n", board)
 			}
 		} else {
+			prevBoard := board
 			action, board, score = reorderedPlayers[board.NextPlayer].Play(board)
+			actionIdx = prevBoard.FindAction(action)
+			if lastWasSkip {
+				// Use inverse of this score for previous "NOOP" move.
+				match.Scores[len(match.Scores)-1] = -score
+				lastWasSkip = false
+			}
 		}
 		match.Actions = append(match.Actions, action)
 		match.Boards = append(match.Boards, board)
 		match.Scores = append(match.Scores, score)
+		match.BestActionIndices = append(match.BestActionIndices, actionIdx)
 	}
 
 	if glog.V(1) {
