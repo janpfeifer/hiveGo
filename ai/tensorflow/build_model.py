@@ -75,38 +75,39 @@ def SparseCrossEntropyLoss(log_probs, labels):
 # Neither num_hidden_layers_nodes and output_embedding_dim include the dimensions of the input
 # that may be concatenated for the skip connections.
 def buildSkipFFNN(input, num_hidden_layers, num_hidden_layers_nodes,
-                  skip_also_output, output_embedding_dim, initializer):
+                  skip_also_output, output_embedding_dim, initializer, l2_regularizer):
     with tf.name_scope("buildSkipFFNN"):
         logits = input
         if num_hidden_layers > 0:
             for ii in range(num_hidden_layers-1):
                 logits = tf.layers.dense(logits, num_hidden_layers_nodes, tf.nn.selu,
-                                         kernel_initializer=initializer,
+                                         kernel_initializer=initializer, kernel_regularizer=l2_regularizer,
                                          name="hidden_{}".format(ii), reuse=tf.AUTO_REUSE)
                 logits = tf.concat([logits, input], 1)
             # Last hidden layer can be of different size, and the skip connection is optional.
             logits = tf.layers.dense(logits, output_embedding_dim, tf.nn.selu,
-                                     kernel_initializer=initializer,
+                                     kernel_initializer=initializer, kernel_regularizer=l2_regularizer,
                                      name="embedding", reuse=tf.AUTO_REUSE)
             if skip_also_output:
                 logits = tf.concat([logits, input], 1)
     return logits
 
 
-def BuildBoardEmbeddings(board_features, initializer):
+def BuildBoardEmbeddings(board_features, initializer, l2_regularizer):
     with tf.name_scope("BuildBoardEmbeddings"):
         board_features = tf.cast(board_features, MODEL_DTYPE)
         with tf.variable_scope("board_kernel", reuse=tf.AUTO_REUSE):
                 logits = buildSkipFFNN(board_features, BOARD_NUM_HIDDEN_LAYERS, BOARD_NODES_PER_LAYER,
-                                       True, BOARD_EMBEDDING_DIM, initializer)
+                                       True, BOARD_EMBEDDING_DIM, initializer, l2_regularizer)
     return logits
 
 
-def BuildBoardModel(board_embeddings, board_labels, initializer):
+def BuildBoardModel(board_embeddings, board_labels, initializer, l2_regularizer):
     with tf.name_scope("BuildBoardModel"):
         with tf.variable_scope("board_kernel"):
             board_values = tf.layers.dense(board_embeddings, 1, activation=None,
-                                           name="linear_layer", kernel_initializer=initializer)
+                                           name="linear_layer", kernel_initializer=initializer,
+                                           kernel_regularizer=l2_regularizer)
         # Adjust prediction.
         board_predictions = SigmoidTo10(board_values)
         board_labels = tf.cast(board_labels, MODEL_DTYPE)
@@ -117,7 +118,7 @@ def BuildBoardModel(board_embeddings, board_labels, initializer):
         return (board_predictions, board_losses)
 
 
-def BuildNeighbourhoodEmbeddings(actions_features, center, neighbourhood, initializer):
+def BuildNeighbourhoodEmbeddings(actions_features, center, neighbourhood, initializer, l2_regularizer):
     with tf.name_scope("BuildNeighbourhoodEmbeddings"):
         rotation_embeddings = []
         with tf.variable_scope("neighbourhood_kernel", reuse=tf.AUTO_REUSE):
@@ -129,7 +130,7 @@ def BuildNeighbourhoodEmbeddings(actions_features, center, neighbourhood, initia
                     tf.shape(neigh_rotated)[0], neighbourhood.shape[1] * neighbourhood.shape[2]])
                 all = tf.concat([actions_features, center, neigh_concated], axis=1)
                 embedding = buildSkipFFNN(all, NEIGHBOURHOOD_NUM_HIDDEN_LAYERS, NEIGHBOURHOOD_NODES_PER_LAYER,
-                                          False, NEIGHBOURHOOD_EMBEDDING_DIM, initializer)
+                                          False, NEIGHBOURHOOD_EMBEDDING_DIM, initializer, l2_regularizer)
                 rotation_embeddings.append(embedding)
         all_embeddings = tf.stack(rotation_embeddings, axis=1)
         sum = tf.reduce_sum(all_embeddings, axis=1)
@@ -141,7 +142,7 @@ def BuildActionsModel(board_embeddings,
                            actions_board_indices, actions_features,
                            actions_source_center, actions_source_neighbourhood,
                            actions_target_center, actions_target_neighbourhood,
-                           actions_labels, initializer):
+                           actions_labels, initializer, l2_regularizer):
     with tf.name_scope("BuildActionsModel"):
         actions_features = tf.cast(actions_features, MODEL_DTYPE)
         actions_source_center = tf.cast(actions_source_center, MODEL_DTYPE)
@@ -160,7 +161,7 @@ def BuildActionsModel(board_embeddings,
         # Build embeddings from neighbourhoods.
         with tf.variable_scope("source_pos", reuse=tf.AUTO_REUSE):
             source_embedding = BuildNeighbourhoodEmbeddings(
-                actions_features, actions_source_center, actions_source_neighbourhood, initializer)
+                actions_features, actions_source_center, actions_source_neighbourhood, initializer, l2_regularizer)
             is_move = actions_features[:,0] > 0
             source_embedding = tf.where(
                 is_move,
@@ -168,7 +169,7 @@ def BuildActionsModel(board_embeddings,
                 tf.zeros_like(source_embedding))
         with tf.variable_scope("target_pos", reuse=tf.AUTO_REUSE):
             target_embedding = BuildNeighbourhoodEmbeddings(
-                actions_features, actions_target_center, actions_target_neighbourhood, initializer)
+                actions_features, actions_target_center, actions_target_neighbourhood, initializer, l2_regularizer)
 
         # Put all features together.
         actions_logits = tf.concat([actions_features, broadcasted_board_embeddings,
@@ -177,7 +178,7 @@ def BuildActionsModel(board_embeddings,
         # Build loss and predictions.
         with tf.variable_scope("actions_kernel"):
             actions_logits = tf.layers.dense(inputs=actions_logits, units=1, activation=None, name="linear_layer",
-                                             kernel_initializer=initializer)
+                                             kernel_initializer=initializer, kernel_regularizer=l2_regularizer)
         log_soft_max = SparseLogSoftMax(tf.reshape(actions_logits,[-1]), actions_board_indices)
         actions_predictions = tf.exp(log_soft_max)
         actions_loss = tf.reduce_sum(SparseCrossEntropyLoss(log_soft_max, actions_labels))
@@ -200,6 +201,11 @@ def CreateSaveDef():
           saver_def.restore_op_name)
 
 
+def BuildRegularizer(l2):
+    l2 = tf.cast(l2, MODEL_DTYPE)
+    raw_l2_regularizer = tf.keras.regularizers.l2(1.0)
+    return lambda x: raw_l2_regularizer(x) * l2
+
 def main(argv=None):  # pylint: disable=unused-argument
     assert FLAGS.output
 
@@ -208,6 +214,8 @@ def main(argv=None):  # pylint: disable=unused-argument
 
     # Build board inputs
     learning_rate = tf.placeholder(tf.float32, shape=(), name='learning_rate')
+    l2_regularization = tf.placeholder(tf.float32, shape=(), name='l2_regularization')
+    l2_regularizer = BuildRegularizer(l2_regularization)
     board_features = tf.placeholder(tf.float32, shape=[None, BOARD_FEATURES_DIM], name='board_features')
     board_labels = tf.placeholder(tf.float32, shape=[None], name='board_labels')
     print('Board inputs:')
@@ -215,8 +223,8 @@ def main(argv=None):  # pylint: disable=unused-argument
     print('\t{}\n'.format("\t".join(input_names)))
 
     # Build board logits and model.
-    board_embeddings = BuildBoardEmbeddings(board_features, initializer)
-    board_predictions, board_losses = BuildBoardModel(board_embeddings, board_labels, initializer)
+    board_embeddings = BuildBoardEmbeddings(board_features, initializer, l2_regularizer)
+    board_predictions, board_losses = BuildBoardModel(board_embeddings, board_labels, initializer, l2_regularizer)
     total_losses = board_losses
     board_predictions = tf.identity(
         tf.cast(tf.reshape(board_predictions, [-1]), tf.float32), name='board_predictions')
@@ -254,7 +262,7 @@ def main(argv=None):  # pylint: disable=unused-argument
         board_embeddings, actions_board_indices, actions_features,
         actions_source_center, actions_source_neighbourhood,
         actions_target_center, actions_target_neighbourhood,
-        actions_labels, initializer)
+        actions_labels, initializer, l2_regularizer)
     total_losses += actions_losses
     actions_predictions = tf.identity(
         tf.cast(tf.reshape(actions_predictions, [-1]), tf.float32), name='actions_predictions')
