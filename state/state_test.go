@@ -43,6 +43,46 @@ func printBoard(b *Board) {
 	ui.PrintBoard(b)
 }
 
+func TestEqual(t *testing.T) {
+	a1 := Action{Piece: NO_PIECE}
+	a2 := Action{Piece: NO_PIECE, Move: true}
+	if !a1.Equal(a2) {
+		t.Errorf("Expected %s and %s to be the same.", a1, a2)
+	}
+
+	a2 = Action{Piece: ANT}
+	if a1.Equal(a2) {
+		t.Errorf("Expected %s and %s to be different.", a1, a2)
+	}
+
+	a1 = Action{Piece: BEETLE, TargetPos: Pos{1, -1}}
+	a2 = Action{Piece: BEETLE, TargetPos: Pos{1, -1}, SourcePos: Pos{10, 20}}
+	if !a1.Equal(a2) {
+		t.Errorf("Expected %s and %s to be the same.", a1, a2)
+	}
+
+	a2 = Action{Piece: BEETLE, TargetPos: Pos{1, -2}}
+	if a1.Equal(a2) {
+		t.Errorf("Expected %s and %s to be different.", a1, a2)
+	}
+
+	a2 = Action{Piece: BEETLE, TargetPos: Pos{1, -1}, Move: true}
+	if a1.Equal(a2) {
+		t.Errorf("Expected %s and %s to be different.", a1, a2)
+	}
+
+	a1 = Action{Move: true, Piece: GRASSHOPPER, SourcePos: Pos{10, -10}, TargetPos: Pos{1, -1}}
+	a2 = Action{Move: true, Piece: GRASSHOPPER, SourcePos: Pos{10, -10}, TargetPos: Pos{1, -1}}
+	if !a1.Equal(a2) {
+		t.Errorf("Expected %s and %s to be the same.", a1, a2)
+	}
+
+	a2.SourcePos = Pos{7, 7}
+	if a1.Equal(a2) {
+		t.Errorf("Expected %s and %s to be different.", a1, a2)
+	}
+}
+
 func TestOccupiedNeighbours(t *testing.T) {
 	board := buildBoard([]PieceLayout{
 		{Pos{0, 0}, 0, ANT},

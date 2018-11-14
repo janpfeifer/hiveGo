@@ -65,6 +65,24 @@ func (a Action) String() string {
 	}
 }
 
+// Comparison of values.
+func (a Action) Equal(a2 Action) bool {
+	if a.Piece != a2.Piece {
+		return false
+	}
+	if a.Piece == NO_PIECE {
+		// NO-OP move.
+		return true
+	}
+	if a.Move != a2.Move || !a.TargetPos.Equal(a2.TargetPos) {
+		return false
+	}
+	if !a.Move {
+		return true
+	}
+	return a.SourcePos == a2.SourcePos
+}
+
 // BuildDerived rebuilds information derived from the board.
 func (b *Board) BuildDerived() {
 	// Reset Derived.
@@ -106,9 +124,24 @@ func (b *Board) ValidActions(player uint8) (actions []Action) {
 	return
 }
 
+// FindAction finds the index to the given action. It assumes the action is the exact same slice,
+// that is, it is a shallow comparison.
 func (b *Board) FindAction(action Action) int {
 	for ii, action2 := range b.Derived.Actions {
 		if action == action2 {
+			return ii
+		}
+	}
+	log.Panicf("Action %s chosen not found. Available: %v", action, b.Derived.Actions)
+	return -1
+}
+
+// FindActionDeep like FindAction finds the index to the given action. But it does a deep-comparison, so
+// the action may have been generated separatedly from the actions of the board -- for instance when loading
+// a match.
+func (b *Board) FindActionDeep(action Action) int {
+	for ii, action2 := range b.Derived.Actions {
+		if action.Equal(action2) {
 			return ii
 		}
 	}

@@ -380,7 +380,7 @@ func (s *Scorer) Learn(boards []*Board, boardLabels []float32, actionsLabels []i
 		log.Panicf("Expected %d actions in total, got %d", totalNumActions, actionsIdx)
 	}
 	feeds[s.BoardLabels] = mustTensor(boardLabels)
-	feeds[s.ActionsPredictions] = mustTensor(actionsOneHotLabels)
+	feeds[s.ActionsLabels] = mustTensor(actionsOneHotLabels)
 	feeds[s.LearningRate] = mustTensor(learningRate)
 
 	// Loop over steps.

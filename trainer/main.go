@@ -105,6 +105,7 @@ func MatchDecode(dec *gob.Decoder) (match *Match, err error) {
 	match = &Match{}
 	initial := &Board{}
 	initial, match.Actions, match.Scores, err = LoadMatch(dec)
+	match.BestActionIndices = make([]int, 0, len(match.Actions))
 	if err != nil {
 		return
 	}
@@ -114,6 +115,11 @@ func MatchDecode(dec *gob.Decoder) (match *Match, err error) {
 	match.Boards[0] = initial
 	board := initial
 	for _, action := range match.Actions {
+		actionIdx := -1
+		if action.Piece != NO_PIECE {
+			actionIdx = board.FindActionDeep(action)
+		}
+		match.BestActionIndices = append(match.BestActionIndices, actionIdx)
 		board = board.Act(action)
 		match.Boards = append(match.Boards, board)
 	}
@@ -256,7 +262,7 @@ func loadMatches(results chan<- *Match) {
 			log.Panicf("Cannot open '%s' for reading: %v", filename, err)
 		}
 		dec := gob.NewDecoder(file)
-		for {
+		for matchesCount < *flag_numMatches {
 			match, err := MatchDecode(dec)
 			if err == io.EOF {
 				break
