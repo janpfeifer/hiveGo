@@ -136,8 +136,11 @@ type alphaBetaSearcher struct {
 }
 
 // Search implements the Searcher interface.
-func (ab *alphaBetaSearcher) Search(b *Board) (action Action, board *Board, score float32) {
-	return AlphaBeta(b, ab.scorer, ab.maxDepth, ab.parallelized)
+func (ab *alphaBetaSearcher) Search(b *Board) (action Action, board *Board, score float32, actionsLabels []float32) {
+	action, board, score = AlphaBeta(b, ab.scorer, ab.maxDepth, ab.parallelized)
+	actionsLabels = make([]float32, len(b.Derived.Actions))
+	actionsLabels[b.FindAction(action)] = 1
+	return
 }
 
 // NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPruning.
@@ -148,16 +151,20 @@ func NewAlphaBetaSearcher(maxDepth int, parallelized bool, scorer ai.BatchScorer
 // ScoreMatch will score the board at each board position, starting from the current one,
 // and following each one of the actions. In the end, len(scores) == len(actions)+1.
 func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action) (
-	scores []float32, bestActionsIndices []int) {
+	scores []float32, actionsLabels [][]float32) {
 	scores = make([]float32, 0, len(actions)+1)
+	actionsLabels = make([][]float32, 0, len(actions))
 	for _, action := range actions {
 		bestAction, newBoard, score := AlphaBeta(b, ab.scorer, ab.maxDepth, ab.parallelized)
 		scores = append(scores, score)
 		if len(b.Derived.Actions) > 0 {
+			// AlphaBetaPrunning policy is binary, effectively being one-hot-encoding.
 			bestActionIdx := b.FindAction(bestAction)
-			bestActionsIndices = append(bestActionsIndices, bestActionIdx)
+			bestActionVec := make([]float32, len(b.Derived.Actions))
+			bestActionVec[bestActionIdx] = 1
+			actionsLabels = append(actionsLabels, bestActionVec)
 		} else {
-			bestActionsIndices = append(bestActionsIndices, -1)
+			actionsLabels = append(actionsLabels, nil)
 		}
 		glog.V(1).Infof("Move %d, Player %d, Score %.2f", b.MoveNumber, b.NextPlayer, score)
 		if action == bestAction {

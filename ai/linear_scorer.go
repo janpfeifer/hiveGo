@@ -95,7 +95,7 @@ var (
 )
 
 func (w LinearScorer) Learn(boards []*Board, boardLabels []float32,
-	actionLabels []int, learningRate float32, steps int) (loss float32) {
+	actionsLabels [][]float32, learningRate float32, steps int) (loss float32) {
 	// Bulid features.
 	boardFeatures := make([][]float32, len(boards))
 	for boardIdx, board := range boards {

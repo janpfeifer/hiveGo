@@ -363,24 +363,21 @@ func (s *Scorer) BatchScore(boards []*Board) (scores []float32, actionProbsBatch
 	return
 }
 
-func (s *Scorer) Learn(boards []*Board, boardLabels []float32, actionsLabels []int, learningRate float32, steps int) (loss float32) {
+func (s *Scorer) Learn(boards []*Board, boardLabels []float32, actionsLabels [][]float32, learningRate float32, steps int) (loss float32) {
 	feeds, totalNumActions := s.buildFeeds(boards)
 
 	// Feed also the labels.
-	actionsOneHotLabels := make([]float32, totalNumActions)
-	actionsIdx := 0
-	for boardIdx, board := range boards {
-		// If there are no valid moves, actionsLabels[boardIdx] will be -1.
-		if len(board.Derived.Actions) == 0 || actionsLabels[boardIdx] >= 0 {
-			actionsOneHotLabels[actionsIdx+actionsLabels[boardIdx]] = 1.0
+	actionsSparseLabels := make([]float32, 0, totalNumActions)
+	for _, labels := range actionsLabels {
+		if len(labels) > 0 {
+			actionsSparseLabels = append(actionsSparseLabels, labels...)
 		}
-		actionsIdx += len(board.Derived.Actions)
 	}
-	if actionsIdx != totalNumActions {
-		log.Panicf("Expected %d actions in total, got %d", totalNumActions, actionsIdx)
+	if len(actionsSparseLabels) != totalNumActions {
+		log.Panicf("Expected %d actions labels in total, got %d", totalNumActions, len(actionsSparseLabels))
 	}
 	feeds[s.BoardLabels] = mustTensor(boardLabels)
-	feeds[s.ActionsLabels] = mustTensor(actionsOneHotLabels)
+	feeds[s.ActionsLabels] = mustTensor(actionsSparseLabels)
 	feeds[s.LearningRate] = mustTensor(learningRate)
 
 	// Loop over steps.

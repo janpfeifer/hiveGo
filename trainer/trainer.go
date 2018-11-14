@@ -28,9 +28,9 @@ func rescore(matches []*Match) {
 				from = len(match.Actions) - *flag_lastActions
 			}
 			glog.V(2).Infof("Rescoring match %d", matchNum)
-			newScores, bestActionsIndices := players[0].Searcher.ScoreMatch(match.Boards[from], match.Actions[from:len(match.Actions)])
+			newScores, actionsLabels := players[0].Searcher.ScoreMatch(match.Boards[from], match.Actions[from:len(match.Actions)])
 			copy(match.Scores[from:from+len(newScores)-1], newScores)
-			copy(match.BestActionIndices[from:from+len(bestActionsIndices)-1], bestActionsIndices)
+			copy(match.ActionsLabels[from:from+len(actionsLabels)], actionsLabels)
 			glog.V(2).Infof("Match %d rescored.", matchNum)
 		}(matchNum, match)
 	}
@@ -40,7 +40,7 @@ func rescore(matches []*Match) {
 }
 
 // trainFromExamples: only player[0] is trained.
-func trainFromExamples(boards []*state.Board, boardLabels []float32, actionsLabels []int) {
+func trainFromExamples(boards []*state.Board, boardLabels []float32, actionsLabels [][]float32) {
 	learningRate := float32(*flag_learningRate)
 	learn := func(steps int) float32 {
 		return players[0].Learner.Learn(boards, boardLabels, actionsLabels, learningRate, steps)
@@ -75,7 +75,7 @@ func loopRescoreAndRetrainMatches(matchesChan chan *Match) {
 		var (
 			boardExamples []*state.Board
 			boardLabels   []float32
-			actionsLabels []int
+			actionsLabels [][]float32
 		)
 		for _, match := range matches {
 			boardExamples, boardLabels, actionsLabels = match.AppendLabeledExamples(

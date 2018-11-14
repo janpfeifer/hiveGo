@@ -388,7 +388,7 @@ func (mcts *mctsSearcher) measuredRunOnCN(cn *cacheNode) {
 
 // Search implements the Searcher interface.
 func (mcts *mctsSearcher) Search(b *Board) (
-	action Action, board *Board, score float32) {
+	action Action, board *Board, score float32, actionsLabels []float32) {
 	cn := newCacheNode(mcts, b)
 	if glog.V(1) {
 		// Measure time and boards evaluated.
@@ -431,7 +431,8 @@ func (mcts *mctsSearcher) Search(b *Board) (
 		glog.V(1).Infof("Estimated action score: %.2f", actionScore)
 	}
 
-	return cn.actions[actionIdx], cn.newBoards[actionIdx], actionScore
+	// TODO: calculate actionsLabels
+	return cn.actions[actionIdx], cn.newBoards[actionIdx], actionScore, nil
 }
 
 // runMCTS runs MCTS for the given specifications on the cacheNode.
@@ -471,7 +472,7 @@ func (mcts *mctsSearcher) runOnCN(cn *cacheNode) {
 // ScoreMatch will score the board at each board position, starting from the current one,
 // and following each one of the actions. In the end, len(scores) == len(actions)+1.
 func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action) (
-	scores []float32, bestActionsIndices []int) {
+	scores []float32, actionsLabels [][]float32) {
 	var cn *cacheNode
 	cn = newCacheNode(mcts, b)
 
@@ -479,8 +480,14 @@ func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action) (
 		mcts.runOnCN(cn)
 		// Score of this node, is the score of the best action.
 		bestActionIdx, score := cn.FindBestScore(mcts)
+		if len(cn.actions) > 0 {
+			bestActionVec := make([]float32, len(b.Derived.Actions))
+			bestActionVec[bestActionIdx] = 1
+			actionsLabels = append(actionsLabels, bestActionVec)
+		} else {
+			actionsLabels = append(actionsLabels, nil)
+		}
 		scores = append(scores, score)
-		bestActionsIndices = append(bestActionsIndices, bestActionIdx)
 
 		// The action taken may be different than the best action, specially
 		// as the model evolves.

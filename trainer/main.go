@@ -64,9 +64,10 @@ type Match struct {
 	// Match actions, alternating players.
 	Actions []Action
 
-	// Best action index: usually the same as Actions, but could be different
-	// if match rescored.
-	BestActionIndices []int
+	// Probability distributions over actions, to learn from.
+	// For AlphaBetaPruning these will be one-hot-encoding of the action taken. But
+	// for MCTS (alpha-zero algorithm) these may be different.
+	ActionsLabels [][]float32
 
 	// All board states of the game: 1 more than the number of actions.
 	Boards []*Board
@@ -85,8 +86,8 @@ func (m *Match) Encode(enc *gob.Encoder) {
 }
 
 // AppendLabeledExamples will add examples for learning _for Player 0 only_.
-func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []float32, actionsLabels []int) (
-	[]*Board, []float32, []int) {
+func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []float32, actionsLabels [][]float32) (
+	[]*Board, []float32, [][]float32) {
 	from := 0
 	if *flag_lastActions > 1 && *flag_lastActions < len(m.Actions) {
 		from = len(m.Actions) - *flag_lastActions
@@ -95,7 +96,7 @@ func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []floa
 	for ii := from; ii < len(m.Actions); ii++ {
 		boardExamples = append(boardExamples, m.Boards[ii])
 		boardLabels = append(boardLabels, m.Scores[ii])
-		actionsLabels = append(actionsLabels, m.BestActionIndices[ii])
+		actionsLabels = append(actionsLabels, m.ActionsLabels[ii])
 	}
 	return boardExamples, boardLabels, actionsLabels
 }
@@ -105,7 +106,7 @@ func MatchDecode(dec *gob.Decoder) (match *Match, err error) {
 	match = &Match{}
 	initial := &Board{}
 	initial, match.Actions, match.Scores, err = LoadMatch(dec)
-	match.BestActionIndices = make([]int, 0, len(match.Actions))
+	match.ActionsLabels = make([][]float32, 0, len(match.Actions))
 	if err != nil {
 		return
 	}
@@ -115,11 +116,14 @@ func MatchDecode(dec *gob.Decoder) (match *Match, err error) {
 	match.Boards[0] = initial
 	board := initial
 	for _, action := range match.Actions {
-		actionIdx := -1
+		var actionsLabels []float32
 		if action.Piece != NO_PIECE {
-			actionIdx = board.FindActionDeep(action)
+			// When loading a match use one-hot encoding for labels.
+			actionIdx := board.FindActionDeep(action)
+			actionsLabels = make([]float32, len(board.Derived.Actions))
+			actionsLabels[actionIdx] = 1
 		}
-		match.BestActionIndices = append(match.BestActionIndices, actionIdx)
+		match.ActionsLabels = append(match.ActionsLabels, actionsLabels)
 		board = board.Act(action)
 		match.Boards = append(match.Boards, board)
 	}
@@ -147,20 +151,17 @@ func runMatch(matchNum int) *Match {
 			matchNum, player, board.MoveNumber, len(board.Derived.Actions))
 		var action Action
 		score := float32(0)
-		actionIdx := 0
+		var actionLabels []float32
 		if len(board.Derived.Actions) == 0 {
 			// Auto-play skip move.
 			action = Action{Piece: NO_PIECE}
-			actionIdx = -1
 			board = board.Act(action)
 			lastWasSkip = true
 			if len(board.Derived.Actions) == 0 {
 				log.Panicf("No moves to either side!?\n\n%v\n", board)
 			}
 		} else {
-			prevBoard := board
-			action, board, score = reorderedPlayers[board.NextPlayer].Play(board)
-			actionIdx = prevBoard.FindAction(action)
+			action, board, score, actionLabels = reorderedPlayers[board.NextPlayer].Play(board)
 			if lastWasSkip {
 				// Use inverse of this score for previous "NOOP" move.
 				match.Scores[len(match.Scores)-1] = -score
@@ -170,7 +171,7 @@ func runMatch(matchNum int) *Match {
 		match.Actions = append(match.Actions, action)
 		match.Boards = append(match.Boards, board)
 		match.Scores = append(match.Scores, score)
-		match.BestActionIndices = append(match.BestActionIndices, actionIdx)
+		match.ActionsLabels = append(match.ActionsLabels, actionLabels)
 	}
 
 	if glog.V(1) {
@@ -341,7 +342,7 @@ func reportMatches(matches chan *Match) {
 	var (
 		boardExamples []*Board
 		boardLabels   []float32
-		actionsLabels []int
+		actionsLabels [][]float32
 	)
 	ui := ascii_ui.NewUI(true, false)
 	for match := range matches {

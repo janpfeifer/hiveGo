@@ -25,13 +25,13 @@ type Searcher interface {
 	// Search returns the next action to take on the given board,
 	// along with the updated Board (after taking the action) and
 	// the expected score of taking that action.
-	Search(b *Board) (action Action, board *Board, score float32)
+	Search(b *Board) (action Action, board *Board, score float32, actionsLabels []float32)
 
 	// ScoreMatch will score the board at each board position, starting from the current one,
 	// and following each one of the actions. In the end, len(scores) == len(actions)+1.
-	// It also outputs what would be the best action for each position, which may
-	// be different than the actions played.
-	ScoreMatch(b *Board, actions []Action) (scores []float32, bestActionsIndices []int)
+	// It also outputs actionsLabels, which may be a one-hot-encoding, or a probability
+	// distribution over the actions.
+	ScoreMatch(b *Board, actions []Action) (scores []float32, actionsLabels [][]float32)
 }
 
 // ScoredActions enumerates each of the available actions, along with the boards
@@ -121,15 +121,26 @@ type randomizedSearcher struct {
 }
 
 // Search implements the Searcher interface.
-func (rs *randomizedSearcher) Search(b *Board) (Action, *Board, float32) {
+func (rs *randomizedSearcher) Search(b *Board) (Action, *Board, float32, []float32) {
 	// If there are no valid actions, create the "pass" action
 	actions, newBoards, scores := ScoredActions(b, rs.scorer)
 
 	for ii := range actions {
 		if !newBoards[ii].IsFinished() {
-			_, _, scores[ii] = rs.searcher.Search(newBoards[ii])
+			_, _, scores[ii], _ = rs.searcher.Search(newBoards[ii])
 			scores[ii] = -scores[ii]
 		}
+	}
+
+	// Calculate probability for each action.
+	probabilities := make([]float64, len(scores))
+	for ii, score := range scores {
+		probabilities[ii] = float64(score) / rs.randomness
+	}
+	probabilities = softmax(probabilities)
+	actionsLabels := make([]float32, len(probabilities))
+	for ii, prob := range probabilities {
+		actionsLabels[ii] = float32(prob)
 	}
 
 	// Special case: randomness == 0 (or less): just take the max.
@@ -141,31 +152,24 @@ func (rs *randomizedSearcher) Search(b *Board) (Action, *Board, float32) {
 				maxIdx = ii
 			}
 		}
-		return actions[maxIdx], newBoards[maxIdx], maxScore
+		return actions[maxIdx], newBoards[maxIdx], maxScore, actionsLabels
 	}
-
-	// Calculate probability for each action.
-	probabilities := make([]float64, len(scores))
-	for ii, score := range scores {
-		probabilities[ii] = float64(score) / rs.randomness
-	}
-	probabilities = softmax(probabilities)
 
 	// Select from probabilities.
 	chance := rand.Float64()
 	// log.Printf("chance=%f, scores=%v, probabilities=%v", chance, scores, probabilities)
 	for ii, value := range probabilities {
 		if chance <= value {
-			return actions[ii], newBoards[ii], scores[ii]
+			return actions[ii], newBoards[ii], scores[ii], actionsLabels
 		}
 		chance -= value
 	}
 	log.Fatalf("Nothing selected!? final chance=%f", chance)
-	return Action{}, nil, 0.0
+	return Action{}, nil, 0.0, nil
 }
 
 func (rs *randomizedSearcher) ScoreMatch(b *Board, actions []Action) (
-	scores []float32, bestActionsIndices []int) {
+	scores []float32, actionsLabels [][]float32) {
 	log.Panicf("ScoreMatch not implemented for RandomizedSearcher")
 	return
 }
