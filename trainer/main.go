@@ -117,7 +117,7 @@ func MatchDecode(dec *gob.Decoder) (match *Match, err error) {
 	board := initial
 	for _, action := range match.Actions {
 		var actionsLabels []float32
-		if action.Piece != NO_PIECE {
+		if !action.IsSkipAction() {
 			// When loading a match use one-hot encoding for labels.
 			actionIdx := board.FindActionDeep(action)
 			actionsLabels = make([]float32, len(board.Derived.Actions))
@@ -154,7 +154,7 @@ func runMatch(matchNum int) *Match {
 		var actionLabels []float32
 		if len(board.Derived.Actions) == 0 {
 			// Auto-play skip move.
-			action = Action{Piece: NO_PIECE}
+			action = SKIP_ACTION
 			board = board.Act(action)
 			lastWasSkip = true
 			if len(board.Derived.Actions) == 0 {

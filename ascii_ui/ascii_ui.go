@@ -52,12 +52,12 @@ func NewUI(color bool, clearScreen bool) *UI {
 func (ui *UI) Run(board *Board) (*Board, error) {
 	for true {
 		if len(board.Derived.Actions) == 0 {
-			// Nothing to play, skip (by playing NO_PIECE)
+			// Nothing to play, skip (by playing SKIP_ACTION)
 			fmt.Println()
 			ui.printPlayer(board)
 			fmt.Println(" has no available actions, skipping.")
 			fmt.Println()
-			board = board.Act(Action{Piece: NO_PIECE})
+			board = board.Act(SKIP_ACTION)
 		}
 		if board.IsFinished() {
 			ui.PrintWinner(board)

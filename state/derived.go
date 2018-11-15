@@ -54,8 +54,14 @@ type Action struct {
 	SourcePos, TargetPos Pos
 }
 
+var SKIP_ACTION = Action{Piece: NO_PIECE}
+
+func (a Action) IsSkipAction() bool {
+	return a.Piece == NO_PIECE
+}
+
 func (a Action) String() string {
-	if a.Piece == NO_PIECE {
+	if a.IsSkipAction() {
 		return "SkipAction"
 	}
 	if a.Move {

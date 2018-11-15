@@ -142,7 +142,6 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 	maxDepth := -1
 	var maxTime time.Duration
 	maxTraverses := 200
-	useUCT := false
 	maxScore := float32(10.0)
 
 	randomness := 0.0
@@ -175,14 +174,6 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 			log.Panicf("Invalid AI value '%s' for max_traverse: %s", value, err)
 		}
 	}
-	if _, ok := params["use_uct"]; ok {
-		delete(params, "use_uct")
-		useUCT = true
-		if player.Parallelized {
-			glog.Errorf("UCT version of MCST ('use_uct') cannot be parallelized.")
-			player.Parallelized = false // UCT doesn't work parallelized (not yet at least)
-		}
-	}
 	if value, ok := params["max_score"]; ok {
 		delete(params, "max_score")
 		v64, err := strconv.ParseFloat(value, 64)
@@ -206,7 +197,7 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 			randomness = 0.5
 		}
 		searcher = search.NewMonteCarloTreeSearcher(
-			maxDepth, maxTime, maxTraverses, useUCT, maxScore,
+			maxDepth, maxTime, maxTraverses, maxScore,
 			player.Scorer, randomness, player.Parallelized)
 	}
 	if _, ok := params["ab"]; ok {

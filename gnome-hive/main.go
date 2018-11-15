@@ -158,12 +158,12 @@ func executeAction(action Action) {
 	if !finished && len(board.Derived.Actions) == 0 {
 		// Player has no available moves, skip.
 		log.Printf("No action available, automatic action.")
-		if action.Piece == NO_PIECE {
+		if action.IsSkipAction() {
 			// Two skip actions in a row.
 			log.Fatal("No moves avaialble to either players !?")
 		}
 		// Recurse to a skip action.
-		executeAction(Action{Piece: NO_PIECE})
+		executeAction(SKIP_ACTION)
 		return
 	}
 	followAction()
