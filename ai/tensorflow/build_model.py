@@ -144,12 +144,14 @@ def BuildActionsModel(board_embeddings,
                            actions_target_center, actions_target_neighbourhood,
                            actions_labels, initializer, l2_regularizer):
     with tf.name_scope("BuildActionsModel"):
-        actions_features = tf.cast(actions_features, MODEL_DTYPE)
-        actions_source_center = tf.cast(actions_source_center, MODEL_DTYPE)
-        actions_source_neighbourhood = tf.cast(actions_source_neighbourhood, MODEL_DTYPE)
-        actions_target_center = tf.cast(actions_target_center, MODEL_DTYPE)
-        actions_target_neighbourhood = tf.cast(actions_target_neighbourhood, MODEL_DTYPE)
-        actions_board_indices = tf.cast(actions_board_indices, tf.int64)
+        actions_features = tf.cast(actions_features, MODEL_DTYPE, name="cast_actions_features")
+        actions_source_center = tf.cast(actions_source_center, MODEL_DTYPE, name="cast_actions_source_center")
+        actions_source_neighbourhood = tf.cast(actions_source_neighbourhood, MODEL_DTYPE,
+                                               name="cast_actions_source_neighbourhood")
+        actions_target_center = tf.cast(actions_target_center, MODEL_DTYPE, name="cast_actions_target_center")
+        actions_target_neighbourhood = tf.cast(actions_target_neighbourhood, MODEL_DTYPE,
+                                               name="cast_actions_target_neighbourhood")
+        actions_board_indices = tf.cast(actions_board_indices, tf.int64, name="cast_actions_board_indices")
         actions_labels = tf.cast(actions_labels, MODEL_DTYPE)
 
         # Broadcast board_embeddings to each action.

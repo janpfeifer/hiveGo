@@ -44,7 +44,6 @@ func AlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int, parallelize bo
 	} else {
 		bestAction, bestBoard, bestScore = alphaBetaRecursive(board, scorer, maxDepth, alpha, beta)
 	}
-	glog.V(1).Infof("Estimated best score: %.2f", bestScore)
 	return
 }
 
@@ -139,7 +138,9 @@ type alphaBetaSearcher struct {
 func (ab *alphaBetaSearcher) Search(b *Board) (action Action, board *Board, score float32, actionsLabels []float32) {
 	action, board, score = AlphaBeta(b, ab.scorer, ab.maxDepth, ab.parallelized)
 	actionsLabels = make([]float32, len(b.Derived.Actions))
-	actionsLabels[b.FindAction(action)] = 1
+	if !action.IsSkipAction() {
+		actionsLabels[b.FindAction(action)] = 1
+	}
 	return
 }
 
@@ -150,7 +151,7 @@ func NewAlphaBetaSearcher(maxDepth int, parallelized bool, scorer ai.BatchScorer
 
 // ScoreMatch will score the board at each board position, starting from the current one,
 // and following each one of the actions. In the end, len(scores) == len(actions)+1.
-func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action) (
+func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action, want []*Board) (
 	scores []float32, actionsLabels [][]float32) {
 	scores = make([]float32, 0, len(actions)+1)
 	actionsLabels = make([][]float32, 0, len(actions))

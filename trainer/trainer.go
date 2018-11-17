@@ -28,10 +28,18 @@ func rescore(matches []*Match) {
 				from = len(match.Actions) - *flag_lastActions
 			}
 			glog.V(2).Infof("Rescoring match %d", matchNum)
-			newScores, actionsLabels := players[0].Searcher.ScoreMatch(match.Boards[from], match.Actions[from:len(match.Actions)])
+			newScores, actionsLabels := players[0].Searcher.ScoreMatch(
+				match.Boards[from], match.Actions[from:len(match.Actions)],
+				match.Boards[from:len(match.Boards)])
 			copy(match.Scores[from:from+len(newScores)-1], newScores)
 			copy(match.ActionsLabels[from:from+len(actionsLabels)], actionsLabels)
-			glog.V(2).Infof("Match %d rescored.", matchNum)
+			for ii := from; ii < len(match.Actions); ii++ {
+				if len(match.ActionsLabels[ii]) != match.Boards[ii].NumActions() {
+					log.Panicf("Match %d: number of labels (%d) different than number of actions (%d) for move %d",
+						match.MatchFileIdx, len(match.ActionsLabels[ii]), match.Boards[ii].NumActions(), ii)
+				}
+			}
+			glog.V(2).Infof("Match %d (MatchFileIdx=%d) rescored.", matchNum, match.MatchFileIdx)
 		}(matchNum, match)
 	}
 
@@ -68,6 +76,9 @@ func loopRescoreAndRetrainMatches(matchesChan chan *Match) {
 	var matches []*Match
 	for match := range matchesChan {
 		matches = append(matches, match)
+	}
+	if len(matches) == 0 {
+		log.Panic("No matches to rescore?!")
 	}
 
 	for rescoreIdx := 0; rescoreIdx < *flag_rescore; rescoreIdx++ {

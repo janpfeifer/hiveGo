@@ -231,5 +231,5 @@ func PositionFeaturesToString(f []float32) string {
 }
 
 func init() {
-	fmt.Printf("Number of features per position = %d\n", FEATURES_PER_POSITION)
+	glog.V(1).Infof("Number of features per position = %d\n", FEATURES_PER_POSITION)
 }

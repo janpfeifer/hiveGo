@@ -378,6 +378,10 @@ func (b *Board) endGame() (wins [NUM_PLAYERS]bool, surrounding [NUM_PLAYERS]uint
 	return
 }
 
+func (b *Board) NumActions() int {
+	return len(b.Derived.Actions)
+}
+
 func (b *Board) IsFinished() bool {
 	return b.Derived.Repeats >= 2 || b.Derived.Wins[0] || b.Derived.Wins[1]
 }

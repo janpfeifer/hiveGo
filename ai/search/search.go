@@ -1,6 +1,7 @@
 package search
 
 import (
+	"github.com/golang/glog"
 	"log"
 	"math"
 	"math/rand"
@@ -31,7 +32,7 @@ type Searcher interface {
 	// and following each one of the actions. In the end, len(scores) == len(actions)+1.
 	// It also outputs actionsLabels, which may be a one-hot-encoding, or a probability
 	// distribution over the actions.
-	ScoreMatch(b *Board, actions []Action) (scores []float32, actionsLabels [][]float32)
+	ScoreMatch(b *Board, actions []Action, want []*Board) (scores []float32, actionsLabels [][]float32)
 }
 
 // ScoredActions enumerates each of the available actions, along with the boards
@@ -126,9 +127,15 @@ func (rs *randomizedSearcher) Search(b *Board) (Action, *Board, float32, []float
 	actions, newBoards, scores := ScoredActions(b, rs.scorer)
 
 	for ii := range actions {
-		if !newBoards[ii].IsFinished() {
+		isEnded, score := ai.EndGameScore(newBoards[ii])
+		if !isEnded {
 			_, _, scores[ii], _ = rs.searcher.Search(newBoards[ii])
 			scores[ii] = -scores[ii]
+		} else {
+			if !newBoards[ii].Draw() && newBoards[ii].Winner() == b.NextPlayer {
+				return actions[ii], newBoards[ii], -score, ai.OneHotEncoding(len(actions), ii)
+			}
+			scores[ii] = -score
 		}
 	}
 
@@ -152,6 +159,7 @@ func (rs *randomizedSearcher) Search(b *Board) (Action, *Board, float32, []float
 				maxIdx = ii
 			}
 		}
+		glog.V(1).Infof("Estimated best score: %.2f", maxScore)
 		return actions[maxIdx], newBoards[maxIdx], maxScore, actionsLabels
 	}
 
@@ -160,6 +168,7 @@ func (rs *randomizedSearcher) Search(b *Board) (Action, *Board, float32, []float
 	// log.Printf("chance=%f, scores=%v, probabilities=%v", chance, scores, probabilities)
 	for ii, value := range probabilities {
 		if chance <= value {
+			glog.V(1).Infof("Score of selected action (%s): %.2f", actions[ii], scores[ii])
 			return actions[ii], newBoards[ii], scores[ii], actionsLabels
 		}
 		chance -= value
@@ -168,7 +177,7 @@ func (rs *randomizedSearcher) Search(b *Board) (Action, *Board, float32, []float
 	return Action{}, nil, 0.0, nil
 }
 
-func (rs *randomizedSearcher) ScoreMatch(b *Board, actions []Action) (
+func (rs *randomizedSearcher) ScoreMatch(b *Board, actions []Action, _ []*Board) (
 	scores []float32, actionsLabels [][]float32) {
 	log.Panicf("ScoreMatch not implemented for RandomizedSearcher")
 	return

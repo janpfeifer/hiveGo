@@ -139,12 +139,14 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 	var searcher search.Searcher
 	var err error
 
+	// Shared search algorithm parameters
 	maxDepth := -1
 	var maxTime time.Duration
 	maxTraverses := 200
 	maxScore := float32(10.0)
-
 	randomness := 0.0
+	cPuct := float32(3.0) // Specialized for Alpha0-MCTS.
+
 	if value, ok := params["max_depth"]; ok {
 		delete(params, "max_depth")
 		maxDepth, err = strconv.Atoi(value)
@@ -155,7 +157,7 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 	if value, ok := params["randomness"]; ok {
 		delete(params, "randomness")
 		randomness, err = strconv.ParseFloat(value, 64)
-		if err != nil || randomness <= 0.0 {
+		if err != nil || randomness < 0.0 {
 			log.Panicf("Invalid AI value '%s' for randomness: %s", value, err)
 		}
 	}
@@ -182,6 +184,14 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 		}
 		maxScore = float32(v64)
 	}
+	if value, ok := params["c_puct"]; ok {
+		delete(params, "c_puct")
+		v64, err := strconv.ParseFloat(value, 64)
+		if err != nil || v64 <= 0.0 {
+			log.Panicf("Invalid c_puct value '%s': %s", value, err)
+		}
+		cPuct = float32(v64)
+	}
 
 	if _, ok := params["mcts"]; ok {
 		delete(params, "mcts")
@@ -191,14 +201,9 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 		if maxTime == 0 {
 			maxTime = 5 * time.Second
 		}
-		if randomness == 0.0 {
-			// Number found after a few experiments. TODO: can it be improved ? Or have
-			// another model to decide this ?
-			randomness = 0.5
-		}
 		searcher = search.NewMonteCarloTreeSearcher(
-			maxDepth, maxTime, maxTraverses, maxScore,
-			player.Scorer, randomness, player.Parallelized)
+			player.Scorer, maxDepth, maxTime, maxTraverses, maxScore,
+			cPuct, randomness, player.Parallelized)
 	}
 	if _, ok := params["ab"]; ok {
 		delete(params, "ab")

@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"flag"
 	"fmt"
+	"github.com/janpfeifer/hiveGo/ai"
 	"io"
 	"log"
 	"os"
@@ -32,12 +33,15 @@ var (
 	flag_maxMoves = flag.Int(
 		"max_moves", 100, "Max moves before game is assumed to be a draw.")
 
-	flag_numMatches = flag.Int("num_matches", 1, "Number of matches to play. If larger "+
-		"than one, starting position is alternated.")
+	flag_numMatches = flag.Int("num_matches", 0, "Number of matches to play. If larger "+
+		"than one, starting position is alternated. Value of 0 means 1 match to play, or load all file.")
 	flag_print       = flag.Bool("print", false, "Print board at the end of the match.")
+	flag_printSteps  = flag.Bool("print_steps", false, "Print board at each step.")
 	flag_saveMatches = flag.String("save_matches", "", "File name where to save matches.")
 	flag_loadMatches = flag.String("load_matches", "",
 		"Instead of actually playing matches, load pre-generated ones.")
+	flag_loadOnlyMatch = flag.Int("match_idx", -1, "If set it will only load this one "+
+		"specific match, useful for debugging.")
 	flag_wins     = flag.Bool("wins", false, "Counts only matches with wins.")
 	flag_winsOnly = flag.Bool("wins_only", false, "Counts only matches with wins (like --wins) and discards draws.")
 
@@ -75,6 +79,9 @@ type Match struct {
 	// Scores for each board position. Can either be calculated during
 	// the match, or re-genarated when re-loading a match.
 	Scores []float32
+
+	// Index of the match in the file it was loaded from.
+	MatchFileIdx int
 }
 
 func (m *Match) FinalBoard() *Board { return m.Boards[len(m.Boards)-1] }
@@ -101,9 +108,9 @@ func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []floa
 	return boardExamples, boardLabels, actionsLabels
 }
 
-func MatchDecode(dec *gob.Decoder) (match *Match, err error) {
+func MatchDecode(dec *gob.Decoder, matchFileIdx int) (match *Match, err error) {
 	glog.V(2).Infof("Loading match ...")
-	match = &Match{}
+	match = &Match{MatchFileIdx: matchFileIdx}
 	initial := &Board{}
 	initial, match.Actions, match.Scores, err = LoadMatch(dec)
 	match.ActionsLabels = make([][]float32, 0, len(match.Actions))
@@ -120,8 +127,12 @@ func MatchDecode(dec *gob.Decoder) (match *Match, err error) {
 		if !action.IsSkipAction() {
 			// When loading a match use one-hot encoding for labels.
 			actionIdx := board.FindActionDeep(action)
-			actionsLabels = make([]float32, len(board.Derived.Actions))
-			actionsLabels[actionIdx] = 1
+			actionsLabels = ai.OneHotEncoding(board.NumActions(), actionIdx)
+		} else {
+			if board.NumActions() != 0 {
+				log.Panicf("Unexpected SKIP_ACTION for board with %d actions, MatchFileIdx=%d",
+					board.NumActions(), match.MatchFileIdx)
+			}
 		}
 		match.ActionsLabels = append(match.ActionsLabels, actionsLabels)
 		board = board.Act(action)
@@ -129,6 +140,11 @@ func MatchDecode(dec *gob.Decoder) (match *Match, err error) {
 	}
 	return
 }
+
+var (
+	stepUI   = ascii_ui.NewUI(true, false)
+	muStepUI sync.Mutex
+)
 
 func runMatch(matchNum int) *Match {
 	swapped := (matchNum%2 == 1)
@@ -172,6 +188,14 @@ func runMatch(matchNum int) *Match {
 		match.Boards = append(match.Boards, board)
 		match.Scores = append(match.Scores, score)
 		match.ActionsLabels = append(match.ActionsLabels, actionLabels)
+
+		if *flag_printSteps {
+			muStepUI.Lock()
+			fmt.Printf("Match %d action take: %s\n", match.MatchFileIdx, action)
+			stepUI.PrintBoard(board)
+			fmt.Println("")
+			muStepUI.Unlock()
+		}
 	}
 
 	if glog.V(1) {
@@ -198,11 +222,15 @@ func runMatches(results chan<- *Match) {
 	if *flag_winsOnly {
 		*flag_wins = true
 	}
+	numMatchesToPlay := *flag_numMatches
+	if numMatchesToPlay == 0 {
+		numMatchesToPlay = 1
+	}
 	// Run at most GOMAXPROCS simultaneously.
 	var wg sync.WaitGroup
 	parallelism := runtime.GOMAXPROCS(0)
 	glog.V(1).Infof("Parallelism for running matches=%d", parallelism)
-	semaphore := make(chan bool, runtime.GOMAXPROCS(0))
+	semaphore := make(chan bool, parallelism)
 	done := false
 	wins := 0
 	for ii := 0; !done; ii++ {
@@ -214,7 +242,12 @@ func runMatches(results chan<- *Match) {
 			if !match.FinalBoard().Draw() {
 				wins++
 				if *flag_wins {
-					done = done || (wins >= *flag_numMatches)
+					done = done || (wins >= numMatchesToPlay)
+					if !done {
+						glog.V(1).Infof("%d matches with wins still needed.", numMatchesToPlay-wins)
+					} else {
+						glog.V(1).Infof("Got enough wins, just waiting current matches to end.")
+					}
 				}
 			}
 			<-semaphore
@@ -224,26 +257,42 @@ func runMatches(results chan<- *Match) {
 			results <- match
 		}(ii)
 		if !*flag_wins {
-			done = done || (ii+1 >= *flag_numMatches)
+			done = done || (ii+1 >= numMatchesToPlay)
 		}
+		glog.V(1).Infof("Started match %d, done=%v", ii, done)
 	}
 	wg.Wait()
 	close(results)
 }
 
+func backupName(filename string) string {
+	return filename + "~"
+}
+
+func temporaryName(filename string) string {
+	return filename + ".tmp"
+}
+
 // Open file for writing. If filename already exists rename it by appending an "~" suffix.
 func openWriterAndBackup(filename string) io.WriteCloser {
-	if _, err := os.Stat(filename); err == nil {
-		err = os.Rename(filename, filename+"~")
-		if err != nil {
-			log.Printf("Failed to rename '%s' to '%s~': %v", filename, filename, err)
-		}
-	}
-	file, err := os.Create(filename)
+	file, err := os.Create(temporaryName(filename))
 	if err != nil {
-		log.Panicf("Failed to save file to '%s': %v", filename, err)
+		log.Panicf("Failed to create temporary save file '%s': %v", temporaryName(filename), err)
 	}
 	return file
+}
+
+func renameToFinal(filename string) {
+	if _, err := os.Stat(filename); err == nil {
+		err = os.Rename(filename, backupName(filename))
+		if err != nil {
+			log.Printf("Failed to rename '%s' to '%s': %v", filename, backupName(filename), err)
+		}
+	}
+	err := os.Rename(temporaryName(filename), filename)
+	if err != nil {
+		log.Printf("Failed to rename '%s' to '%s': %v", temporaryName(filename), filename, err)
+	}
 }
 
 // Load matches, and automatically build boards.
@@ -257,14 +306,17 @@ func loadMatches(results chan<- *Match) {
 	}
 
 	var matchesCount = 0
+LoopFilenames:
 	for _, filename := range filenames {
+		glog.V(1).Infof("Scanning file %s\n", filename)
 		file, err := os.Open(filename)
 		if err != nil {
 			log.Panicf("Cannot open '%s' for reading: %v", filename, err)
 		}
 		dec := gob.NewDecoder(file)
-		for matchesCount < *flag_numMatches {
-			match, err := MatchDecode(dec)
+		for *flag_numMatches == 0 || matchesCount < *flag_numMatches {
+			match, err := MatchDecode(dec, matchesCount)
+			matchesCount++
 			if err == io.EOF {
 				break
 			}
@@ -272,15 +324,25 @@ func loadMatches(results chan<- *Match) {
 				glog.Errorf("Cannot read any more matches in %s: %v", filename, err)
 				break
 			}
+			if *flag_loadOnlyMatch >= 0 {
+				// Only take teh specific match.
+				if match.MatchFileIdx != *flag_loadOnlyMatch {
+					glog.V(1).Infof("Skipping match %d\n", match.MatchFileIdx)
+					continue
+				} else {
+					glog.V(1).Infof("Found match %d\n", *flag_loadOnlyMatch)
+					results <- match
+					break LoopFilenames
+				}
+			}
 			if *flag_winsOnly && !match.FinalBoard().Draw() {
 				continue
 			}
-			matchesCount++
 			results <- match
 		}
 	}
-	close(results)
 	glog.Infof("%d matches read", matchesCount)
+	close(results)
 }
 
 func main() {
@@ -332,11 +394,6 @@ func reportMatches(matches chan *Match) {
 		file = openWriterAndBackup(*flag_saveMatches)
 		enc = gob.NewEncoder(file)
 	}
-	defer func() {
-		if file != nil {
-			file.Close()
-		}
-	}()
 
 	count := 0
 	var (
@@ -378,6 +435,12 @@ func reportMatches(matches chan *Match) {
 			totalWins[1]++
 		}
 		totalMoves += board.MoveNumber
+	}
+
+	// Finalize file with matches.
+	if *flag_saveMatches != "" {
+		file.Close()
+		renameToFinal(*flag_saveMatches)
 	}
 
 	// Train with examples.

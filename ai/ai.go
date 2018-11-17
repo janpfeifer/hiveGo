@@ -73,3 +73,12 @@ func EndGameScore(b *Board) (isEnd bool, score float32) {
 	// Opponent player wins.
 	return true, -10.0
 }
+
+// Returns a slice of float32 with one element set to 1, and all others to 0.
+func OneHotEncoding(total, selected int) (vec []float32) {
+	vec = make([]float32, total)
+	if total > 0 {
+		vec[selected] = 1
+	}
+	return
+}
