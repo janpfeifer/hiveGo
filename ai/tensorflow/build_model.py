@@ -8,7 +8,7 @@ FLAGS = tf.app.flags.FLAGS
 
 # Model internal type: tf.float16 presumably is faster in the RX2080 Ti GPU,
 # and not slower in others.
-MODEL_DTYPE=tf.float16
+MODEL_DTYPE=tf.float32
 
 # Dimension of the input features.
 BOARD_FEATURES_DIM = 41  # Should match ai.AllFeaturesDim
@@ -34,6 +34,10 @@ NEIGHBOURHOOD_NUM_HIDDEN_LAYERS = 3
 NEIGHBOURHOOD_NODES_PER_LAYER = 384 - NEIGHBOURHOOD_NUM_FEATURES
 NEIGHBOURHOOD_EMBEDDING_DIM = 32
 
+# ACTIVATION=tf.nn.selu
+ACTIVATION=tf.nn.leaky_relu
+
+
 
 def SigmoidTo10(x, smoothness=4.0):
 	"""Make a sigmoid curve on values > 9.8 or < -9.8."""
@@ -43,7 +47,7 @@ def SigmoidTo10(x, smoothness=4.0):
 	sigmoid = tf.sigmoid((abs_x - threshold) / smoothness)
 	sigmoid = threshold + (sigmoid - 0.5) * 0.4   # 0.4 = 0.2 / 0.5
 	sigmoid = tf.sign(x) * sigmoid
-	return tf.where(abs_x > threshold, sigmoid, x)
+	return tf.where(mask, sigmoid, x)
 
 
 def SparseLogSoftMax(logits, indices):
@@ -80,12 +84,12 @@ def buildSkipFFNN(input, num_hidden_layers, num_hidden_layers_nodes,
         logits = input
         if num_hidden_layers > 0:
             for ii in range(num_hidden_layers-1):
-                logits = tf.layers.dense(logits, num_hidden_layers_nodes, tf.nn.selu,
+                logits = tf.layers.dense(logits, num_hidden_layers_nodes, ACTIVATION,
                                          kernel_initializer=initializer, kernel_regularizer=l2_regularizer,
                                          name="hidden_{}".format(ii), reuse=tf.AUTO_REUSE)
                 logits = tf.concat([logits, input], 1)
             # Last hidden layer can be of different size, and the skip connection is optional.
-            logits = tf.layers.dense(logits, output_embedding_dim, tf.nn.selu,
+            logits = tf.layers.dense(logits, output_embedding_dim, ACTIVATION,
                                      kernel_initializer=initializer, kernel_regularizer=l2_regularizer,
                                      name="embedding", reuse=tf.AUTO_REUSE)
             if skip_also_output:
@@ -213,6 +217,7 @@ def main(argv=None):  # pylint: disable=unused-argument
 
     # We are using tf.nn.selu, which requires a special initializer.
     initializer = tf.contrib.layers.variance_scaling_initializer(factor=1.0, mode='FAN_IN')
+    initializer = None
 
     # Build board inputs
     learning_rate = tf.placeholder(tf.float32, shape=(), name='learning_rate')
@@ -284,7 +289,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     print('\tTrain one step:\t', train_op.name)
 
     # Mean loss: more stable across batches of different sizes.
-    mean_loss = total_losses / tf.cast(tf.shape(board_features)[0], dtype=tf.float16)
+    mean_loss = total_losses / tf.cast(tf.shape(board_features)[0], dtype=MODEL_DTYPE)
     mean_loss = tf.identity(tf.cast(mean_loss, tf.float32), name='mean_loss')
     print('\tMean total loss:\t', mean_loss.name)
 

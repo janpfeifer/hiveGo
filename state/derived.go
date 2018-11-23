@@ -8,6 +8,7 @@ package state
 import (
 	"fmt"
 	"log"
+	"math/rand"
 )
 
 var _ = fmt.Printf
@@ -115,10 +116,19 @@ func (b *Board) BuildDerived() {
 	derived.RemovablePieces = b.removable()
 	for p := uint8(0); p < NUM_PLAYERS; p++ {
 		derived.PlayersActions[p] = b.ValidActions(p)
+		shuffleActions(derived.PlayersActions[p])
 	}
+
 	derived.Actions = derived.PlayersActions[b.NextPlayer]
 	derived.Wins, derived.NumSurroundingQueen, derived.QueenPos = b.endGame()
 	derived.Singles = b.ListSingles()
+}
+
+func shuffleActions(actions []Action) {
+	for ii := range actions {
+		jj := rand.Intn(len(actions))
+		actions[ii], actions[jj] = actions[jj], actions[ii]
+	}
 }
 
 // ValidActions returns the list of valid actions for given player.

@@ -143,7 +143,7 @@ func newGame() {
 
 	// AI starts playing ?
 	if aiPlayers[board.NextPlayer] != nil {
-		action, _, _ := aiPlayers[board.NextPlayer].Play(board)
+		action, _, _, _ := aiPlayers[board.NextPlayer].Play(board)
 		executeAction(action)
 	}
 }
@@ -198,7 +198,7 @@ func followAction() {
 	if nextIsAI {
 		// Start AI thinking on a separate thread.
 		go func() {
-			action, _, _ := aiPlayers[board.NextPlayer].Play(board)
+			action, _, _, _ := aiPlayers[board.NextPlayer].Play(board)
 			glib.IdleAdd(func() { executeAction(action) })
 		}()
 	}

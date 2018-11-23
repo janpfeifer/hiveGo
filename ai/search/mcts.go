@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,9 +25,11 @@ var (
 	_ = fmt.Printf
 )
 
-const epsilon = float64(1e-8)
-
-const DEPTH_CHECK_MAX_ABS_SCORE = 5
+const (
+	DECAY                     = float32(0.999)
+	DEPTH_CHECK_MAX_ABS_SCORE = 5
+	EPSILON                   = float64(1e-8)
+)
 
 type mctsSearcher struct {
 	maxDepth     int
@@ -81,6 +84,10 @@ func (mcts *mctsSearcher) Clone() *mctsSearcher {
 
 // cacheNode holds information about the possible actions of a board.
 type cacheNode struct {
+	// Parent information is only used for debugging.
+	parent          *cacheNode
+	parentActionIdx int
+
 	// Board, actions, children boards and children base scores.
 	board   *Board
 	actions []Action
@@ -102,6 +109,10 @@ type cacheNode struct {
 	// Estimation of Q(s, a), where s is the state (board here), and a is the action.
 	// This is also renormalized to be between -1 (loosing) and 1 (winning)
 	Q []float32
+
+	// Sum of all Q(s, a): for actions not yet traversed it is assumed a mean of all
+	// the Qs visited. It's certainly optimistic, but it works as an upper-bound approximation.
+	TotalQ float32
 
 	// Lock for updates.
 	mu sync.Mutex
@@ -196,10 +207,19 @@ func (cn *cacheNode) Sample(mcts *mctsSearcher) int {
 	}
 	best := -1
 	bestActionScore := float32(-1e6)
-	globalFactor := mcts.cPuct * float32(math.Sqrt(float64(cn.totalCount)+epsilon))
+	globalFactor := mcts.cPuct * float32(math.Sqrt(float64(cn.totalCount)+EPSILON))
+	meanQ := float32(0)
+	if cn.totalCount != 0 {
+		meanQ = cn.TotalQ / float32(cn.totalCount)
+	}
 	for ii := range cn.actions {
-		actionScore := (cn.Q[ii] + globalFactor*cn.actionsProbs[ii]/(1+float32(cn.count[ii])))
-		glog.V(3).Infof("Sampling: score=%g, Q=%g, probs=%.2g", actionScore, cn.Q[ii], cn.actionsProbs[ii])
+		actionScore := globalFactor * cn.actionsProbs[ii] / (1 + float32(cn.count[ii]))
+		if cn.count[ii] > 0 {
+			actionScore += cn.Q[ii]
+		} else {
+			actionScore += meanQ // We could replace this with cn.score, but that doesnt' work during early training stages
+		}
+		glog.V(4).Infof("Sampling: score=%g, Q=%g, probs=%.2g", actionScore, cn.Q[ii], cn.actionsProbs[ii])
 		if actionScore > bestActionScore {
 			best = ii
 			bestActionScore = actionScore
@@ -207,6 +227,9 @@ func (cn *cacheNode) Sample(mcts *mctsSearcher) int {
 	}
 	if best == -1 {
 		log.Panicf("Not able to sample a move, likely probabilities are NaN.")
+	}
+	if cn.parent == nil {
+		glog.V(3).Infof("Sampled %s: score=%g, Q=%g, probs=%.2g%%", cn.actions[best], bestActionScore, cn.Q[best], 100.0*cn.actionsProbs[best])
 	}
 	return best
 }
@@ -266,6 +289,34 @@ func (cn *cacheNode) FindBestScore(mcts *mctsSearcher) (bestIdx int, bestScore f
 
 func abs32(x float32) float32 { return float32(math.Abs(float64(x))) }
 
+func (cn *cacheNode) recursiveLogTraverse(actionIdx int, parts []string) ([]string, float32) {
+	if cn.parent != nil {
+		if actionIdx < 0 {
+			parts = append(parts, SKIP_ACTION.String())
+		} else {
+			parts = append(parts, cn.actions[actionIdx].String())
+		}
+		var mult float32
+		parts, mult = cn.parent.recursiveLogTraverse(cn.parentActionIdx, parts)
+		return parts, -mult * DECAY
+	}
+	return parts, -1
+}
+
+func (cn *cacheNode) logTraverse(score float32, stopReason string) {
+	var parts []string
+	if cn.parent != nil {
+		var mult float32
+		parts, mult = cn.parent.recursiveLogTraverse(cn.parentActionIdx, parts)
+		score *= -mult
+	}
+	for ii := len(parts)/2 - 1; ii >= 0; ii-- {
+		jj := len(parts) - ii - 1
+		parts[ii], parts[jj] = parts[jj], parts[ii]
+	}
+	glog.Infof("Traverse (%s): score=%.6f, path=[%s]", stopReason, score, strings.Join(parts, "], ["))
+}
+
 // Traverse traverses the game tree up to the given depth, and returns the
 // expected score returned by the leaf node (or deepest node) visited.
 // The score is with respect to the player playing (board.NextPlayer) at the node cn.
@@ -273,17 +324,26 @@ func (cn *cacheNode) Traverse(mcts *mctsSearcher, stats *matchStats, depthLeft i
 	// Checks end of game conditions.
 	if cn.board.IsFinished() {
 		_, score := ai.EndGameScore(cn.board)
+		if glog.V(3) {
+			cn.logTraverse(score, "end game")
+		}
 		return score
 	}
 
 	// Checks max depth reached.
 	if depthLeft == 0 {
+		if glog.V(3) {
+			cn.logTraverse(cn.score, "max depth")
+		}
 		return cn.score
 	}
 
 	// Checks if score threshold is reached.
 	if depthLeft < mcts.maxDepth-DEPTH_CHECK_MAX_ABS_SCORE {
 		if abs32(cn.score) >= mcts.maxAbsScore {
+			if glog.V(3) {
+				cn.logTraverse(cn.score, "max abs score")
+			}
 			return cn.score
 		}
 	}
@@ -291,7 +351,9 @@ func (cn *cacheNode) Traverse(mcts *mctsSearcher, stats *matchStats, depthLeft i
 	// Sample new action.
 	actionIdx := cn.Sample(mcts)
 	nextCN := cn.Step(mcts, stats, actionIdx, false)
-	score := -nextCN.Traverse(mcts, stats, depthLeft-1)
+	nextCN.parent = cn
+	nextCN.parentActionIdx = actionIdx
+	score := -nextCN.Traverse(mcts, stats, depthLeft-1) * DECAY
 
 	// If there are no actions, or only one action, we don't keep tabs, since
 	// there are no options anyway.
@@ -305,9 +367,13 @@ func (cn *cacheNode) Traverse(mcts *mctsSearcher, stats *matchStats, depthLeft i
 	cn.count[actionIdx]++
 	cn.sumMCScores[actionIdx] += score
 	// Scores of Q are normalized from +1 to -1
+	cn.TotalQ -= cn.Q[actionIdx]
 	cn.Q[actionIdx] = cn.sumMCScores[actionIdx] / (10 * float32(cn.count[actionIdx]))
+	cn.TotalQ += cn.Q[actionIdx]
 	cn.mu.Unlock()
-
+	if depthLeft == mcts.maxDepth {
+		glog.V(3).Infof("Traverse[%s]: score=%.2f, Q=%.2f", cn.actions[actionIdx], score, cn.Q[actionIdx])
+	}
 	return score
 }
 
@@ -374,7 +440,6 @@ func (mcts *mctsSearcher) Search(b *Board) (
 type sortableProbsActions struct {
 	indices []int
 	probs   []float32
-	actions []Action
 }
 
 func (pa *sortableProbsActions) Swap(i, j int) {
@@ -387,11 +452,13 @@ func (pa *sortableProbsActions) Less(i, j int) bool {
 	return pa.probs[pa.indices[i]] > pa.probs[pa.indices[j]]
 }
 
-func logTopActionProbs(probs []float32, actions []Action) {
+func logTopActionProbs(probs []float32, actions []Action, scores []float32) {
+	if len(scores) == 0 {
+		return
+	}
 	sorted := sortableProbsActions{
 		indices: make([]int, len(probs)),
 		probs:   probs,
-		actions: actions,
 	}
 	for ii := range sorted.indices {
 		sorted.indices[ii] = ii
@@ -402,7 +469,7 @@ func logTopActionProbs(probs []float32, actions []Action) {
 		if probs[idx] < 0.02 {
 			break
 		}
-		glog.Infof("  Action %s probability %.2f%%", actions[idx], 100.0*probs[idx])
+		glog.Infof("  Action %s: probability %.2f%%, score=%.2f", actions[idx], 100.0*probs[idx], scores[idx])
 	}
 }
 
@@ -429,7 +496,7 @@ func (mcts *mctsSearcher) searchWithStats(stats *matchStats, b *Board) (
 		}
 		if glog.V(2) {
 			glog.Info("search():")
-			logTopActionProbs(actionsLabels, cn.actions)
+			logTopActionProbs(actionsLabels, cn.actions, cn.Q)
 		}
 
 	} else {
@@ -481,7 +548,7 @@ func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action, want []*Board) 
 			glog.Infof("ScoreMatch Move #%d (%d to go), player %d has the turn:",
 				cn.board.MoveNumber, len(actions)-matchActionsIdx, cn.board.NextPlayer)
 			ui.PrintBoard(cn.board)
-			logTopActionProbs(boardActionsLabels, cn.actions)
+			logTopActionProbs(boardActionsLabels, cn.actions, cn.Q)
 			fmt.Println()
 		}
 
@@ -492,6 +559,8 @@ func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action, want []*Board) 
 			playedIdx = -1
 		} else {
 			playedIdx = cn.board.FindActionDeep(action)
+			glog.V(2).Infof("Actually player: %s, prob=%.2g%%, score=%f",
+				cn.actions[playedIdx], boardActionsLabels[playedIdx]*100, cn.Q[playedIdx])
 		}
 		cn = cn.Step(mcts, stats, playedIdx, true)
 		if cn.board.NumActions() != want[matchActionsIdx+1].NumActions() {

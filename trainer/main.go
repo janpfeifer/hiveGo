@@ -53,6 +53,11 @@ var (
 			"over rescoring and retraining.")
 	flag_learningRate = flag.Float64("learning_rate", 1e-5, "Learning rate when learning")
 
+	flag_parallelism = flag.Int("parallelism", 0, "If > 0 ignore GOMAXPROCS and play "+
+		"these many matches simultaneously.")
+	flag_maxAutoBatch = flag.Int("max_auto_batch", 0, "If > 0 ignore at most do given value of "+
+		"auto-batch for tensorflow evaluations.")
+
 	players = [2]*ai_players.SearcherScorerPlayer{nil, nil}
 )
 
@@ -96,7 +101,7 @@ func (m *Match) Encode(enc *gob.Encoder) {
 func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []float32, actionsLabels [][]float32) (
 	[]*Board, []float32, [][]float32) {
 	from := 0
-	if *flag_lastActions > 1 && *flag_lastActions < len(m.Actions) {
+	if *flag_lastActions > 0 && *flag_lastActions < len(m.Actions) {
 		from = len(m.Actions) - *flag_lastActions
 	}
 	glog.V(2).Infof("Making LabeledExample, version=%d", players[0].Scorer.Version())
@@ -216,6 +221,18 @@ func runMatch(matchNum int) *Match {
 	return match
 }
 
+func setAutoBatchSizes(batchSize int) {
+	glog.V(1).Infof("setAutoBatchSize(%d), max=%d", batchSize, *flag_maxAutoBatch)
+	if *flag_maxAutoBatch > 0 && batchSize > *flag_maxAutoBatch {
+		batchSize = *flag_maxAutoBatch
+	}
+	for _, player := range players {
+		if tfscorer, ok := player.Scorer.(*tensorflow.Scorer); ok {
+			tfscorer.SetBatchSize(batchSize)
+		}
+	}
+}
+
 // runMatches run --num_matches number of matches, and write the resulting matches
 // to the given channel.
 func runMatches(results chan<- *Match) {
@@ -229,11 +246,16 @@ func runMatches(results chan<- *Match) {
 	// Run at most GOMAXPROCS simultaneously.
 	var wg sync.WaitGroup
 	parallelism := runtime.GOMAXPROCS(0)
+	if *flag_parallelism > 0 {
+		parallelism = *flag_parallelism
+	}
+	setAutoBatchSizes(parallelism / 4)
 	glog.V(1).Infof("Parallelism for running matches=%d", parallelism)
 	semaphore := make(chan bool, parallelism)
 	done := false
 	wins := 0
-	for ii := 0; !done; ii++ {
+	matchCount := 0
+	for ; !done; matchCount++ {
 		wg.Add(1)
 		semaphore <- true
 		go func(matchNum int) {
@@ -255,13 +277,23 @@ func runMatches(results chan<- *Match) {
 				return
 			}
 			results <- match
-		}(ii)
+		}(matchCount)
 		if !*flag_wins {
-			done = done || (ii+1 >= numMatchesToPlay)
+			done = done || (matchCount+1 >= numMatchesToPlay)
 		}
-		glog.V(1).Infof("Started match %d, done=%v", ii, done)
+		glog.V(1).Infof("Started match %d, done=%v (wins so far=%d)", matchCount, done, wins)
 	}
+
+	// Gradually decrease the batching level.
+	go func() {
+		for ii := parallelism; ii > 0; ii-- {
+			semaphore <- true
+			setAutoBatchSizes(ii / 4)
+		}
+	}()
+
 	wg.Wait()
+	glog.V(1).Infof("Played %d matches, with %d wins", matchCount, wins)
 	close(results)
 }
 
@@ -305,7 +337,8 @@ func loadMatches(results chan<- *Match) {
 		log.Panicf("Did not find any files matching '%s'", *flag_loadMatches)
 	}
 
-	var matchesCount = 0
+	var matchesCount, matchesIdx, numWins int
+
 LoopFilenames:
 	for _, filename := range filenames {
 		glog.V(1).Infof("Scanning file %s\n", filename)
@@ -315,8 +348,8 @@ LoopFilenames:
 		}
 		dec := gob.NewDecoder(file)
 		for *flag_numMatches == 0 || matchesCount < *flag_numMatches {
-			match, err := MatchDecode(dec, matchesCount)
-			matchesCount++
+			match, err := MatchDecode(dec, matchesIdx)
+			matchesIdx++
 			if err == io.EOF {
 				break
 			}
@@ -331,17 +364,25 @@ LoopFilenames:
 					continue
 				} else {
 					glog.V(1).Infof("Found match %d\n", *flag_loadOnlyMatch)
+					matchesCount++
+					if !match.FinalBoard().Draw() {
+						numWins++
+					}
 					results <- match
 					break LoopFilenames
 				}
 			}
-			if *flag_winsOnly && !match.FinalBoard().Draw() {
+			if *flag_winsOnly && match.FinalBoard().Draw() {
 				continue
+			}
+			matchesCount++
+			if !match.FinalBoard().Draw() {
+				numWins++
 			}
 			results <- match
 		}
 	}
-	glog.Infof("%d matches read", matchesCount)
+	glog.Infof("%d matches loaded (%d wins), %d used", matchesIdx, numWins, matchesCount)
 	close(results)
 }
 

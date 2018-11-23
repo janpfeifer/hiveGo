@@ -14,8 +14,13 @@ import (
 // improve the one AI.
 func rescore(matches []*Match) {
 	var wg sync.WaitGroup
-	glog.V(1).Infof("Rescoring: parallelization=%d", runtime.GOMAXPROCS(0))
-	semaphore := make(chan bool, runtime.GOMAXPROCS(0))
+	parallelism := runtime.GOMAXPROCS(0)
+	if *flag_parallelism > 0 {
+		parallelism = *flag_parallelism
+	}
+	setAutoBatchSizes(parallelism / 4)
+	glog.V(1).Infof("Rescoring: parallelization=%d", parallelism)
+	semaphore := make(chan bool, parallelism)
 	for matchNum, match := range matches {
 		wg.Add(1)
 		semaphore <- true
@@ -24,9 +29,10 @@ func rescore(matches []*Match) {
 			defer func() { <-semaphore }()
 
 			from := 0
-			if *flag_lastActions > 1 && *flag_lastActions < len(match.Actions) {
+			if *flag_lastActions > 0 && *flag_lastActions < len(match.Actions) {
 				from = len(match.Actions) - *flag_lastActions
 			}
+			glog.V(2).Infof("lastActions=%d, from=%d, len(actions)=%d", *flag_lastActions, from, len(match.Actions))
 			glog.V(2).Infof("Rescoring match %d", matchNum)
 			newScores, actionsLabels := players[0].Searcher.ScoreMatch(
 				match.Boards[from], match.Actions[from:len(match.Actions)],
@@ -42,6 +48,14 @@ func rescore(matches []*Match) {
 			glog.V(2).Infof("Match %d (MatchFileIdx=%d) rescored.", matchNum, match.MatchFileIdx)
 		}(matchNum, match)
 	}
+
+	// Gradually decrease the batching level.
+	go func() {
+		for ii := parallelism; ii > 0; ii-- {
+			semaphore <- true
+			setAutoBatchSizes(ii / 4)
+		}
+	}()
 
 	// Wait for the remaining ones to finish.
 	wg.Wait()

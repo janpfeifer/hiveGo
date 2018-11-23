@@ -58,6 +58,10 @@ func SigmoidTo10(x float32) float32 {
 	return sign * abs
 }
 
+func (w LinearScorer) ScoreFeatures(features []float32) float32 {
+	return SigmoidTo10(w.UnlimitedScore(features))
+}
+
 func (w LinearScorer) Score(b *Board) (score float32, actionProbs []float32) {
 	features := FeatureVector(b, w.Version())
 	return SigmoidTo10(w.UnlimitedScore(features)), nil
