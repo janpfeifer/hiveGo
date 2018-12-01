@@ -33,14 +33,16 @@ package tensorflow
 import (
 	"flag"
 	"fmt"
-	"github.com/golang/protobuf/proto"
-	tfconfig "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
+
+	"github.com/golang/protobuf/proto"
+	tfconfig "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf"
 
 	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
@@ -408,7 +410,89 @@ func (s *Scorer) buildFeatures(boards []*Board) (fc *flatFeaturesCollection) {
 
 		}
 	}
+	return
+}
 
+func (fc *flatFeaturesCollection) Len() int {
+	return len(fc.boardFeatures)
+}
+
+// randomMiniBatches will split up the flatFeaturesCollection into many
+// random mini-batches of the given size (resampling with no replacement).
+//
+// The data itself is not copied, only the slices, so the original
+// flatFeturesCollection passed must be preserved.
+//
+// If there is not enough examples to fill the last minibatch (that is
+// if the number of examples is not divisible by batchSize), the
+// last minibatch is discarded.
+func (fc *flatFeaturesCollection) randomMiniBatches(batchSize int) (fcs []*flatFeaturesCollection) {
+	numBatches := fc.Len() / batchSize
+	fcs = make([]*flatFeaturesCollection, numBatches)
+
+	order := make([]int, fc.Len())
+	for ii := 0; ii < fc.Len(); ii++ {
+		order[ii] = ii
+	}
+	for ii := 0; ii < fc.Len(); ii++ {
+		jj := rand.Intn(fc.Len())
+		order[ii], order[jj] = order[jj], order[ii]
+	}
+
+	// Get reverse order so data is processed serially (hopefully
+	// better data locality).
+	srcIdxToBatchNum := make([]int, fc.Len())
+	for ii := 0; ii < fc.Len(); ii++ {
+		batchNum := ii / batchSize
+		if batchNum >= numBatches {
+			batchNum = -1
+		}
+		srcIdx := order[ii]
+		srcIdxToBatchNum[srcIdx] = batchNum
+	}
+
+	srcActionIdx := 0
+	for srcIdx := 0; srcIdx < fc.Len(); srcIdx++ {
+		batchNum := srcIdxToBatchNum[srcIdx]
+		if batchNum < 0 {
+			// Skip corresponding actions, even if board was not used.
+			for ; srcActionIdx < fc.totalNumActions && fc.actionsBoardIndices[srcActionIdx] == int64(srcIdx); srcActionIdx++ {
+			}
+			continue
+		}
+		batchFC := fcs[batchNum]
+		if batchFC == nil {
+			batchFC = &flatFeaturesCollection{
+				boardFeatures: make([][]float32, 0, batchSize),
+				boardLabels:   make([]float32, 0, batchSize),
+			}
+			fcs[batchNum] = batchFC
+		}
+		batchFCIdx := batchFC.Len()
+		batchFC.boardFeatures = append(batchFC.boardFeatures, fc.boardFeatures[srcIdx])
+		batchFC.boardLabels = append(batchFC.boardLabels, fc.boardLabels[srcIdx])
+		srcActionStart := srcActionIdx
+		for ; srcActionIdx < fc.totalNumActions && fc.actionsBoardIndices[srcActionIdx] == int64(srcIdx); srcActionIdx++ {
+			batchFC.actionsBoardIndices = append(batchFC.actionsBoardIndices, int64(batchFCIdx))
+		}
+		batchFC.actionsFeatures = append(batchFC.actionsFeatures, fc.actionsFeatures[srcActionStart:srcActionIdx]...)
+		batchFC.actionsSourceCenter = append(batchFC.actionsSourceCenter, fc.actionsSourceCenter[srcActionStart:srcActionIdx]...)
+		batchFC.actionsSourceNeighbourhood = append(batchFC.actionsSourceNeighbourhood, fc.actionsSourceNeighbourhood[srcActionStart:srcActionIdx]...)
+		batchFC.actionsTargetCenter = append(batchFC.actionsTargetCenter, fc.actionsTargetCenter[srcActionStart:srcActionIdx]...)
+		batchFC.actionsTargetNeighbourhood = append(batchFC.actionsTargetNeighbourhood, fc.actionsTargetNeighbourhood[srcActionStart:srcActionIdx]...)
+		batchFC.actionsLabels = append(batchFC.actionsLabels, fc.actionsLabels[srcActionStart:srcActionIdx]...)
+		batchFC.totalNumActions += (srcActionIdx - srcActionStart)
+	}
+
+	// Sanity checks.
+	for num, batchFC := range fcs {
+		if batchFC.Len() != batchSize {
+			log.Panicf("Minibatch %d has %d boards, wanted %d (batchSize)", num, batchFC.Len(), batchSize)
+		}
+	}
+	if srcActionIdx != fc.totalNumActions {
+		log.Panicf("%d actions given, but only %d processed.", fc.totalNumActions, srcActionIdx)
+	}
 	return
 }
 
@@ -488,7 +572,9 @@ func (s *Scorer) BatchScore(boards []*Board) (scores []float32, actionProbsBatch
 	return
 }
 
-func (s *Scorer) learnOneBatch(batch *flatFeaturesCollection)
+func (s *Scorer) learnOneBatch(batch *flatFeaturesCollection) (loss float32) {
+	return
+}
 
 func (s *Scorer) Learn(boards []*Board, boardLabels []float32, actionsLabels [][]float32, learningRate float32, steps int) (loss float32) {
 	if len(s.sessionPool) > 1 {
@@ -496,7 +582,12 @@ func (s *Scorer) Learn(boards []*Board, boardLabels []float32, actionsLabels [][
 	}
 	fc := s.buildFeatures(boards)
 	fc.boardLabels = boardLabels
-	fc.actionsLabels = actionsLabels
+	for _, a := range actionsLabels {
+		fc.actionsLabels = append(fc.actionsLabels, a...)
+	}
+	if len(fc.actionsLabels) != fc.totalNumActions {
+		log.Panicf("%d actions in fc, but only %d labels given.", fc.totalNumActions, len(fc.actionsLabels))
+	}
 
 	feeds := s.buildFeeds(fc)
 	if len(boards) == 0 {
