@@ -572,43 +572,12 @@ func (s *Scorer) BatchScore(boards []*Board) (scores []float32, actionProbsBatch
 	return
 }
 
-func (s *Scorer) learnOneBatch(batch *flatFeaturesCollection) (loss float32) {
-	return
-}
-
-func (s *Scorer) Learn(boards []*Board, boardLabels []float32, actionsLabels [][]float32, learningRate float32, steps int) (loss float32) {
-	if len(s.sessionPool) > 1 {
-		log.Panicf("SessionPool doesn't support saving. You probably should use sessionPoolSize=1 in this case.")
-	}
-	fc := s.buildFeatures(boards)
-	fc.boardLabels = boardLabels
-	for _, a := range actionsLabels {
-		fc.actionsLabels = append(fc.actionsLabels, a...)
-	}
-	if len(fc.actionsLabels) != fc.totalNumActions {
-		log.Panicf("%d actions in fc, but only %d labels given.", fc.totalNumActions, len(fc.actionsLabels))
-	}
-
-	feeds := s.buildFeeds(fc)
-	if len(boards) == 0 {
-		log.Panicf("Received empty list of boards to learn.")
-	}
+func (s *Scorer) learnOneMiniBatch(batch *flatFeaturesCollection, learningRate float32, steps int) (loss float32) {
+	feeds := s.buildFeeds(batch)
 
 	// Feed also the labels.
-	actionsSparseLabels := make([]float32, 0, fc.totalNumActions)
-	for ii, labels := range actionsLabels {
-		if len(labels) > 0 {
-			if len(labels) != boards[ii].NumActions() {
-				log.Panicf("%d actionsLabeles given to board, but there are %d actions", len(labels), boards[ii].NumActions())
-			}
-			actionsSparseLabels = append(actionsSparseLabels, labels...)
-		}
-	}
-	if len(actionsSparseLabels) != fc.totalNumActions {
-		log.Panicf("Expected %d actions labels in total, got %d", fc.totalNumActions, len(actionsSparseLabels))
-	}
-	feeds[s.BoardLabels] = mustTensor(boardLabels)
-	feeds[s.ActionsLabels] = mustTensor(actionsSparseLabels)
+	feeds[s.BoardLabels] = mustTensor(batch.boardLabels)
+	feeds[s.ActionsLabels] = mustTensor(batch.actionsLabels)
 	feeds[s.LearningRate] = mustTensor(learningRate)
 
 	// Loop over steps.
@@ -624,6 +593,46 @@ func (s *Scorer) Learn(boards []*Board, boardLabels []float32, actionsLabels [][
 		log.Panicf("Loss evaluation failed: %v", err)
 	}
 	return results[0].Value().(float32)
+}
+
+func (s *Scorer) Learn(boards []*Board, boardLabels []float32, actionsLabels [][]float32, learningRate float32, steps int) (loss float32) {
+	if len(boards) == 0 {
+		log.Panicf("Received empty list of boards to learn.")
+	}
+	if len(s.sessionPool) > 1 {
+		log.Panicf("Using SessionPool doesn't support training. You probably should use sessionPoolSize=1 in this case.")
+	}
+	fc := s.buildFeatures(boards)
+	fc.boardLabels = boardLabels
+	for boardIdx, a := range actionsLabels {
+		if len(a) != boards[boardIdx].NumActions() {
+			log.Panicf("%d actionsLabeles given to board, but there are %d actions", len(a), boards[boardIdx].NumActions())
+		}
+		fc.actionsLabels = append(fc.actionsLabels, a...)
+	}
+	if len(fc.actionsLabels) != fc.totalNumActions {
+		log.Panicf("%d actions in fc, but only %d labels given.", fc.totalNumActions, len(fc.actionsLabels))
+	}
+
+	if *flag_learnBatchSize == 0 || len(boards) < *flag_learnBatchSize {
+		return s.learnOneMiniBatch(fc, learningRate, steps)
+	}
+
+	averageLoss := float32(0)
+	for step := 0; step < steps+1; step++ {
+		miniBatches := fc.randomMiniBatches(*flag_learnBatchSize)
+		glog.V(1).Infof("Learn with %d mini-batches of size %d, epoch %d", len(miniBatches), *flag_learnBatchSize, step)
+		miniBatchSteps := 1
+		if step == steps {
+			miniBatchSteps = 0
+			averageLoss = 0
+		}
+		for _, batch := range miniBatches {
+			averageLoss += s.learnOneMiniBatch(batch, learningRate, miniBatchSteps)
+		}
+		averageLoss /= float32(len(miniBatches))
+	}
+	return averageLoss
 }
 
 func (s *Scorer) Save() {

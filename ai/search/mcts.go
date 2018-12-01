@@ -452,13 +452,13 @@ func (pa *sortableProbsActions) Less(i, j int) bool {
 	return pa.probs[pa.indices[i]] > pa.probs[pa.indices[j]]
 }
 
-func logTopActionProbs(probs []float32, actions []Action, scores []float32) {
+func logTopActionProbs(labelProbs []float32, actions []Action, prevProbs, scores []float32) {
 	if len(scores) == 0 {
 		return
 	}
 	sorted := sortableProbsActions{
-		indices: make([]int, len(probs)),
-		probs:   probs,
+		indices: make([]int, len(labelProbs)),
+		probs:   labelProbs,
 	}
 	for ii := range sorted.indices {
 		sorted.indices[ii] = ii
@@ -466,10 +466,10 @@ func logTopActionProbs(probs []float32, actions []Action, scores []float32) {
 	sort.Sort(&sorted)
 	for ii := 0; ii < len(sorted.indices) && ii < 5; ii++ {
 		idx := sorted.indices[ii]
-		if probs[idx] < 0.02 {
+		if labelProbs[idx] < 0.02 {
 			break
 		}
-		glog.Infof("  Action %s: probability %.2f%%, score=%.2f", actions[idx], 100.0*probs[idx], scores[idx])
+		glog.Infof("  Action %s: new probability %.2f%%, prev probability %.2f%%, score=%.2f", actions[idx], 100*labelProbs[idx], 100*prevProbs[idx], scores[idx])
 	}
 }
 
@@ -496,7 +496,7 @@ func (mcts *mctsSearcher) searchWithStats(stats *matchStats, b *Board) (
 		}
 		if glog.V(2) {
 			glog.Info("search():")
-			logTopActionProbs(actionsLabels, cn.actions, cn.Q)
+			logTopActionProbs(actionsLabels, cn.actions, cn.actionsProbs, cn.Q)
 		}
 
 	} else {
@@ -548,7 +548,7 @@ func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action, want []*Board) 
 			glog.Infof("ScoreMatch Move #%d (%d to go), player %d has the turn:",
 				cn.board.MoveNumber, len(actions)-matchActionsIdx, cn.board.NextPlayer)
 			ui.PrintBoard(cn.board)
-			logTopActionProbs(boardActionsLabels, cn.actions, cn.Q)
+			logTopActionProbs(boardActionsLabels, cn.actions, cn.actionsProbs, cn.Q)
 			fmt.Println()
 		}
 
@@ -559,8 +559,8 @@ func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action, want []*Board) 
 			playedIdx = -1
 		} else {
 			playedIdx = cn.board.FindActionDeep(action)
-			glog.V(2).Infof("Actually player: %s, prob=%.2g%%, score=%f",
-				cn.actions[playedIdx], boardActionsLabels[playedIdx]*100, cn.Q[playedIdx])
+			glog.V(2).Infof("Actually played: %s, prob=%.2g%%, prev_prob=%.2g%%, score=%f",
+				cn.actions[playedIdx], boardActionsLabels[playedIdx]*100, cn.actionsProbs[playedIdx], cn.Q[playedIdx])
 		}
 		cn = cn.Step(mcts, stats, playedIdx, true)
 		if cn.board.NumActions() != want[matchActionsIdx+1].NumActions() {
