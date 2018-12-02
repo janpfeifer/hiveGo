@@ -233,6 +233,19 @@ func setAutoBatchSizes(batchSize int) {
 	}
 }
 
+var (
+	// Set to true if same AI is playing both sides.
+	isSamePlayer = false
+)
+
+func setAutoBatchSizesForParallelism(parallelism int) {
+	autoBatchSize := parallelism / 4
+	if isSamePlayer {
+		autoBatchSize = parallelism / 2
+	}
+	setAutoBatchSizes(autoBatchSize)
+}
+
 // runMatches run --num_matches number of matches, and write the resulting matches
 // to the given channel.
 func runMatches(results chan<- *Match) {
@@ -249,7 +262,7 @@ func runMatches(results chan<- *Match) {
 	if *flag_parallelism > 0 {
 		parallelism = *flag_parallelism
 	}
-	setAutoBatchSizes(parallelism / 4)
+	setAutoBatchSizesForParallelism(parallelism)
 	glog.V(1).Infof("Parallelism for running matches=%d", parallelism)
 	semaphore := make(chan bool, parallelism)
 	done := false
@@ -288,7 +301,7 @@ func runMatches(results chan<- *Match) {
 	go func() {
 		for ii := parallelism; ii > 0; ii-- {
 			semaphore <- true
-			setAutoBatchSizes(ii / 4)
+			setAutoBatchSizesForParallelism(ii)
 		}
 	}()
 
@@ -405,8 +418,15 @@ func main() {
 	if *flag_maxMoves <= 0 {
 		log.Fatalf("Invalid --max_moves=%d", *flag_maxMoves)
 	}
-	for ii := 0; ii < 2; ii++ {
-		players[ii] = ai_players.NewAIPlayer(*flag_players[ii], *flag_numMatches == 1)
+
+	// Create AI players. If they are the same, reuse -- sharing same TF Session can be more
+	// efficient.
+	players[0] = ai_players.NewAIPlayer(*flag_players[0], *flag_numMatches == 1)
+	if *flag_players[1] == *flag_players[0] {
+		players[1] = players[0]
+		isSamePlayer = true
+	} else {
+		players[1] = ai_players.NewAIPlayer(*flag_players[1], *flag_numMatches == 1)
 	}
 
 	// Run/load matches.

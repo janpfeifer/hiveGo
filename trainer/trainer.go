@@ -18,7 +18,7 @@ func rescore(matches []*Match) {
 	if *flag_parallelism > 0 {
 		parallelism = *flag_parallelism
 	}
-	setAutoBatchSizes(parallelism / 4)
+	setAutoBatchSizes(parallelism / 2)
 	glog.V(1).Infof("Rescoring: parallelization=%d", parallelism)
 	semaphore := make(chan bool, parallelism)
 	for matchNum, match := range matches {
@@ -53,7 +53,7 @@ func rescore(matches []*Match) {
 	go func() {
 		for ii := parallelism; ii > 0; ii-- {
 			semaphore <- true
-			setAutoBatchSizes(ii / 4)
+			setAutoBatchSizes(ii / 2)
 		}
 	}()
 
