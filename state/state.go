@@ -187,7 +187,7 @@ func NewBoard() *Board {
 			INITIAL_AVAILABILITY, INITIAL_AVAILABILITY},
 		board:      map[Pos]EncodedStack{},
 		MoveNumber: 1,
-		MaxMoves:   1000,
+		MaxMoves:   100,
 		NextPlayer: 0,
 		Previous:   nil,
 	}

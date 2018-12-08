@@ -215,13 +215,10 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 			maxDepth = 3
 		}
 
-		if randomness <= 0 {
-			searcher = search.NewAlphaBetaSearcher(maxDepth, player.Parallelized, player.Scorer)
-		} else {
-			// Randomized searcher.
-			searcher = search.NewAlphaBetaSearcher(maxDepth, false, player.Scorer)
-			searcher = search.NewRandomizedSearcher(searcher, player.Scorer, randomness)
-		}
+		searcher = search.NewAlphaBetaSearcher(maxDepth, player.Parallelized, player.Scorer, float32(randomness))
+		// Alternative Randomized searcher.
+		//searcher = search.NewAlphaBetaSearcher(maxDepth, false, player.Scorer)
+		//searcher = search.NewRandomizedSearcher(searcher, player.Scorer, randomness)
 	}
 
 	// Check that all parameters were processed.

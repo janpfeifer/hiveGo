@@ -106,9 +106,11 @@ func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []floa
 	}
 	glog.V(2).Infof("Making LabeledExample, version=%d", players[0].Scorer.Version())
 	for ii := from; ii < len(m.Actions); ii++ {
-		boardExamples = append(boardExamples, m.Boards[ii])
-		boardLabels = append(boardLabels, m.Scores[ii])
-		actionsLabels = append(actionsLabels, m.ActionsLabels[ii])
+		if !m.Boards[ii].IsFinished() && len(m.ActionsLabels[ii]) > 0 {
+			boardExamples = append(boardExamples, m.Boards[ii])
+			boardLabels = append(boardLabels, m.Scores[ii])
+			actionsLabels = append(actionsLabels, m.ActionsLabels[ii])
+		}
 	}
 	return boardExamples, boardLabels, actionsLabels
 }

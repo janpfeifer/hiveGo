@@ -10,7 +10,7 @@ import (
 //   policy: Probability for each of the action. This is optional, and
 //     some models may not return it.
 type Scorer interface {
-	Score(board *Board) (score float32, actionProbs []float32)
+	Score(board *Board, scoreActions bool) (score float32, actionProbs []float32)
 
 	// Version returns the version of the Scorer: usually the number of features
 	// used -- so system can maintain backwards compatibility.
@@ -22,7 +22,7 @@ type BatchScorer interface {
 	Scorer
 
 	// BatchScore aggregate scoring in batches -- presumable more efficient.
-	BatchScore(boards []*Board) (scores []float32, actionProbsBatch [][]float32)
+	BatchScore(boards []*Board, scoreActions bool) (scores []float32, actionProbsBatch [][]float32)
 }
 
 type LearnerScorer interface {
@@ -41,12 +41,12 @@ type BatchScorerWrapper struct {
 	Scorer
 }
 
-func (s BatchScorerWrapper) BatchScore(boards []*Board) (scores []float32, actionProbsBatch [][]float32) {
+func (s BatchScorerWrapper) BatchScore(boards []*Board, scoreActions bool) (scores []float32, actionProbsBatch [][]float32) {
 	scores = make([]float32, len(boards))
 	actionProbsBatch = nil
 	for ii, board := range boards {
 		var actionProbs []float32
-		scores[ii], actionProbs = s.Score(board)
+		scores[ii], actionProbs = s.Score(board, scoreActions)
 		if actionProbs != nil {
 			if actionProbsBatch == nil {
 				actionProbsBatch = make([][]float32, len(boards))

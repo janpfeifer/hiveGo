@@ -38,7 +38,7 @@ const (
 	F_NUM_THREATENING_MOVES
 	F_OPP_NUM_THREATENING_MOVES
 
-	// Number of moves till a draw due to running out of moves.
+	// Number of moves till a draw due to running out of moves. Max to 10.
 	F_MOVES_TO_DRAW
 
 	// Number of pieces that are "leaves" (only one neighbor)
@@ -278,6 +278,9 @@ func fNumThreateningMoves(b *Board, def *FeatureDef, f []float32) {
 func fNumToDraw(b *Board, def *FeatureDef, f []float32) {
 	idx := def.VecIndex
 	f[idx] = float32(b.MaxMoves - b.MoveNumber + 1)
+	if f[idx] > 10 {
+		f[idx] = 10
+	}
 
 }
 

@@ -16,6 +16,8 @@ import (
 
 var _ = log.Printf
 
+const MAX_LINEAR_SCORE = float32(9.8)
+
 // TrivialScorer is a linear model (one weight per feature + bias)
 // on the feature set.
 type LinearScorer []float32
@@ -36,10 +38,10 @@ func (w LinearScorer) UnlimitedScore(features []float32) float32 {
 }
 
 // Adjusts numbers larger than 10 to approximate 10 in the infinity, by applying
-// a sigmoid to anything above 9.8 -- in absolute terms, it works simetrically
+// a sigmoid to anything above 9.8 -- in absolute terms, it works symmetrically
 // on negative numbers.
 func SigmoidTo10(x float32) float32 {
-	if x < 9.8 && x > -9.8 {
+	if x < MAX_LINEAR_SCORE && x > -MAX_LINEAR_SCORE {
 		return x
 	}
 	sign := float32(1)
@@ -51,9 +53,9 @@ func SigmoidTo10(x float32) float32 {
 
 	// Calculate sigmoid part.
 	const reduction = float32(4) // Makes it converge slower to 10.0
-	sig := (abs - 9.8) / reduction
+	sig := (abs - MAX_LINEAR_SCORE) / reduction
 	sig = float32(1.0 / (1.0 + math.Exp(-float64(sig))))
-	sig = (sig - 0.5) * 0.2 / 0.5
+	sig = (sig - 0.5) * 2 * (10 - MAX_LINEAR_SCORE)
 	abs = 9.8 + sig
 	return sign * abs
 }
@@ -62,16 +64,22 @@ func (w LinearScorer) ScoreFeatures(features []float32) float32 {
 	return SigmoidTo10(w.UnlimitedScore(features))
 }
 
-func (w LinearScorer) Score(b *Board) (score float32, actionProbs []float32) {
+func (w LinearScorer) Score(b *Board, scoreActions bool) (score float32, actionProbs []float32) {
+	if scoreActions {
+		glog.Error("LinearScorer.Score() doesn't support scoreActions.")
+	}
 	features := FeatureVector(b, w.Version())
 	return SigmoidTo10(w.UnlimitedScore(features)), nil
 }
 
-func (w LinearScorer) BatchScore(boards []*Board) (scores []float32, actionProbsBatch [][]float32) {
+func (w LinearScorer) BatchScore(boards []*Board, scoreActions bool) (scores []float32, actionProbsBatch [][]float32) {
+	if scoreActions {
+		glog.Error("LinearScorer.BatchScore() doesn't support scoreActions.")
+	}
 	scores = make([]float32, len(boards))
 	actionProbsBatch = nil
 	for ii, board := range boards {
-		scores[ii], _ = w.Score(board)
+		scores[ii], _ = w.Score(board, scoreActions)
 	}
 	return
 }

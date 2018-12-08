@@ -35,11 +35,11 @@ type Searcher interface {
 	ScoreMatch(b *Board, actions []Action, want []*Board) (scores []float32, actionsLabels [][]float32)
 }
 
-// ScoredActions enumerates each of the available actions, along with the boards
+// ExecuteAndScoreActions enumerates each of the available actions, along with the boards
 // where actions were taken and with the score for current b.NextPlayer -- not the
 // next action's NextPlayer. It wil return early if any of the actions lead to
 // b.NextPlayer winning.
-func ScoredActions(b *Board, scorer ai.BatchScorer) ([]Action, []*Board, []float32) {
+func ExecuteAndScoreActions(b *Board, scorer ai.BatchScorer) ([]Action, []*Board, []float32) {
 	actions := b.Derived.Actions
 	if len(actions) == 0 {
 		actions = append(actions, Action{Piece: NO_PIECE})
@@ -82,7 +82,7 @@ func ScoredActions(b *Board, scorer ai.BatchScorer) ([]Action, []*Board, []float
 	if len(boardsToScore) > 0 {
 		// Score other boards.
 		// TODO: Use "Principal Variation" to estimate the score.
-		scored, _ := scorer.BatchScore(boardsToScore)
+		scored, _ := scorer.BatchScore(boardsToScore, false)
 		scoredIdx := 0
 		for ii := range scores {
 			if !newBoards[ii].IsFinished() {
@@ -124,7 +124,7 @@ type randomizedSearcher struct {
 // Search implements the Searcher interface.
 func (rs *randomizedSearcher) Search(b *Board) (Action, *Board, float32, []float32) {
 	// If there are no valid actions, create the "pass" action
-	actions, newBoards, scores := ScoredActions(b, rs.scorer)
+	actions, newBoards, scores := ExecuteAndScoreActions(b, rs.scorer)
 
 	for ii := range actions {
 		isEnded, score := ai.EndGameScore(newBoards[ii])

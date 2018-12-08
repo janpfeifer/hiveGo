@@ -138,7 +138,7 @@ func newCacheNode(mcts *mctsSearcher, stats *matchStats, b *Board, root bool) *c
 	if stats != nil {
 		stats.numCacheNodes++
 	}
-	cn.score, cn.actionsProbs = mcts.scorer.Score(b)
+	cn.score, cn.actionsProbs = mcts.scorer.Score(b, true)
 	if root && mcts.randomness > 0 {
 		for ii := range cn.actionsProbs {
 			cn.actionsProbs[ii] += float32(rand.NormFloat64()) * mcts.randomness

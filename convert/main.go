@@ -1,80 +1,81 @@
 package main
 
 import (
+	"bufio"
 	"encoding/gob"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"regexp"
+	"strconv"
 
 	"github.com/golang/glog"
 	. "github.com/janpfeifer/hiveGo/state"
 )
 
 var (
-	flag_input  = flag.String("input", "", "Old saved file.")
+	flag_input  = flag.String("input", "", "Text file with moves.")
 	flag_output = flag.String("output", "", "New saved file.")
 	flag_wins   = flag.Bool("wins", false, "Converts only matches with a win.")
+
+
+	reMove = regexp.MustCompile(`Move ([ABGQS]): \((-?\d+), (-?\d+)\)->\((-?\d+), (-?\d+)\)`)
+	rePlace = regexp.MustCompile(`Place ([ABGQS]) in \((-?\d+), (-?\d+)\)`)
 )
 
-// Results and if the players were swapped.
 type Match struct {
-	// Wether p0/p1 swapped positions in this match.
-	Swapped bool
-
-	// Match actions, alternating players.
+	MaxMoves int
 	Actions []Action
-
-	// All board states of the game: 1 more than the number of actions.
-	Boards []*Board
-
-	// Scores for each board position. Can either be calculated during
-	// the match, or re-genarated when re-loading a match.
 	Scores []float32
 }
-
-func MatchDecode(dec *gob.Decoder) (match *Match, err error) {
-	match = &Match{}
-	err = dec.Decode(match)
-	if err != nil {
-		return
-	}
-	board := NewBoard()
-	board.MaxMoves = match.Boards[0].MaxMoves
-	board.BuildDerived()
-	match.Boards[0] = board
-	for _, action := range match.Actions {
-		board = board.Act(action)
-		match.Boards = append(match.Boards, board)
-	}
-	return
-}
-
-func (m *Match) FinalBoard() *Board { return m.Boards[len(m.Boards)-1] }
 
 func loadMatches(results chan<- *Match) {
 	file, err := os.Open(*flag_input)
 	if err != nil {
 		log.Panicf("Cannot open '%s' for reading: %v", *flag_output, err)
 	}
-	dec := gob.NewDecoder(file)
+	defer file.Close()
 
-	// Run at most GOMAXPROCS re-scoring simultaneously.
-	for ii := 0; true; ii++ {
-		match, err := MatchDecode(dec)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			glog.Errorf("Cannot read any more matches: %v", err)
-			break
-		}
-		if *flag_wins && match.FinalBoard().Draw() {
+	scanner := bufio.NewScanner(file)
+	board := NewBoard()
+	match := &Match{MaxMoves:board.MaxMoves}
+	for scanner.Scan() {
+		line := scanner.Text()
+		var action Action
+		if parts := reMove.FindStringSubmatch(line); parts != nil {
+			action.Move = true
+			action.Piece = LetterToPiece[parts[1]]
+			x, _ := strconv.Atoi(parts[2])
+			y, _ := strconv.Atoi(parts[3])
+			action.SourcePos = Pos{int8(x), int8(y)}
+			x, _ = strconv.Atoi(parts[4])
+			y, _ = strconv.Atoi(parts[5])
+			action.TargetPos = Pos{int8(x), int8(y)}
+		} else if parts = rePlace.FindStringSubmatch(line); parts != nil {
+			action.Move = false
+			action.Piece = LetterToPiece[parts[1]]
+			x, _ := strconv.Atoi(parts[2])
+			y, _ := strconv.Atoi(parts[3])
+			action.TargetPos = Pos{int8(x), int8(y)}
+		} else {
+			glog.Errorf("Unparsed line: [%s]", line)
 			continue
 		}
-		results <- match
+		_ = board.FindActionDeep(action)
+		board = board.Act(action)
+		match.Actions = append(match.Actions, action)
+		match.Scores = append(match.Scores, 0)
 	}
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
+	if !board.IsFinished() {
+		glog.Errorf("Match hasn't finished at move number %d", board.MoveNumber)
+	}
+	glog.Infof("Converted match with %d moves", board.MoveNumber)
+	results <- match
 	close(results)
 }
 
@@ -101,7 +102,7 @@ func main() {
 	enc := gob.NewEncoder(file)
 	count := 0
 	for match := range results {
-		SaveMatch(enc, match.Boards[0].MaxMoves, match.Actions, match.Scores)
+		SaveMatch(enc, match.MaxMoves, match.Actions, match.Scores)
 		count++
 	}
 	file.Close()

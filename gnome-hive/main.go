@@ -26,7 +26,7 @@ var (
 	}
 	flag_aiConfig = flag.String("ai", "", "Configuration string for the AI.")
 	flag_maxMoves = flag.Int(
-		"max_moves", 200, "Max moves before game is assumed to be a draw.")
+		"max_moves", 100, "Max moves before game is assumed to be a draw.")
 
 	// TODO: find directory automatically basaed on GOPATH.
 	flag_resources = flag.String("resources", "", "Directory with resources. "+

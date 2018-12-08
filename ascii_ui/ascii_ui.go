@@ -54,7 +54,7 @@ func (ui *UI) Run(board *Board) (*Board, error) {
 		if len(board.Derived.Actions) == 0 {
 			// Nothing to play, skip (by playing SKIP_ACTION)
 			fmt.Println()
-			ui.printPlayer(board)
+			ui.PrintPlayer(board)
 			fmt.Println(" has no available actions, skipping.")
 			fmt.Println()
 			board = board.Act(SKIP_ACTION)
@@ -104,7 +104,7 @@ func (ui *UI) PrintWinner(b *Board) {
 func (ui *UI) ReadCommand(b *Board) (action Action, err error) {
 	for numErrs := 0; numErrs < 3; numErrs++ {
 		fmt.Println()
-		ui.printPlayer(b)
+		ui.PrintPlayer(b)
 		fmt.Print(": ")
 		var text string
 		text, err = ui.reader.ReadString('\n')
@@ -199,19 +199,19 @@ func (ui *UI) Print(board *Board) {
 
 	ui.PrintBoard(board)
 	fmt.Println()
-	ui.printAvailable(board)
+	ui.PrintAvailable(board)
 	fmt.Print("\n")
-	ui.printPlayer(board)
+	ui.PrintPlayer(board)
 	fmt.Print(" turn to play\n")
 	ui.printActions(board)
 	fmt.Println()
 }
 
-func (ui *UI) printPlayer(board *Board) {
+func (ui *UI) PrintPlayer(board *Board) {
 	fmt.Printf("%sPlayer %d%s", ui.colorStart(board.NextPlayer, QUEEN), board.NextPlayer, ui.colorEnd())
 }
 
-func (ui *UI) printAvailable(board *Board) {
+func (ui *UI) PrintAvailable(board *Board) {
 	for player := uint8(0); player < NUM_PLAYERS; player++ {
 		var pieces []string
 		for _, piece := range Pieces {
