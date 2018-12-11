@@ -1,5 +1,4 @@
 *~
-model*.*
 cpu.prof
 v?.*
 match*
@@ -14,5 +13,3 @@ tf_model*
 alpha0_*.*
 a0_v*.*
 *.pyc
-.idea
-hiveGo.iml
