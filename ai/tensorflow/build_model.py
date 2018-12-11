@@ -1,14 +1,13 @@
 #!/usr/bin/python3
 # This will build an empty base model, with training ops that can be executed from Go.
-import tensorflow as tf
 import hive_lib
+import tensorflow as tf
 
 tf.app.flags.DEFINE_string("output", "", "Where to save the graph definition.")
 tf.app.flags.DEFINE_bool(
     "mpnn", True, "Whether to include actions part of the model.")
 
 FLAGS = tf.app.flags.FLAGS
-
 
 # Dimension of the input features.
 BOARD_FEATURES_DIM = 41  # Should match ai.AllFeaturesDim
@@ -20,7 +19,7 @@ POSITIONS_PER_SECTION = 3  # Num of board positions per section.
 FEATURES_PER_POSITION = 16  # Num of features per position.
 # NEIGHBOURHOOD_NUM_FEATURES = 305
 NEIGHBOURHOOD_NUM_FEATURES = (
-    (1 + POSITIONS_PER_SECTION * NUM_SECTIONS) * FEATURES_PER_POSITION + ACTION_FEATURES_DIM)
+        (1 + POSITIONS_PER_SECTION * NUM_SECTIONS) * FEATURES_PER_POSITION + ACTION_FEATURES_DIM)
 
 # Training parameters.
 
@@ -41,35 +40,12 @@ NORMALIZATION = None
 NORMALIZATION = tf.layers.batch_normalization
 
 
-# Neither num_hidden_layers_nodes and output_embedding_dim include the dimensions of the input
-# that may be concatenated for the skip connections.
-def buildSkipFFNN(input, num_hidden_layers, num_hidden_layers_nodes,
-                  skip_also_output, output_embedding_dim, initializer, l2_regularizer):
-    with tf.name_scope("buildSkipFFNN"):
-        logits = input
-        if num_hidden_layers > 0:
-            for ii in range(num_hidden_layers - 1):
-                with tf.variable_scope("hidden_{}".format(ii), reuse=tf.AUTO_REUSE):
-                    logits = tf.layers.dense(logits, num_hidden_layers_nodes, ACTIVATION,
-                                             kernel_initializer=initializer, kernel_regularizer=l2_regularizer,
-                                             name="linear", reuse=tf.AUTO_REUSE)
-                logits = tf.concat([logits, input], 1)
-            # Last hidden layer can be of different size, and the skip connection is optional.
-            with tf.variable_scope("embedding".format(ii), reuse=tf.AUTO_REUSE):
-                logits = tf.layers.dense(logits, output_embedding_dim, ACTIVATION,
-                                         kernel_initializer=initializer, kernel_regularizer=l2_regularizer,
-                                         name="linear", reuse=tf.AUTO_REUSE)
-            if skip_also_output:
-                logits = tf.concat([logits, input], 1)
-    return logits
-
-
 def BuildBoardEmbeddings(board_features, initializer, l2_regularizer):
     with tf.name_scope("BuildBoardEmbeddings"):
         board_features = tf.cast(board_features, hive_lib.MODEL_DTYPE)
         with tf.variable_scope("board_kernel", reuse=tf.AUTO_REUSE):
-            logits = buildSkipFFNN(board_features, BOARD_NUM_HIDDEN_LAYERS, BOARD_NODES_PER_LAYER,
-                                   True, BOARD_EMBEDDING_DIM, initializer, l2_regularizer)
+            logits = hive_lib.build_skip_ffnn(board_features, BOARD_NUM_HIDDEN_LAYERS, BOARD_NODES_PER_LAYER,
+                                              True, BOARD_EMBEDDING_DIM, initializer, l2_regularizer)
     return logits
 
 
@@ -102,8 +78,9 @@ def BuildNeighbourhoodEmbeddings(actions_features, center, neighbourhood, initia
                     tf.shape(neigh_rotated)[0], neighbourhood.shape[1] * neighbourhood.shape[2]])
                 all = tf.concat(
                     [actions_features, center, neigh_concated], axis=1)
-                embedding = buildSkipFFNN(all, NEIGHBOURHOOD_NUM_HIDDEN_LAYERS, NEIGHBOURHOOD_NODES_PER_LAYER,
-                                          False, NEIGHBOURHOOD_EMBEDDING_DIM, initializer, l2_regularizer)
+                embedding = hive_lib.build_skip_ffnn(all, NEIGHBOURHOOD_NUM_HIDDEN_LAYERS,
+                                                     NEIGHBOURHOOD_NODES_PER_LAYER,
+                                                     False, NEIGHBOURHOOD_EMBEDDING_DIM, initializer, l2_regularizer)
                 rotation_embeddings.append(embedding)
         all_embeddings = tf.stack(rotation_embeddings, axis=1)
         sum = tf.reduce_sum(all_embeddings, axis=1)
@@ -164,6 +141,7 @@ def BuildActionsModel(board_embeddings,
         actions_loss = tf.reduce_sum(hive_lib.sparse_cross_entropy_loss(log_soft_max, actions_labels))
         return (actions_predictions, actions_loss)
 
+
 # Saves graph and returns a SaverDef that can be used to save checkpoints.
 
 
@@ -219,6 +197,7 @@ def main(argv=None):  # pylint: disable=unused-argument
 
         def normalized_activation(x): return prev_activation(
             tf.layers.batch_normalization(inputs=x, training=is_training, name="BN"))
+
         ACTIVATION = normalized_activation
 
     # Build board logits and model.
@@ -294,7 +273,7 @@ def main(argv=None):  # pylint: disable=unused-argument
 
     # Mean loss: more stable across batches of different sizes.
     mean_loss = total_losses / \
-        tf.cast(tf.shape(board_features)[0], dtype=hive_lib.MODEL_DTYPE)
+                tf.cast(tf.shape(board_features)[0], dtype=hive_lib.MODEL_DTYPE)
     mean_loss = tf.identity(tf.cast(mean_loss, tf.float32), name='mean_loss')
     print('\tMean total loss:\t', mean_loss.name)
 

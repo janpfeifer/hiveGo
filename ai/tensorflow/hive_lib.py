@@ -23,6 +23,21 @@ def sigmoid_to_max(x, absolute_max=MAX_Q_VALUE, linear_threshold=MAX_Q_LINEAR_VA
 
 
 def sparse_log_soft_max(logits, indices):
+    """Sparse version of a `log(softmax)` function.
+
+    There are `BATCH_SIZE` entries, each with an arbitrary number of logits. For
+    each value in `logits` there is a corresponding value in `indices` from `0` to `BATCH_SIZE-1`
+    which indicate which entry the logit is participating.
+
+    Args:
+        logits: dense collection of logits, a concatenation of logits for all entries, of shape `[N]`.
+        indices: indices of values `0` to `BATCH_SIZE-1`, that indicates which entry the
+            corresponding logit participate. Shape `[N]`.
+
+    Returns `log(softmax)` of the logits, such that the sum of all `exp(values)`
+        for the same entry sums to 1. So the `log(probabilities)` depending on how their values are trained.
+        A Tensor of shape `[N]`,
+    """
     with tf.name_scope("SparseLogSoftMax"):
         if len(indices.shape) == 1:
             indices = tf.expand_dims(indices, 1)
@@ -50,10 +65,36 @@ def sparse_log_soft_max(logits, indices):
 
 
 def sparse_cross_entropy_loss(log_probs, labels):
+    """Log-loss, using as input the output of sparse_log_soft_max."""
     return labels * -log_probs
 
 
+# Neither num_hidden_layers_nodes and output_embedding_dim include the dimensions of the input
+# that may be concatenated for the skip connections.
+def build_skip_ffnn(input, num_hidden_layers, num_hidden_layers_nodes,
+                    skip_also_output, output_embedding_dim, initializer, l2_regularizer):
+    """Builds FFNN with skip connections."""
+    with tf.name_scope("buildSkipFFNN"):
+        logits = input
+        if num_hidden_layers > 0:
+            for ii in range(num_hidden_layers - 1):
+                with tf.variable_scope("hidden_{}".format(ii), reuse=tf.AUTO_REUSE):
+                    logits = tf.layers.dense(logits, num_hidden_layers_nodes, ACTIVATION,
+                                             kernel_initializer=initializer, kernel_regularizer=l2_regularizer,
+                                             name="linear", reuse=tf.AUTO_REUSE)
+                logits = tf.concat([logits, input], 1)
+            # Last hidden layer can be of different size, and the skip connection is optional.
+            with tf.variable_scope("embedding".format(ii), reuse=tf.AUTO_REUSE):
+                logits = tf.layers.dense(logits, output_embedding_dim, ACTIVATION,
+                                         kernel_initializer=initializer, kernel_regularizer=l2_regularizer,
+                                         name="linear", reuse=tf.AUTO_REUSE)
+            if skip_also_output:
+                logits = tf.concat([logits, input], 1)
+    return logits
+
+
 _HEX_SIDES_NAMES = ("left", "right")
+
 
 def hexagonal_filters(in_channels, out_channels, dtype, initializer=None):
     """Returns 2 separate 3x3 filters: one for even columns one for odd columns.
@@ -100,10 +141,10 @@ def hexagonal_filters(in_channels, out_channels, dtype, initializer=None):
     )
     sides = [
         tf.get_variable(
-            name="hex_filter_"+_HEX_SIDES_NAMES[ii],
-            shape=shapes[ii+1],
+            name="hex_filter_" + _HEX_SIDES_NAMES[ii],
+            shape=shapes[ii + 1],
             dtype=dtype,
-            initializer=inits[ii+1],
+            initializer=inits[ii + 1],
         )
         for ii in range(2)
     ]
@@ -139,7 +180,7 @@ def hexagonal_conv2d(hex_input, out_channels, filter_initializer=None):
     """
     in_channels = hex_input.shape[3]
     hex_filters = hexagonal_filters(in_channels, out_channels, dtype=hex_input.dtype,
-                                  initializer=filter_initializer)
+                                    initializer=filter_initializer)
     even_out = tf.nn.conv2d(hex_input, hex_filters[0], strides=[1, 1, 1, 1],
                             padding='SAME')
     odd_out = tf.nn.conv2d(hex_input, hex_filters[1], strides=[1, 1, 1, 1],
@@ -152,5 +193,3 @@ def hexagonal_conv2d(hex_input, out_channels, filter_initializer=None):
     selection_mask = tf.broadcast_to(selection_mask, hex_input_shape)
     mix = tf.where(selection_mask, even_out, odd_out)
     return mix
-
-
