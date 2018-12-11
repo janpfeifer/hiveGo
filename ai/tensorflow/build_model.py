@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 # This will build an empty base model, with training ops that can be executed from Go.
 import tensorflow as tf
+import hive_lib
 
 tf.app.flags.DEFINE_string("output", "", "Where to save the graph definition.")
 tf.app.flags.DEFINE_bool(
@@ -8,10 +9,6 @@ tf.app.flags.DEFINE_bool(
 
 FLAGS = tf.app.flags.FLAGS
 
-
-# Model internal type: tf.float16 presumably is faster in the RX2080 Ti GPU,
-# and not slower in others.
-MODEL_DTYPE = tf.float32
 
 # Dimension of the input features.
 BOARD_FEATURES_DIM = 41  # Should match ai.AllFeaturesDim
@@ -43,56 +40,9 @@ ACTIVATION = tf.nn.leaky_relu
 NORMALIZATION = None
 NORMALIZATION = tf.layers.batch_normalization
 
-# Any prediction above this value is made a sigmoid that is limited in 10.
-MAX_LINEAR_VALUE = 9.8
-
-
-def SigmoidTo10(x, threshold=MAX_LINEAR_VALUE, smoothness=4.0):
-    """Make a sigmoid curve on values > 9.8 or < -9.8."""
-    abs_x = tf.abs(x)
-    threshold = tf.constant(threshold, dtype=MODEL_DTYPE)
-    mask = (abs_x > threshold)
-    sigmoid = tf.sigmoid((abs_x - threshold) / smoothness)
-    sigmoid = threshold + (sigmoid - 0.5) * 2 * \
-        (10.0 - MAX_LINEAR_VALUE)
-    sigmoid = tf.sign(x) * sigmoid
-    return tf.where(mask, sigmoid, x)
-
-
-def SparseLogSoftMax(logits, indices):
-    with tf.name_scope("SparseLogSoftMax"):
-        if len(indices.shape) == 1:
-            indices = tf.expand_dims(indices, 1)
-        batch_size = tf.math.reduce_max(indices) + 1
-        num_values = tf.cast(tf.shape(logits)[0], tf.int64)
-        dense_shape_2d = [batch_size, num_values]
-        indices_2d = tf.concat([indices,
-                                tf.expand_dims(tf.range(num_values), 1)], axis=1)
-        sparse_logits = tf.SparseTensor(
-            indices=indices_2d, values=logits, dense_shape=dense_shape_2d)
-        logits_max = tf.sparse_reduce_max(
-            sp_input=sparse_logits, axis=-1, keepdims=True)
-        logits_max = tf.reshape(tf.manip.gather_nd(logits_max, indices), [-1])
-        # Propagating the gradient through logits_max should be a no-op, so to accelrate this
-        # we just prune it,
-        # Also tf.sparse_reduce_max doesn't have a gradient implemented in TensorFlow (as of Nov/2018).
-        logits_max = tf.stop_gradient(logits_max)
-        normalized_logits = logits - logits_max
-        normalized_exp_values = tf.exp(normalized_logits)
-        normalized_exp_sum = tf.manip.scatter_nd(
-            indices, updates=normalized_exp_values, shape=[batch_size])
-        normalized_log_exp_sum = tf.manip.gather_nd(
-            params=tf.log(normalized_exp_sum), indices=indices)
-        return normalized_logits - normalized_log_exp_sum
-
-
-def SparseCrossEntropyLoss(log_probs, labels):
-    return labels * -log_probs
 
 # Neither num_hidden_layers_nodes and output_embedding_dim include the dimensions of the input
 # that may be concatenated for the skip connections.
-
-
 def buildSkipFFNN(input, num_hidden_layers, num_hidden_layers_nodes,
                   skip_also_output, output_embedding_dim, initializer, l2_regularizer):
     with tf.name_scope("buildSkipFFNN"):
@@ -116,7 +66,7 @@ def buildSkipFFNN(input, num_hidden_layers, num_hidden_layers_nodes,
 
 def BuildBoardEmbeddings(board_features, initializer, l2_regularizer):
     with tf.name_scope("BuildBoardEmbeddings"):
-        board_features = tf.cast(board_features, MODEL_DTYPE)
+        board_features = tf.cast(board_features, hive_lib.MODEL_DTYPE)
         with tf.variable_scope("board_kernel", reuse=tf.AUTO_REUSE):
             logits = buildSkipFFNN(board_features, BOARD_NUM_HIDDEN_LAYERS, BOARD_NODES_PER_LAYER,
                                    True, BOARD_EMBEDDING_DIM, initializer, l2_regularizer)
@@ -130,12 +80,12 @@ def BuildBoardModel(board_embeddings, board_labels, initializer, l2_regularizer)
                                            name="linear_layer", kernel_initializer=initializer,
                                            kernel_regularizer=l2_regularizer)
         # Adjust prediction.
-        board_predictions = SigmoidTo10(board_values)
-        board_labels = tf.cast(board_labels, MODEL_DTYPE)
+        board_predictions = hive_lib.sigmoid_to_max(board_values)
+        board_labels = tf.cast(board_labels, hive_lib.MODEL_DTYPE)
         reshaped_labels = tf.reshape(board_labels, [-1, 1])
         board_losses = tf.losses.mean_squared_error(reshaped_labels, board_values,
                                                     reduction=tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS)
-        board_losses = tf.cast(board_losses, MODEL_DTYPE)
+        board_losses = tf.cast(board_losses, hive_lib.MODEL_DTYPE)
         return (board_predictions, board_losses)
 
 
@@ -168,18 +118,18 @@ def BuildActionsModel(board_embeddings,
                       actions_labels, initializer, l2_regularizer):
     with tf.name_scope("BuildActionsModel"):
         actions_features = tf.cast(
-            actions_features, MODEL_DTYPE, name="cast_actions_features")
+            actions_features, hive_lib.MODEL_DTYPE, name="cast_actions_features")
         actions_source_center = tf.cast(
-            actions_source_center, MODEL_DTYPE, name="cast_actions_source_center")
-        actions_source_neighbourhood = tf.cast(actions_source_neighbourhood, MODEL_DTYPE,
+            actions_source_center, hive_lib.MODEL_DTYPE, name="cast_actions_source_center")
+        actions_source_neighbourhood = tf.cast(actions_source_neighbourhood, hive_lib.MODEL_DTYPE,
                                                name="cast_actions_source_neighbourhood")
         actions_target_center = tf.cast(
-            actions_target_center, MODEL_DTYPE, name="cast_actions_target_center")
-        actions_target_neighbourhood = tf.cast(actions_target_neighbourhood, MODEL_DTYPE,
+            actions_target_center, hive_lib.MODEL_DTYPE, name="cast_actions_target_center")
+        actions_target_neighbourhood = tf.cast(actions_target_neighbourhood, hive_lib.MODEL_DTYPE,
                                                name="cast_actions_target_neighbourhood")
         actions_board_indices = tf.cast(
             actions_board_indices, tf.int64, name="cast_actions_board_indices")
-        actions_labels = tf.cast(actions_labels, MODEL_DTYPE)
+        actions_labels = tf.cast(actions_labels, hive_lib.MODEL_DTYPE)
 
         # Broadcast board_embeddings to each action.
         broadcasted_board_embeddings = tf.manip.gather_nd(
@@ -209,11 +159,9 @@ def BuildActionsModel(board_embeddings,
         with tf.variable_scope("actions_kernel"):
             actions_logits = tf.layers.dense(inputs=actions_logits, units=1, activation=None, name="linear_layer",
                                              kernel_initializer=initializer, kernel_regularizer=l2_regularizer)
-        log_soft_max = SparseLogSoftMax(tf.reshape(
-            actions_logits, [-1]), actions_board_indices)
+        log_soft_max = hive_lib.sparse_log_soft_max(tf.reshape(actions_logits, [-1]), actions_board_indices)
         actions_predictions = tf.exp(log_soft_max)
-        actions_loss = tf.reduce_sum(
-            SparseCrossEntropyLoss(log_soft_max, actions_labels))
+        actions_loss = tf.reduce_sum(hive_lib.sparse_cross_entropy_loss(log_soft_max, actions_labels))
         return (actions_predictions, actions_loss)
 
 # Saves graph and returns a SaverDef that can be used to save checkpoints.
@@ -236,7 +184,7 @@ def CreateSaveDef():
 
 
 def BuildRegularizer(l2):
-    l2 = tf.cast(l2, MODEL_DTYPE)
+    l2 = tf.cast(l2, hive_lib.MODEL_DTYPE)
     raw_l2_regularizer = tf.keras.regularizers.l2(1.0)
     return lambda x: raw_l2_regularizer(x) * l2
 
@@ -346,7 +294,7 @@ def main(argv=None):  # pylint: disable=unused-argument
 
     # Mean loss: more stable across batches of different sizes.
     mean_loss = total_losses / \
-        tf.cast(tf.shape(board_features)[0], dtype=MODEL_DTYPE)
+        tf.cast(tf.shape(board_features)[0], dtype=hive_lib.MODEL_DTYPE)
     mean_loss = tf.identity(tf.cast(mean_loss, tf.float32), name='mean_loss')
     print('\tMean total loss:\t', mean_loss.name)
 

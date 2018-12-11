@@ -10,7 +10,8 @@ bench*
 cpuprof.out
 linear*
 tf_model*
-.idea/
+.idea
 alpha0_*.*
 a0_v*.*
+*.pyc
 
