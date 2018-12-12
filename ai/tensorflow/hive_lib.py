@@ -72,20 +72,21 @@ def sparse_cross_entropy_loss(log_probs, labels):
 # Neither num_hidden_layers_nodes and output_embedding_dim include the dimensions of the input
 # that may be concatenated for the skip connections.
 def build_skip_ffnn(input, num_hidden_layers, num_hidden_layers_nodes,
-                    skip_also_output, output_embedding_dim, initializer, l2_regularizer):
+                    skip_also_output, output_embedding_dim,
+                    activation, initializer, l2_regularizer):
     """Builds FFNN with skip connections."""
     with tf.name_scope("buildSkipFFNN"):
         logits = input
         if num_hidden_layers > 0:
             for ii in range(num_hidden_layers - 1):
                 with tf.variable_scope("hidden_{}".format(ii), reuse=tf.AUTO_REUSE):
-                    logits = tf.layers.dense(logits, num_hidden_layers_nodes, ACTIVATION,
+                    logits = tf.layers.dense(logits, num_hidden_layers_nodes, activation,
                                              kernel_initializer=initializer, kernel_regularizer=l2_regularizer,
                                              name="linear", reuse=tf.AUTO_REUSE)
                 logits = tf.concat([logits, input], 1)
             # Last hidden layer can be of different size, and the skip connection is optional.
-            with tf.variable_scope("embedding".format(ii), reuse=tf.AUTO_REUSE):
-                logits = tf.layers.dense(logits, output_embedding_dim, ACTIVATION,
+            with tf.variable_scope("embedding_layer", reuse=tf.AUTO_REUSE):
+                logits = tf.layers.dense(logits, output_embedding_dim, activation,
                                          kernel_initializer=initializer, kernel_regularizer=l2_regularizer,
                                          name="linear", reuse=tf.AUTO_REUSE)
             if skip_also_output:
@@ -178,18 +179,51 @@ def hexagonal_conv2d(hex_input, out_channels, filter_initializer=None):
     Returns:
       A tensor of shape `[BATCH_SIZE, HEIGHT, WIDTH, out_channels]`.
     """
-    in_channels = hex_input.shape[3]
-    hex_filters = hexagonal_filters(in_channels, out_channels, dtype=hex_input.dtype,
-                                    initializer=filter_initializer)
-    even_out = tf.nn.conv2d(hex_input, hex_filters[0], strides=[1, 1, 1, 1],
-                            padding='SAME')
-    odd_out = tf.nn.conv2d(hex_input, hex_filters[1], strides=[1, 1, 1, 1],
-                           padding='SAME')
-    hex_input_shape = tf.shape(hex_input)
-    width = hex_input_shape[2]
-    selection_mask = tf.range(width)
-    selection_mask = tf.equal(selection_mask % 2, 0)
-    selection_mask = tf.reshape(selection_mask, [1, 1, width, 1])
-    selection_mask = tf.broadcast_to(selection_mask, hex_input_shape)
-    mix = tf.where(selection_mask, even_out, odd_out)
+    with tf.name_scope("hexagonal_conv2d"):
+        in_channels = hex_input.shape[3]
+        hex_filters = hexagonal_filters(in_channels, out_channels, dtype=hex_input.dtype,
+                                        initializer=filter_initializer)
+        even_out = tf.nn.conv2d(hex_input, hex_filters[0], strides=[1, 1, 1, 1],
+                                padding='SAME', name="even")
+        odd_out = tf.nn.conv2d(hex_input, hex_filters[1], strides=[1, 1, 1, 1],
+                               padding='SAME', name="odd")
+        hex_input_shape = tf.shape(hex_input)
+        width = hex_input_shape[2]
+        selection_mask = tf.range(width)
+        selection_mask = tf.equal(selection_mask % 2, 0)
+        selection_mask = tf.reshape(selection_mask, [1, 1, width, 1])
+        selection_mask = tf.broadcast_to(selection_mask,
+                                         [hex_input_shape[0], hex_input_shape[1], hex_input_shape[2], out_channels])
+        mix = tf.where(selection_mask, even_out, odd_out, name="mixed")
     return mix
+
+
+def hexagonal_layer(hexagonal_map, activation, out_channels=None, initializer=None):
+    """Pass hexagonal map by a convolution, activation and sum the input (residual).
+
+    Args:
+        hexagonal_map: Input hexagonal map, a tensor of shape `[BATCH_SIZE?, HEIGHT?, WIDTH?, DEPTH]`.
+        activation: Activation function, which may include batch normalization.
+        out_channels: Number of output channels (depth) in the next layer. If None, it will be set to the same
+          of the input. If output channels (depth) is equal or larger to input, the input is added as residual.
+        initializer: Passed to the convolution filter creation.
+    """
+    with tf.name_scope("hexagonal_layer"):
+        in_channels = hexagonal_map.shape[3]
+        if out_channels is None:
+            out_channels = in_channels
+        if initializer is None:
+            initializer = tf.initializers.truncated_normal(0.0, 1. / (7. * in_channels.value))
+        # Output channels == input channels (the depth)
+        hexagonal_output = hexagonal_conv2d(hexagonal_map, out_channels, filter_initializer=initializer)
+        hexagonal_output = activation(hexagonal_output)
+        if in_channels == out_channels:
+            # Straight residual connection.
+            hexagonal_output = hexagonal_output + hexagonal_map
+        elif out_channels > in_channels:
+            # Residual connection in the first in_channels values of the embedding.
+            input_shape = tf.shape(hexagonal_map)
+            padding = tf.zeros(shape=[input_shape[0], input_shape[1], input_shape[2], out_channels - in_channels],
+                               dtype=hexagonal_map.dtype)
+            hexagonal_output = hexagonal_output + tf.concat([hexagonal_map, padding], axis=3)
+        return hexagonal_output
