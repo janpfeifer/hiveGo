@@ -88,7 +88,7 @@ func TimedAlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int, paralleli
 		ui.PrintBoard(board)
 		fmt.Println()
 		var bestActionProb float32
-		scores, vecActionsProbs := scorer.BatchScore([]*Board{board}, true)
+		scores, vecActionsProbs := scorer.BatchScore([]*Board{board}, false)
 		if vecActionsProbs != nil {
 			actionsProbs := vecActionsProbs[0]
 			if len(actionsProbs) > 0 {
@@ -222,7 +222,7 @@ func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action, want []*Boar
 	for actionIdx, action := range actions {
 		bestAction, newBoard, score := TimedAlphaBeta(b, ab.scorer, ab.maxDepth, ab.parallelized, ab.randomness)
 		glog.V(1).Infof("Move #%d (%d left), Action taken: %s / Best action examined %s (score=%.4g)",
-			b.MoveNumber, len(actions) - actionIdx - 1, action, bestAction, score)
+			b.MoveNumber, len(actions)-actionIdx-1, action, bestAction, score)
 		scores = append(scores, score)
 		if len(b.Derived.Actions) > 0 {
 			// AlphaBetaPruning policy is binary, effectively being one-hot-encoding.
@@ -234,7 +234,7 @@ func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action, want []*Boar
 			actionsLabels = append(actionsLabels, nil)
 		}
 		glog.V(1).Infof("Move #%d (%d left), Action taken: %s / Best action examined %s",
-			b.MoveNumber, len(actions) - actionIdx - 1, action, bestAction)
+			b.MoveNumber, len(actions)-actionIdx-1, action, bestAction)
 		if action == bestAction {
 			b = newBoard
 		} else {

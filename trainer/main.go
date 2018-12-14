@@ -45,12 +45,18 @@ var (
 	flag_wins     = flag.Bool("wins", false, "Counts only matches with wins.")
 	flag_winsOnly = flag.Bool("wins_only", false, "Counts only matches with wins (like --wins) and discards draws.")
 
-	flag_lastActions = flag.Int("last_actions", 0, "If set > 0, on the given number of last moves of each match are used for training.")
-	flag_train       = flag.Bool("train", false, "Set to true to train with match data.")
-	flag_trainLoops  = flag.Int("train_loops", 1, "After acquiring data for all matches, how many times to loop the training over it.")
-	flag_rescore     = flag.Int("rescore", 0,
+	flag_lastActions  = flag.Int("last_actions", 0, "If set > 0, on the given number of last moves of each match are used for training.")
+	flag_startActions = flag.Int("start_actions", -1,
+		"Must be used in combination with --last_actions. If set, it defines the first action to start using "+
+			"for training, and --last_actions will define how many actions to learn from.")
+
+	flag_train      = flag.Bool("train", false, "Set to true to train with match data.")
+	flag_trainLoops = flag.Int("train_loops", 1, "After acquiring data for all matches, how many times to loop the training over it.")
+	flag_rescore    = flag.Int("rescore", 0,
 		"If to rescore loaded matches. A value higher than 1 means that it will loop "+
 			"over rescoring and retraining.")
+	flag_distill = flag.Bool("distill", false,
+		"If set it will simply distill from --ai1 to --ai0, without serching for best moves.")
 	flag_learningRate = flag.Float64("learning_rate", 1e-5, "Learning rate when learning")
 
 	flag_parallelism = flag.Int("parallelism", 0, "If > 0 ignore GOMAXPROCS and play "+
@@ -97,16 +103,35 @@ func (m *Match) Encode(enc *gob.Encoder) {
 	}
 }
 
-// AppendLabeledExamples will add examples for learning _for Player 0 only_.
-func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []float32, actionsLabels [][]float32) (
-	[]*Board, []float32, [][]float32) {
-	from := 0
+func (m *Match) SelectRangeOfActions() (from, to int) {
+	from = 0
+	to = len(m.Actions)
 	if *flag_lastActions > 0 && *flag_lastActions < len(m.Actions) {
 		from = len(m.Actions) - *flag_lastActions
 	}
+	if *flag_startActions >= 0 {
+		from = *flag_startActions
+		if from > len(m.Actions) {
+			return -1, -1
+		}
+		if *flag_lastActions > 0 && from+*flag_lastActions < to {
+			to = from + *flag_lastActions
+		}
+	}
+	return
+}
+
+// AppendLabeledExamples will add examples for learning _for Player 0 only_.
+func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []float32, actionsLabels [][]float32) (
+	[]*Board, []float32, [][]float32) {
+	from, to := m.SelectRangeOfActions()
+	if to == -1 {
+		// No actions selected.
+		return boardExamples, boardLabels, actionsLabels
+	}
 	glog.V(2).Infof("Making LabeledExample, version=%d", players[0].Scorer.Version())
-	for ii := from; ii < len(m.Actions); ii++ {
-		if !m.Boards[ii].IsFinished() && len(m.ActionsLabels[ii]) > 0 {
+	for ii := from; ii < to; ii++ {
+		if !m.Boards[ii].IsFinished() {
 			boardExamples = append(boardExamples, m.Boards[ii])
 			boardLabels = append(boardLabels, m.Scores[ii])
 			actionsLabels = append(actionsLabels, m.ActionsLabels[ii])

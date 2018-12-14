@@ -65,7 +65,7 @@ var (
 	}
 )
 
-type PositionFeatures struct {
+type ActionPositionFeatures struct {
 	// Features related to the center of te
 	Center []float32
 
@@ -75,7 +75,7 @@ type PositionFeatures struct {
 
 type ActionFeatures struct {
 	Move                           float32
-	SourceFeatures, TargetFeatures PositionFeatures
+	SourceFeatures, TargetFeatures ActionPositionFeatures
 }
 
 // ActionFeatures build the features for one action. We do this one at a time so that
@@ -100,8 +100,8 @@ func NewActionFeatures(b *Board, action Action, policyVersion int) (af ActionFea
 // newNeighbourhoodFeatures generates the features for the neighbourhood around given position.
 // If exe2cAction is set to true, the action is simulated in the map (piece removed from source position,
 // and placed on target position).
-func (f *PositionFeatures) neighbourhoodFeatures(b *Board, action Action, policyVersion int, pos Pos, execAction bool) {
-	f.Center = positionFeatures(b, action, policyVersion, pos, execAction)
+func (f *ActionPositionFeatures) neighbourhoodFeatures(b *Board, action Action, policyVersion int, pos Pos, execAction bool) {
+	f.Center = positionActionFeatures(b, action, policyVersion, pos, execAction)
 	neighbourhood := &X_EVEN_NEIGHBOURS
 	if pos.X()%2 != 0 {
 		neighbourhood = &X_ODD_NEIGHBOURS
@@ -110,7 +110,7 @@ func (f *PositionFeatures) neighbourhoodFeatures(b *Board, action Action, policy
 		f.Sections[section] = make([]float32, 0, POSITIONS_PER_SECTION*FEATURES_PER_POSITION)
 		for ii := 0; ii < POSITIONS_PER_SECTION; ii++ {
 			neighPos := Pos{pos.X() + neighbourhood[section][ii][0], pos.Y() + neighbourhood[section][ii][1]}
-			neighFeatures := positionFeatures(b, action, policyVersion, neighPos, execAction)
+			neighFeatures := positionActionFeatures(b, action, policyVersion, neighPos, execAction)
 			f.Sections[section] = append(f.Sections[section], neighFeatures...)
 			//if section == 3 && ii == 1 {
 			//	fmt.Printf("Sec 3 #1 %s -> %s: %s\n",
@@ -130,15 +130,15 @@ const (
 	// This is the one-hot encoding of the piece on the top of the stack.
 	POS_FEATURE_PIECE_ONE_HOT = POS_FEATURE_PLAYER_OWNER + 1
 
-	// This marks if this location is the source of the move, or the target of the move.
-	POS_FEATURE_IS_SOURCE_OR_TARGET = POS_FEATURE_PIECE_ONE_HOT + int(NUM_PIECE_TYPES)
+	// Whether the piece is removable without breaking the hive.
+	POS_FEATURE_IS_PIECE_REMOVABLE = POS_FEATURE_PIECE_ONE_HOT + int(NUM_PIECE_TYPES)
 
 	// Player owner of the stack pieces (from top to bottom), except very bottom piece.
 	// Notice all will at beatles, except maybe the last one, which is represented separatedly.
 	// Up to 3 (there are 4 beatles in the game, the first would be on top).
 	// +1 for current player, -1 for opponent player or 0 if there are no pieces
 	// at this position.
-	POS_FEATURE_STACKED_BEATLE_OWNER       = POS_FEATURE_IS_SOURCE_OR_TARGET + 1
+	POS_FEATURE_STACKED_BEATLE_OWNER       = POS_FEATURE_IS_PIECE_REMOVABLE + 1
 	POS_FEATURE_STACK_BOTTOM_PIECE_OWNER   = POS_FEATURE_STACKED_BEATLE_OWNER + 3
 	POS_FEATURE_STACK_BOTTOM_PIECE_ONE_HOT = POS_FEATURE_STACK_BOTTOM_PIECE_OWNER + 1
 
@@ -155,8 +155,7 @@ func playerToValue(b *Board, player uint8) float32 {
 	}
 }
 
-func positionFeatures(b *Board, action Action, policyVersion int, pos Pos, execAction bool) (f []float32) {
-	f = make([]float32, FEATURES_PER_POSITION)
+func positionActionFeatures(b *Board, action Action, policyVersion int, pos Pos, execAction bool) []float32 {
 	stack := b.StackAt(pos)
 	if execAction {
 		// Fake execution of action.
@@ -166,7 +165,15 @@ func positionFeatures(b *Board, action Action, policyVersion int, pos Pos, execA
 			stack = stack.StackPiece(b.NextPlayer, action.Piece)
 		}
 	}
+	return stackFeatures(b, pos, stack)
+}
 
+func PositionFeatures(b *Board, pos Pos) []float32 {
+	return stackFeatures(b, pos, b.StackAt(pos))
+}
+
+func stackFeatures(b *Board, pos Pos, stack EncodedStack) (f []float32) {
+	f = make([]float32, FEATURES_PER_POSITION)
 	// If there is nothing there, all features related to the pieces are zeroed already.
 	if stack.HasPiece() {
 		stack, player, piece := stack.PopPiece()
@@ -185,11 +192,11 @@ func positionFeatures(b *Board, action Action, policyVersion int, pos Pos, execA
 		// Information about piece at the very bottom of stack -- in most cases the same as the top of the stack.
 		f[POS_FEATURE_STACK_BOTTOM_PIECE_OWNER] = playerToValue(b, player)
 		f[POS_FEATURE_STACK_BOTTOM_PIECE_ONE_HOT+int(piece-1)] = 1
-	}
 
-	// Mark if this was the source, or will be the taret of a move.
-	if action.SourcePos == pos || action.TargetPos == pos {
-		f[POS_FEATURE_IS_SOURCE_OR_TARGET] = 1
+		// Is piece removable?
+		if b.Derived.RemovablePieces[pos] {
+			f[POS_FEATURE_IS_PIECE_REMOVABLE] = 1.0
+		}
 	}
 	return
 }
@@ -219,15 +226,11 @@ func PositionFeaturesToString(f []float32) string {
 		return msg
 	}
 
-	if f[POS_FEATURE_PLAYER_OWNER] == 0 {
-		return fmt.Sprintf("[Empty / SrcTgt=%g]", f[POS_FEATURE_IS_SOURCE_OR_TARGET])
-	}
-
-	return fmt.Sprintf("[Top: %s, Stack(%v), Bottom: %s / SrcTgt=%g]",
+	return fmt.Sprintf("[Top: %s, Stack(%v), Bottom: %s / Removable=%g]",
 		pieceFeatureToStr(f[POS_FEATURE_PLAYER_OWNER:]),
 		f[POS_FEATURE_STACKED_BEATLE_OWNER:POS_FEATURE_STACKED_BEATLE_OWNER+3],
 		pieceFeatureToStr(f[POS_FEATURE_STACK_BOTTOM_PIECE_OWNER:]),
-		f[POS_FEATURE_IS_SOURCE_OR_TARGET])
+		f[POS_FEATURE_IS_PIECE_REMOVABLE])
 }
 
 func init() {

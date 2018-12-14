@@ -2,6 +2,7 @@ package ai
 
 import (
 	"fmt"
+	"github.com/golang/glog"
 	"log"
 
 	. "github.com/janpfeifer/hiveGo/state"
@@ -307,4 +308,53 @@ func fQueenIsCovered(b *Board, def *FeatureDef, f []float32) {
 		// Invert players selection.
 		player, opponent = opponent, player
 	}
+}
+
+// fullBoardDimensions returns the minimal dimensions
+// required to fit the board.
+func FullBoardDimensions(b *Board) (width, height int) {
+	width, height = b.Width()+2, b.Height()+2
+	if width%2 != 0 {
+		width++
+	}
+	return
+}
+
+// FullBoardFeatures will return features for the full board within
+// an area of height/width. It will panic if the area is not able to
+// contain the current board state -- use FullBoardDimensions.
+// Empty hexagons will be filled with zeroes.
+//
+// It returns a multi-D vector of shape `[height][width][FEATURES_PER_POSITION]`
+// and the shift of X and Y from the original map:
+//   original_x + shift_x = FullBoardFeatures_x
+//   original_y + shift_y = FullBoardFeatures_y
+//
+// Notice that shift_x will be even, so that the parity of the
+// hexagonal map remains constant -- the value of x%2 affects the neighbourhood
+// in the grid.
+func MakeFullBoardFeatures(b *Board, width, height int) (features [][][]float32, shift_x, shift_y int) {
+	minWidth, minHeight := FullBoardDimensions(b)
+	if width < minWidth || height < minHeight {
+		glog.Fatalf("FullBoardFeatures for board of size (%d, %d) not possible on reserved space (%d, %d)",
+			b.Height(), b.Width(), height, width)
+	}
+
+	features = make([][][]float32, height)
+	for y := range features {
+		features[y] = make([][]float32, width)
+	}
+
+	shift_x = int(b.Derived.MinX) - 1
+	shift_y = int(b.Derived.MinY) - 1
+	if shift_x%2 != 0 {
+		shift_x--
+	}
+	for fbY, row := range features {
+		for fbX := range row {
+			pos := Pos{int8(fbX - shift_x), int8(fbY - shift_y)}
+			row[fbX] = PositionFeatures(b, pos)
+		}
+	}
+	return
 }

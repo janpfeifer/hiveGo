@@ -32,7 +32,7 @@ func isZero(f []float32) bool {
 }
 
 // Assumes the center is in (0, 0)
-func getPosition(pos, center Pos, f *ai.PositionFeatures) []float32 {
+func getPosition(pos, center Pos, f *ai.ActionPositionFeatures) []float32 {
 	relPos := Pos{pos.X() - center.X(), pos.Y() - center.Y()}
 	if relPos.X() == 0 && relPos.Y() == 0 {
 		return f.Center

@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/janpfeifer/hiveGo/state"
 	"log"
+	"math"
 	"runtime"
 	"sync"
 
@@ -28,21 +29,42 @@ func rescore(matches []*Match) {
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
-			from := 0
-			if *flag_lastActions > 0 && *flag_lastActions < len(match.Actions) {
-				from = len(match.Actions) - *flag_lastActions
+			from, to := match.SelectRangeOfActions()
+			if from > len(match.Actions) {
+				return
+			}
+			if to == -1 {
+				// No selected action for this match.
+				return
 			}
 			glog.V(2).Infof("lastActions=%d, from=%d, len(actions)=%d", *flag_lastActions, from, len(match.Actions))
 			glog.V(2).Infof("Rescoring match %d", matchNum)
-			newScores, actionsLabels := players[0].Searcher.ScoreMatch(
-				match.Boards[from], match.Actions[from:len(match.Actions)],
-				match.Boards[from:len(match.Boards)])
-			copy(match.Scores[from:from+len(newScores)-1], newScores)
-			copy(match.ActionsLabels[from:from+len(actionsLabels)], actionsLabels)
-			for ii := from; ii < len(match.Actions); ii++ {
-				if len(match.ActionsLabels[ii]) != match.Boards[ii].NumActions() {
-					log.Panicf("Match %d: number of labels (%d) different than number of actions (%d) for move %d",
-						match.MatchFileIdx, len(match.ActionsLabels[ii]), match.Boards[ii].NumActions(), ii)
+			if *flag_distill {
+				// Distillation: score boards.
+				// TODO: For the scores just use the immediate score. Not action labels.
+				newScores := distill(players[1].Scorer, match, from, to)
+				if len(newScores) > 0 {
+					maxScore := math.Abs(float64(newScores[0]))
+					for _, v := range newScores {
+						if float64(v) > maxScore {
+							maxScore = float64(v)
+						}
+					}
+					glog.V(2).Infof("maxScore=%.2f", maxScore)
+					copy(match.Scores[from:from+len(newScores)], newScores)
+				}
+			} else {
+				// from -> to refer to the actions. ScoreMatch scores the boards up to the action following
+				// the actions[to], hence one more than the number of actions.
+				newScores, actionsLabels := players[0].Searcher.ScoreMatch(
+					match.Boards[from], match.Actions[from:to], match.Boards[from:to+1])
+				copy(match.Scores[from:from+len(newScores)-1], newScores)
+				copy(match.ActionsLabels[from:from+len(actionsLabels)], actionsLabels)
+				for ii := from; ii < len(match.Actions); ii++ {
+					if match.ActionsLabels[ii] != nil && len(match.ActionsLabels[ii]) != match.Boards[ii].NumActions() {
+						log.Panicf("Match %d: number of labels (%d) different than number of actions (%d) for move %d",
+							match.MatchFileIdx, len(match.ActionsLabels[ii]), match.Boards[ii].NumActions(), ii)
+					}
 				}
 			}
 			glog.V(2).Infof("Match %d (MatchFileIdx=%d) rescored.", matchNum, match.MatchFileIdx)
@@ -108,4 +130,15 @@ func loopRescoreAndRetrainMatches(matchesChan chan *Match) {
 		}
 		trainFromExamples(boardExamples, boardLabels, actionsLabels)
 	}
+}
+
+// distill returns the score of the given board position, and no
+// action labels.
+func distill(scorer ai.BatchScorer, match *Match, from, to int) (scores []float32) {
+	boards := match.Boards[from:to]
+	if len(boards) == 0 {
+		return nil
+	}
+	scores, _ = scorer.BatchScore(boards, false)
+	return
 }
