@@ -417,3 +417,11 @@ func (b *Board) ListSingles() (singles [2]uint8) {
 	}
 	return
 }
+
+func (b *Board) Width() int {
+	return int(b.Derived.MaxX - b.Derived.MinX)
+}
+
+func (b *Board) Height() int {
+	return int(b.Derived.MaxY - b.Derived.MinY)
+}

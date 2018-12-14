@@ -1,10 +1,6 @@
 #!/usr/bin/python3
 import tensorflow as tf
 
-# Model internal type: tf.float16 presumably is faster in the RX2080 Ti GPU,
-# and not slower in others.
-MODEL_DTYPE = tf.float32
-
 # Predictions should be limited to MAX_Q_VALUE. Values above MAX_Q_LINEAR_VALUE are passed by a sigmoid
 # in order to be limited to MAX_Q_VALUE.
 MAX_Q_VALUE = 10.0
