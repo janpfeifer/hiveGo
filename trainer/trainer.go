@@ -1,11 +1,12 @@
 package main
 
 import (
-	"github.com/janpfeifer/hiveGo/state"
 	"log"
 	"math"
 	"runtime"
 	"sync"
+
+	"github.com/janpfeifer/hiveGo/state"
 
 	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
@@ -13,7 +14,10 @@ import (
 
 // Rescore the matches according to player 0 -- during rescoring we are only trying to
 // improve the one AI.
-func rescore(matches []*Match) {
+// Input and output are asynchronous: matches are started as they arrive, and are
+// output as they are finished. If auto-batching is on, rescoring may be locked
+// until enough matches are
+func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 	var wg sync.WaitGroup
 	parallelism := runtime.GOMAXPROCS(0)
 	if *flag_parallelism > 0 {
@@ -22,7 +26,8 @@ func rescore(matches []*Match) {
 	setAutoBatchSizes(parallelism / 2)
 	glog.V(1).Infof("Rescoring: parallelization=%d", parallelism)
 	semaphore := make(chan bool, parallelism)
-	for matchNum, match := range matches {
+	matchNum := 0
+	for match := range matchesIn {
 		wg.Add(1)
 		semaphore <- true
 		go func(matchNum int, match *Match) {
@@ -67,8 +72,10 @@ func rescore(matches []*Match) {
 					}
 				}
 			}
+			matchesOut <- match
 			glog.V(2).Infof("Match %d (MatchFileIdx=%d) rescored.", matchNum, match.MatchFileIdx)
 		}(matchNum, match)
+		matchNum++
 	}
 
 	// Gradually decrease the batching level.
@@ -81,6 +88,20 @@ func rescore(matches []*Match) {
 
 	// Wait for the remaining ones to finish.
 	wg.Wait()
+	close(matchesOut)
+}
+
+func trainFromMatches(matches []*Match) {
+	var (
+		boardExamples []*state.Board
+		boardLabels   []float32
+		actionsLabels [][]float32
+	)
+	for _, match := range matches {
+		boardExamples, boardLabels, actionsLabels = match.AppendLabeledExamples(
+			boardExamples, boardLabels, actionsLabels)
+	}
+	trainFromExamples(boardExamples, boardLabels, actionsLabels)
 }
 
 // trainFromExamples: only player[0] is trained.
@@ -105,30 +126,6 @@ func trainFromExamples(boards []*state.Board, boardLabels []float32, actionsLabe
 		if glog.V(1) {
 			glog.V(1).Infof("%s", players[0].Learner)
 		}
-	}
-}
-
-func loopRescoreAndRetrainMatches(matchesChan chan *Match) {
-	var matches []*Match
-	for match := range matchesChan {
-		matches = append(matches, match)
-	}
-	if len(matches) == 0 {
-		log.Panic("No matches to rescore?!")
-	}
-
-	for rescoreIdx := 0; rescoreIdx < *flag_rescore; rescoreIdx++ {
-		rescore(matches)
-		var (
-			boardExamples []*state.Board
-			boardLabels   []float32
-			actionsLabels [][]float32
-		)
-		for _, match := range matches {
-			boardExamples, boardLabels, actionsLabels = match.AppendLabeledExamples(
-				boardExamples, boardLabels, actionsLabels)
-		}
-		trainFromExamples(boardExamples, boardLabels, actionsLabels)
 	}
 }
 

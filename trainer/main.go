@@ -4,7 +4,6 @@ import (
 	"encoding/gob"
 	"flag"
 	"fmt"
-	"github.com/janpfeifer/hiveGo/ai"
 	"io"
 	"log"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"sync"
+
+	"github.com/janpfeifer/hiveGo/ai"
 
 	"github.com/golang/glog"
 	ai_players "github.com/janpfeifer/hiveGo/ai/players"
@@ -52,10 +53,8 @@ var (
 
 	flag_train      = flag.Bool("train", false, "Set to true to train with match data.")
 	flag_trainLoops = flag.Int("train_loops", 1, "After acquiring data for all matches, how many times to loop the training over it.")
-	flag_rescore    = flag.Int("rescore", 0,
-		"If to rescore loaded matches. A value higher than 1 means that it will loop "+
-			"over rescoring and retraining.")
-	flag_distill = flag.Bool("distill", false,
+	flag_rescore    = flag.Bool("rescore", false, "If to rescore matches.")
+	flag_distill    = flag.Bool("distill", false,
 		"If set it will simply distill from --ai1 to --ai0, without serching for best moves.")
 	flag_learningRate = flag.Float64("learning_rate", 1e-5, "Learning rate when learning")
 
@@ -140,25 +139,29 @@ func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []floa
 	return boardExamples, boardLabels, actionsLabels
 }
 
-func MatchDecode(dec *gob.Decoder, matchFileIdx int) (match *Match, err error) {
-	glog.V(2).Infof("Loading match ...")
-	match = &Match{MatchFileIdx: matchFileIdx}
-	initial := &Board{}
-	initial, match.Actions, match.Scores, err = LoadMatch(dec)
-	match.ActionsLabels = make([][]float32, 0, len(match.Actions))
-	if err != nil {
-		return
-	}
-	glog.V(2).Infof("Loaded match with %d actions", len(match.Actions))
+// playActions fills the boards by playing one action at a time. The
+// initial board given must contain MaxMoves set.
+func (match *Match) playActions(initial *Board) {
 	initial.BuildDerived()
 	match.Boards = make([]*Board, 1, len(match.Actions)+1)
 	match.Boards[0] = initial
 	board := initial
 	for _, action := range match.Actions {
+		board = board.Act(action)
+		match.Boards = append(match.Boards, board)
+	}
+}
+
+// fillActionLabels will fill the ActionLabels attribute
+// with the one-hot-encoding of the action actually played.
+func (match *Match) fillActionLabelsWithActionTaken() {
+	match.ActionsLabels = make([][]float32, 0, len(match.Actions))
+	for moveIdx, actionTaken := range match.Actions {
+		board := match.Boards[moveIdx]
 		var actionsLabels []float32
-		if !action.IsSkipAction() {
+		if !actionTaken.IsSkipAction() {
 			// When loading a match use one-hot encoding for labels.
-			actionIdx := board.FindActionDeep(action)
+			actionIdx := board.FindActionDeep(actionTaken)
 			actionsLabels = ai.OneHotEncoding(board.NumActions(), actionIdx)
 		} else {
 			if board.NumActions() != 0 {
@@ -167,9 +170,22 @@ func MatchDecode(dec *gob.Decoder, matchFileIdx int) (match *Match, err error) {
 			}
 		}
 		match.ActionsLabels = append(match.ActionsLabels, actionsLabels)
-		board = board.Act(action)
-		match.Boards = append(match.Boards, board)
 	}
+}
+
+func MatchDecode(dec *gob.Decoder, matchFileIdx int) (match *Match, err error) {
+	glog.V(2).Infof("Loading match ...")
+	match = &Match{MatchFileIdx: matchFileIdx}
+	var initial *Board
+	initial, match.Actions, match.Scores, match.ActionsLabels, err = LoadMatch(dec)
+	if err != nil {
+		return
+	}
+	match.playActions(initial)
+	if match.ActionsLabels == nil {
+		match.fillActionLabelsWithActionTaken()
+	}
+	glog.V(2).Infof("Loaded match with %d actions", len(match.Actions))
 	return
 }
 
@@ -426,79 +442,27 @@ LoopFilenames:
 	close(results)
 }
 
-func main() {
-	flag.Parse()
-	if *flag_cpuprofile != "" {
-		f, err := os.Create(*flag_cpuprofile)
-		if err != nil {
-			glog.Fatal("could not create CPU profile: ", err)
-		}
-		if err := pprof.StartCPUProfile(f); err != nil {
-			glog.Fatal("could not start CPU profile: ", err)
-		}
-		defer pprof.StopCPUProfile()
+// Save all given matches to location given --save_matches.
+// It creates file into a temporary file first, and move
+// to final destination once finished.
+func saveMatches(matches []*Match) {
+	file := openWriterAndBackup(*flag_saveMatches)
+	enc := gob.NewEncoder(file)
+	for _, match := range matches {
+		match.Encode(enc)
 	}
-
-	if *flag_rescore > 0 && !*flag_train {
-		log.Fatal("Flag --rescore set, but not --train. Not sure what to do.")
-	}
-	if *flag_maxMoves <= 0 {
-		log.Fatalf("Invalid --max_moves=%d", *flag_maxMoves)
-	}
-
-	// Create AI players. If they are the same, reuse -- sharing same TF Session can be more
-	// efficient.
-	players[0] = ai_players.NewAIPlayer(*flag_players[0], *flag_numMatches == 1)
-	if *flag_players[1] == *flag_players[0] {
-		players[1] = players[0]
-		isSamePlayer = true
-	} else {
-		players[1] = ai_players.NewAIPlayer(*flag_players[1], *flag_numMatches == 1)
-	}
-
-	// Run/load matches.
-	results := make(chan *Match)
-	if *flag_loadMatches != "" {
-		go loadMatches(results)
-	} else {
-		go runMatches(results)
-	}
-
-	if *flag_rescore > 0 {
-		loopRescoreAndRetrainMatches(results)
-	} else {
-		reportMatches(results)
-	}
+	file.Close()
+	renameToFinal(*flag_saveMatches)
 }
 
-func reportMatches(matches chan *Match) {
+// Report on matches as they are being played/generated.
+func reportMatches(results <-chan *Match) (matches []*Match) {
 	// Read results.
 	totalWins := [3]int{0, 0, 0}
 	totalMoves := 0
-
-	var enc *gob.Encoder
-	var file io.WriteCloser
-	if *flag_saveMatches != "" {
-		file = openWriterAndBackup(*flag_saveMatches)
-		enc = gob.NewEncoder(file)
-	}
-
-	count := 0
-	var (
-		boardExamples []*Board
-		boardLabels   []float32
-		actionsLabels [][]float32
-	)
 	ui := ascii_ui.NewUI(true, false)
-	for match := range matches {
-		count++
-		if enc != nil {
-			match.Encode(enc)
-		}
-		if *flag_train {
-			boardExamples, boardLabels, actionsLabels = match.AppendLabeledExamples(
-				boardExamples, boardLabels, actionsLabels)
-		}
+	for match := range results {
+		matches = append(matches, match)
 
 		// Accounting.
 		board := match.FinalBoard()
@@ -525,18 +489,8 @@ func reportMatches(matches chan *Match) {
 		totalMoves += board.MoveNumber
 	}
 
-	// Finalize file with matches.
-	if *flag_saveMatches != "" {
-		file.Close()
-		renameToFinal(*flag_saveMatches)
-	}
-
-	// Train with examples.
-	if *flag_train {
-		trainFromExamples(boardExamples, boardLabels, actionsLabels)
-	}
-
 	// Print totals.
+	count := len(matches)
 	fmt.Printf("Total matches=%d\n", count)
 	for ii, value := range totalWins {
 		var p string
@@ -548,4 +502,68 @@ func reportMatches(matches chan *Match) {
 		fmt.Printf("%s=%d\t%.1f%%\n", p, value, 100.0*float64(value)/float64(count))
 	}
 	fmt.Printf("Average number of moves=%.1f\n", float64(totalMoves)/float64(count))
+
+	return
+}
+
+// main orchestrates playing, loading, rescoring, saving and training of matches.
+func main() {
+	flag.Parse()
+	if *flag_cpuprofile != "" {
+		f, err := os.Create(*flag_cpuprofile)
+		if err != nil {
+			glog.Fatal("could not create CPU profile: ", err)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			glog.Fatal("could not start CPU profile: ", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+
+	if *flag_rescore && !*flag_train && *flag_saveMatches == "" {
+		log.Fatal("Flag --rescore set, but not --train and not --save_matches. Not sure what to do.")
+	}
+	if *flag_maxMoves <= 0 {
+		log.Fatalf("Invalid --max_moves=%d", *flag_maxMoves)
+	}
+
+	// Create AI players. If they are the same, reuse -- sharing same TF Session can be more
+	// efficient.
+	players[0] = ai_players.NewAIPlayer(*flag_players[0], *flag_numMatches == 1)
+	if *flag_players[1] == *flag_players[0] {
+		players[1] = players[0]
+		isSamePlayer = true
+	} else {
+		players[1] = ai_players.NewAIPlayer(*flag_players[1], *flag_numMatches == 1)
+	}
+
+	// Run/load matches.
+	results := make(chan *Match)
+	if *flag_loadMatches != "" {
+		go loadMatches(results)
+	} else {
+		go runMatches(results)
+	}
+	if *flag_rescore {
+		rescored := make(chan *Match)
+		go rescoreMatches(results, rescored)
+		results = rescored
+	}
+
+	// Collect resulting matches, optionally reporting on them.
+	var matches []*Match
+	if !*flag_rescore {
+		matches = reportMatches(results)
+	} else {
+		for match := range results {
+			matches = append(matches, match)
+		}
+	}
+
+	if *flag_saveMatches != "" {
+		saveMatches(matches)
+	}
+	if *flag_train {
+		trainFromMatches(matches)
+	}
 }
