@@ -102,7 +102,7 @@ func main() {
 	enc := gob.NewEncoder(file)
 	count := 0
 	for match := range results {
-		SaveMatch(enc, match.MaxMoves, match.Actions, match.Scores)
+		SaveMatch(enc, match.MaxMoves, match.Actions, match.Scores, nil)
 		count++
 	}
 	file.Close()

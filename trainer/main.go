@@ -98,7 +98,7 @@ type Match struct {
 func (m *Match) FinalBoard() *Board { return m.Boards[len(m.Boards)-1] }
 
 func (m *Match) Encode(enc *gob.Encoder) {
-	if err := SaveMatch(enc, m.Boards[0].MaxMoves, m.Actions, m.Scores); err != nil {
+	if err := SaveMatch(enc, m.Boards[0].MaxMoves, m.Actions, m.Scores, m.ActionsLabels); err != nil {
 		log.Panicf("Failed to encode match: %v", err)
 	}
 }

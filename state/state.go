@@ -382,9 +382,67 @@ func (b *Board) OpponentNeighbours(pos Pos) (poss []Pos) {
 	return b.PlayerNeighbours(b.OpponentPlayer(), pos)
 }
 
+// Save versions: over time I keep adding new fields.
+const (
+	ActionsScores = iota
+	ActionsScoresAndActionsLabels
+)
+
+// LoadMatch restores match initial board, actions and scores.
+func LoadMatch(dec *gob.Decoder) (initial *Board, actions []Action, scores []float32, actionsLabels [][]float32, err error) {
+	initial = NewBoard()
+	err = dec.Decode(&initial.MaxMoves)
+	if err != nil {
+		return
+	}
+	var saveFileVersion int
+	if initial.MaxMoves > 0 {
+		// First version, before the file version was saved along.
+		saveFileVersion = ActionsScores
+	} else {
+		// MaxMoves <= 0 is the trigger that says we are saving
+		// the saveFileVersion.
+		if err = dec.Decode(&saveFileVersion); err != nil {
+			return
+		}
+		if err = dec.Decode(&initial.MaxMoves); err != nil {
+			return
+		}
+	}
+
+	// Retrieve actions: all save file versions have it.
+	actions = make([]Action, 0, initial.MaxMoves)
+	if err = dec.Decode(&actions); err != nil {
+		return
+	}
+
+	// Retrieve scores: one per board, so len(actions)+1
+	scores = make([]float32, 0, initial.MaxMoves)
+	if err = dec.Decode(&actions); err != nil {
+		return
+	}
+
+	// ActionsLabels, for newer versions.
+	if saveFileVersion == ActionsScoresAndActionsLabels {
+		if err = dec.Decode(&actionsLabels); err != nil {
+			return
+		}
+	}
+
+	return
+}
+
 // SaveMatch will "save" (encode) the match and scores for future reconstruction.
 // scores is opional.
-func SaveMatch(enc *gob.Encoder, MaxMoves int, actions []Action, scores []float32) error {
+func SaveMatch(enc *gob.Encoder, MaxMoves int, actions []Action, scores []float32, actionsLabels [][]float32) error {
+	saveFileVersion := -1
+	if err := enc.Encode(saveFileVersion); err != nil {
+		return fmt.Errorf("Failed to encode match's board: %v", err)
+	}
+	saveFileVersion = ActionsScoresAndActionsLabels
+	if err := enc.Encode(saveFileVersion); err != nil {
+		return fmt.Errorf("Failed to encode match's board: %v", err)
+	}
 	if err := enc.Encode(MaxMoves); err != nil {
 		return fmt.Errorf("Failed to encode match's board: %v", err)
 	}
@@ -394,22 +452,9 @@ func SaveMatch(enc *gob.Encoder, MaxMoves int, actions []Action, scores []float3
 	if err := enc.Encode(scores); err != nil {
 		return fmt.Errorf("Failed to encode match's scores: %v", err)
 	}
+	if err := enc.Encode(actionsLabels); err != nil {
+		return fmt.Errorf("Failed to encode match's scores: %v", err)
+	}
 	return nil
 }
 
-// LoadMatch restores match initial board, actions and scores.
-func LoadMatch(dec *gob.Decoder) (initial *Board, actions []Action, scores []float32, err error) {
-	initial = NewBoard()
-	err = dec.Decode(&initial.MaxMoves)
-	if err != nil {
-		return
-	}
-	actions = make([]Action, 0, initial.MaxMoves)
-	err = dec.Decode(&actions)
-	if err != nil {
-		return
-	}
-	scores = make([]float32, 0, initial.MaxMoves)
-	err = dec.Decode(&scores)
-	return
-}

@@ -172,7 +172,7 @@ func executeAction(action Action) {
 		log.Printf("Saving match to %s", *flag_saveMatch)
 		file := openForAppending(*flag_saveMatch)
 		enc := gob.NewEncoder(file)
-		if err := SaveMatch(enc, initial.MaxMoves, actions, scores); err != nil {
+		if err := SaveMatch(enc, initial.MaxMoves, actions, scores, nil); err != nil {
 			log.Printf("Failed to save match to %s: %v", *flag_saveMatch, err)
 		}
 		file.Close()
