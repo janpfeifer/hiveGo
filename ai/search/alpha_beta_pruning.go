@@ -3,16 +3,17 @@ package search
 import (
 	"flag"
 	"fmt"
-	"github.com/golang/glog"
-	"github.com/janpfeifer/hiveGo/ai"
-	"github.com/janpfeifer/hiveGo/ascii_ui"
-	. "github.com/janpfeifer/hiveGo/state"
 	"log"
 	"math"
 	"math/rand"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/golang/glog"
+	"github.com/janpfeifer/hiveGo/ai"
+	"github.com/janpfeifer/hiveGo/ascii_ui"
+	. "github.com/janpfeifer/hiveGo/state"
 )
 
 var _ = log.Printf
@@ -224,7 +225,7 @@ func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action, want []*Boar
 		glog.V(1).Infof("Move #%d (%d left), Action taken: %s / Best action examined %s (score=%.4g)",
 			b.MoveNumber, len(actions)-actionIdx-1, action, bestAction, score)
 		scores = append(scores, score)
-		if len(b.Derived.Actions) > 0 {
+		if len(b.Derived.Actions) > 1 {
 			// AlphaBetaPruning policy is binary, effectively being one-hot-encoding.
 			bestActionIdx := b.FindAction(bestAction)
 			bestActionVec := make([]float32, len(b.Derived.Actions))

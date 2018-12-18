@@ -4,6 +4,8 @@ import (
 	"encoding/gob"
 	"fmt"
 	"sort"
+
+	"github.com/golang/glog"
 )
 
 var _ = fmt.Print
@@ -405,6 +407,7 @@ func LoadMatch(dec *gob.Decoder) (initial *Board, actions []Action, scores []flo
 		if err = dec.Decode(&saveFileVersion); err != nil {
 			return
 		}
+		glog.V(1).Infof("Loading saveFileVersion %d", saveFileVersion)
 		if err = dec.Decode(&initial.MaxMoves); err != nil {
 			return
 		}
@@ -418,7 +421,7 @@ func LoadMatch(dec *gob.Decoder) (initial *Board, actions []Action, scores []flo
 
 	// Retrieve scores: one per board, so len(actions)+1
 	scores = make([]float32, 0, initial.MaxMoves)
-	if err = dec.Decode(&actions); err != nil {
+	if err = dec.Decode(&scores); err != nil {
 		return
 	}
 
@@ -428,7 +431,11 @@ func LoadMatch(dec *gob.Decoder) (initial *Board, actions []Action, scores []flo
 			return
 		}
 	}
-
+	glog.V(1).Infof("Loaded MaxMoves=%d, %d scores, %d actions, %d actionsLables",
+		initial.MaxMoves, len(scores), len(actions), len(actionsLabels))
+	for actionIdx, action := range actions {
+		fmt.Printf("%d: %s\n", actionIdx, action)
+	}
 	return
 }
 
@@ -457,4 +464,3 @@ func SaveMatch(enc *gob.Encoder, MaxMoves int, actions []Action, scores []float3
 	}
 	return nil
 }
-
