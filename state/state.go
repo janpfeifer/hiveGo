@@ -407,7 +407,7 @@ func LoadMatch(dec *gob.Decoder) (initial *Board, actions []Action, scores []flo
 		if err = dec.Decode(&saveFileVersion); err != nil {
 			return
 		}
-		glog.V(1).Infof("Loading saveFileVersion %d", saveFileVersion)
+		glog.V(2).Infof("Loading saveFileVersion %d", saveFileVersion)
 		if err = dec.Decode(&initial.MaxMoves); err != nil {
 			return
 		}
@@ -431,11 +431,8 @@ func LoadMatch(dec *gob.Decoder) (initial *Board, actions []Action, scores []flo
 			return
 		}
 	}
-	glog.V(1).Infof("Loaded MaxMoves=%d, %d scores, %d actions, %d actionsLables",
+	glog.V(2).Infof("Loaded MaxMoves=%d, %d scores, %d actions, %d actionsLables",
 		initial.MaxMoves, len(scores), len(actions), len(actionsLabels))
-	for actionIdx, action := range actions {
-		fmt.Printf("%d: %s\n", actionIdx, action)
-	}
 	return
 }
 
