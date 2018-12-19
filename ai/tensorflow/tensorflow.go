@@ -715,7 +715,11 @@ func (s *Scorer) Learn(boards []*Board, boardLabels []float32, actionsLabels [][
 	}
 
 	var averageLoss float32
-	for step := 0; step < steps+1; step++ {
+	toSteps := steps
+	if toSteps == 0 {
+		toSteps = 1
+	}
+	for step := 0; step < toSteps; step++ {
 		miniBatches := fc.randomMiniBatches(*flag_learnBatchSize)
 		glog.V(1).Infof("Learn with %d mini-batches of size %d, epoch %d", len(miniBatches), *flag_learnBatchSize, step)
 		averageLoss = 0
