@@ -257,8 +257,12 @@ func runMatch(matchNum int) *Match {
 			}
 			msg = fmt.Sprintf("player %d won!", player)
 		}
-		glog.V(1).Infof("\n\nMatch %d: finished at turn %d, %s\n\n",
-			matchNum, match.FinalBoard().MoveNumber, msg)
+		started := 0
+		if match.Swapped {
+			started = 1
+		}
+		glog.V(1).Infof("\n\nMatch %d: finished at turn %d, %s (Player %d started)\n\n",
+			matchNum, match.FinalBoard().MoveNumber, msg, started)
 	}
 
 	return match
