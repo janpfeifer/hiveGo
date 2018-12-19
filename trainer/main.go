@@ -311,6 +311,7 @@ func runMatches(results chan<- *Match) {
 	done := false
 	wins := 0
 	matchCount := 0
+	doneCount := 0
 	for ; !done; matchCount++ {
 		wg.Add(1)
 		semaphore <- true
@@ -328,6 +329,8 @@ func runMatches(results chan<- *Match) {
 					}
 				}
 			}
+			doneCount++
+			glog.V(1).Infof("Match %d finished: %d matches done, %d wins (non-draws)", matchNum, doneCount, wins)
 			<-semaphore
 			if *flag_winsOnly && match.FinalBoard().Draw() {
 				return
