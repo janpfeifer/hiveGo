@@ -7,6 +7,14 @@ MAX_Q_VALUE = 10.0
 MAX_Q_LINEAR_VALUE = 9.8
 
 
+def report_tensors(title, tensors):
+    """Print out tensor names with shape and tepe."""
+    print(title)
+    for t in tensors:
+        print('\t{}, dtype={}, shape={}'.format(t.name, t.dtype, t.shape))
+    print()
+
+
 def sigmoid_to_max(x, absolute_max=MAX_Q_VALUE, linear_threshold=MAX_Q_LINEAR_VALUE, smoothness=4.0):
     """Make a sigmoid curve on values > MAX_LINEAR_VALUE or < -MAX_LINEAR_VALUE."""
     abs_x = tf.abs(x)
@@ -78,7 +86,7 @@ def build_skip_ffnn(input, num_hidden_layers, num_hidden_layers_nodes,
                 with tf.variable_scope("hidden_{}".format(ii), reuse=tf.AUTO_REUSE):
                     logits = tf.layers.dense(logits, num_hidden_layers_nodes, activation,
                                              kernel_initializer=initializer, kernel_regularizer=l2_regularizer,
-                                             name="linear", reuse=tf.AUTO_REUSE)
+                                             name="layer", reuse=tf.AUTO_REUSE)
                 logits = tf.concat([logits, input], 1)
             # Last hidden layer can be of different size, and the skip connection is optional.
             with tf.variable_scope("embedding_layer", reuse=tf.AUTO_REUSE):
