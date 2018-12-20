@@ -429,7 +429,11 @@ func (s *Scorer) buildFeatures(boards []*Board, scoreActions bool) (fc *flatFeat
 
 	if scoreActions {
 		for _, board := range boards {
-			fc.totalNumActions += board.NumActions()
+			if board.NumActions() > 1 {
+				// We ignore when there are no valid actions, or if there is
+				// only one obvious action.
+				fc.totalNumActions += board.NumActions()
+			}
 		}
 		fc.actionsBoardIndices = make([]int64, fc.totalNumActions) // Go tensorflow implementation is broken for int32.
 		fc.actionsIsMove = make([]bool, fc.totalNumActions)
@@ -445,7 +449,7 @@ func (s *Scorer) buildFeatures(boards []*Board, scoreActions bool) (fc *flatFeat
 		if s.HasFullBoard() {
 			fc.fullBoardFeatures[boardIdx] = ai.MakeFullBoardFeatures(board, batchWidth, batchHeight)
 		}
-		if scoreActions {
+		if scoreActions && board.NumActions() > 1 {
 			for _, action := range board.Derived.Actions {
 				fc.actionsBoardIndices[actionIdx] = int64(boardIdx)
 				fc.actionsIsMove[actionIdx] = action.Move
@@ -704,8 +708,10 @@ func (s *Scorer) Learn(
 	}
 	if scoreActions {
 		for boardIdx, a := range actionsLabels {
-			if len(a) != boards[boardIdx].NumActions() {
-				log.Panicf("%d actionsLabeles given to board, but there are %d actions", len(a), boards[boardIdx].NumActions())
+			if boards[boardIdx].NumActions() > 1 {
+				if len(a) != boards[boardIdx].NumActions() {
+					log.Panicf("%d actionsLabeles given to board, but there are %d actions", len(a), boards[boardIdx].NumActions())
+				}
 			}
 			fc.actionsLabels = append(fc.actionsLabels, a...)
 		}
@@ -726,7 +732,7 @@ func (s *Scorer) Learn(
 				perStepCallback()
 			}
 			glog.V(1).Infof("Loss after epoch: total=%g, board=%g, actions=%g",
-				totalLoss, boardLoss, actionsLoss)
+				totalLoss, boardLoss/float32(len(boards)), actionsLoss/float32(len(boards)))
 			loss = totalLoss
 		}
 		return
@@ -751,7 +757,7 @@ func (s *Scorer) Learn(
 		averageBoardLoss /= float32(len(miniBatches))
 		averageActionsLoss /= float32(len(miniBatches))
 		glog.V(1).Infof("Loss after epoch: total=%g, board=%g, actions=%g",
-			averageLoss, averageBoardLoss, averageActionsLoss)
+			averageLoss, averageBoardLoss/float32(*flag_learnBatchSize), averageActionsLoss/float32(*flag_learnBatchSize))
 		if steps > 0 && perStepCallback != nil {
 			perStepCallback()
 		}
@@ -813,7 +819,7 @@ func (s *Scorer) newAutoBatchRequest(b *Board, scoreActions bool) (req *AutoBatc
 		req.fullBoardFeatures = ai.MakeFullBoardFeatures(b, ai.SuggestedFullBoardWidth, ai.SuggestedFullBoardHeight)
 	}
 	scoreActions = scoreActions && s.IsActionsClassifier()
-	if scoreActions && b.NumActions() > 0 {
+	if scoreActions && b.NumActions() > 1 {
 		req.actionsIsMove = make([]bool, b.NumActions())
 		req.actionsSrcPositions = make([][2]int64, b.NumActions())
 		req.actionsTgtPositions = make([][2]int64, b.NumActions())

@@ -34,7 +34,7 @@ type SearcherScorerPlayer struct {
 // Play implements the Player interface: it chooses an action given a Board.
 func (p *SearcherScorerPlayer) Play(b *Board) (action Action, board *Board, score float32, actionsLabels []float32) {
 	action, board, score, actionsLabels = p.Searcher.Search(b)
-	glog.V(1).Infof("Move #%d: AI playing %v, score=%.3f", board.MoveNumber-1, action, score)
+	glog.V(1).Infof("Move #%d (%s): AI playing %v, score=%.3f", board.MoveNumber-1, p.ModelFile, action, score)
 	return
 }
 
