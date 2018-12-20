@@ -107,7 +107,8 @@ var (
 )
 
 func (w LinearScorer) Learn(boards []*Board, boardLabels []float32,
-	actionsLabels [][]float32, learningRate float32, steps int) (loss float32) {
+	actionsLabels [][]float32, learningRate float32, steps int,
+	perStepCallback func()) (loss float32) {
 	// Bulid features.
 	boardFeatures := make([][]float32, len(boards))
 	for boardIdx, board := range boards {
@@ -144,6 +145,9 @@ func (w LinearScorer) Learn(boards []*Board, boardLabels []float32,
 			for ii := range grad {
 				w[ii] += grad[ii]
 			}
+			if perStepCallback != nil {
+				perStepCallback()
+			}
 		}
 	}
 	return totalLoss
@@ -176,6 +180,10 @@ func check(err error) {
 // Horrible hack, but ... adding the file name to the LinearScorer object
 // would take lots of refactoring.
 var LinearModelFileName string
+
+func (w LinearScorer) IsActionsClassifier() bool {
+	return false
+}
 
 func (w LinearScorer) Version() int {
 	return len(w) - 1

@@ -15,6 +15,9 @@ type Scorer interface {
 	// Version returns the version of the Scorer: usually the number of features
 	// used -- so system can maintain backwards compatibility.
 	Version() int
+
+	// Whether this model handles actions probabilities.
+	IsActionsClassifier() bool
 }
 
 // BatchScorer is a Scorer that also handles batches.
@@ -28,10 +31,14 @@ type BatchScorer interface {
 type LearnerScorer interface {
 	BatchScorer
 
-	// actionLabels is the index of the action that was taken. It should be -1 if there are no valid
-	// actons, that is, when `len(board.Derived.Actions) == 0`.
+	// Learn makes the model learn from the given boards and associated boardLabels.
+	// actionLabels should be given for models where IsActionsClassifier() returns true. For boards
+	// that have no valid actions, that is when `len(board.Derived.Actions) == 0`, it should be nil.
+	// steps is the number of times to repeat the training. If set to 0, the Learn() funciton
+	// will only report loss but not actually learn.
+	// If perStepCallback is given, it is called after each step, except if steps==0.
 	Learn(boards []*Board, boardLabels []float32, actionsLabels [][]float32,
-		learningRate float32, steps int) (loss float32)
+		learningRate float32, steps int, perStepCallback func()) (loss float32)
 	Save()
 	String() string
 }

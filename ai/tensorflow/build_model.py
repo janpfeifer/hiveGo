@@ -2,6 +2,7 @@
 # This will build an empty base model, with training ops that can be executed from Go.
 import hive_lib
 import tensorflow as tf
+import sys
 
 # Model internal type: tf.float16 presumably is faster in the RX2080 Ti GPU,
 # and not slower in others. Losses are still kept as float32 though.
@@ -13,7 +14,7 @@ tf.app.flags.DEFINE_string("output", "", "Where to save the graph definition.")
 FLAGS = tf.app.flags.FLAGS
 
 # Game parameters.
-NUM_PIECE_TYPES = 6
+NUM_PIECE_TYPES = 5
 MAX_MOVES = 100
 
 # Dimension of the input features.
@@ -107,31 +108,6 @@ def BuildBoardModel(board_embeddings, board_labels, initializer, l2_regularizer)
 		return (board_predictions, board_losses)
 
 
-def BuildNeighbourhoodEmbeddings(actions_features, center, neighbourhood, initializer, l2_regularizer):
-	global ACTIVATION
-	with tf.name_scope("BuildNeighbourhoodEmbeddings"):
-		rotation_embeddings = []
-		with tf.variable_scope("neighbourhood_kernel", reuse=tf.AUTO_REUSE):
-			for rotation in range(6):
-				neigh_rotated = neighbourhood
-				if rotation > 1:
-					neigh_rotated = tf.manip.roll(
-						neighbourhood, shift=rotation, axis=1)
-				neigh_concated = tf.reshape(neigh_rotated, [
-					tf.shape(neigh_rotated)[0], neighbourhood.shape[1] * neighbourhood.shape[2]])
-				all = tf.concat(
-					[actions_features, center, neigh_concated], axis=1)
-				embedding = hive_lib.build_skip_ffnn(all, NEIGHBOURHOOD_NUM_HIDDEN_LAYERS,
-													 NEIGHBOURHOOD_NODES_PER_LAYER,
-													 False, NEIGHBOURHOOD_EMBEDDING_DIM, ACTIVATION,
-													 initializer, l2_regularizer)
-				rotation_embeddings.append(embedding)
-		all_embeddings = tf.stack(rotation_embeddings, axis=1)
-		sum = tf.reduce_sum(all_embeddings, axis=1)
-		max = tf.reduce_max(all_embeddings, axis=1)
-		return tf.concat([sum, max], axis=1)
-
-
 def DereferencePositionEmbedding(full_board_embeddings, actions_board_indices, positions, name):
 	"""Gather embeddings from board/positions given."""
 	actions_board_indices = tf.expand_dims(actions_board_indices, -1)
@@ -168,16 +144,21 @@ def BuildActionsModel(
 		actions_pieces = tf.cast(actions_pieces, dtype=MODEL_DTYPE) 
 		actions_all_features = tf.concat([
 			gathered_board_embeddings,
-			actions_is_move_feature, src_embeddings, tgt_embeddings, actions_pieces], 
+			actions_is_move_feature, 
+			src_embeddings, 
+			tgt_embeddings, 
+			actions_pieces], 
 			axis=1, name='actions_all_features_concat')
 
 		# Build loss and predictions.
 		actions_labels = tf.cast(actions_labels, MODEL_DTYPE)
 		with tf.variable_scope("actions_kernel"):
-			embeddings = hive_lib.build_skip_ffnn(
+			print("actions_all_features: shape=%s", actions_all_features.shape)
+			embeddings = hive_lib.build_ffnn(
 				actions_all_features, 
 				ACTIONS_NUM_HIDDEN_LAYERS, ACTIONS_NODES_PER_LAYER,
-				False, ACTIONS_NODES_PER_LAYER, ACTIVATION, initializer, l2_regularizer)
+				ACTIONS_NODES_PER_LAYER, ACTIVATION, initializer, l2_regularizer)
+			print("embeddings: shape=%s", embeddings.shape)
 			actions_logits = tf.layers.dense(inputs=embeddings, units=1, activation=None, name="final_linear_layer",
 											 kernel_initializer=initializer, kernel_regularizer=l2_regularizer)
 		log_soft_max = hive_lib.sparse_log_soft_max(tf.reshape(actions_logits, [-1]), actions_board_indices)

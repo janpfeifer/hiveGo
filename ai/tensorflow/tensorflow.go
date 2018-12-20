@@ -60,18 +60,17 @@ const (
 	GPU_MEMORY_FRACTION_TO_USE = 0.3
 )
 
-var flag_useLinear = flag.Bool("tf_use_linear", false, "Use linear model to score, effectively doing distillation.")
 var flag_learnBatchSize = flag.Int("tf_batch_size", 0,
 	"Batch size when learning: this is the number of boards, not actions. There is usually 100/1 ratio of "+
 		"actions per board. Examples are shuffled before being batched. 0 means no batching.")
-var flag_selfSupervision = flag.Float64("tf_self_supervision", 0, "Amount of self-supervision during training.")
 
 type Scorer struct {
-	Basename    string
-	graph       *tf.Graph
-	sessionPool []*tf.Session
-	sessionTurn int // Rotate among the sessions from the pool.
-	mu          sync.Mutex
+	Basename            string
+	graph               *tf.Graph
+	sessionPool         []*tf.Session
+	sessionTurn         int // Rotate among the sessions from the pool.
+	isActionsClassifier bool
+	mu                  sync.Mutex
 
 	// Auto-batching waits for some requests to arrive before actually calling tensorflow.
 	// The idea being to make better CPU/GPU utilization.
@@ -82,10 +81,10 @@ type Scorer struct {
 	FullBoard                     tf.Output
 	BoardPredictions, BoardLosses tf.Output
 
-	ActionsBoardIndices, ActionsFeatures             tf.Output
-	ActionsSourceCenter, ActionsSourceNeighbourhood  tf.Output
-	ActionsTargetCenter, ActionsTargetNeighbourhood  tf.Output
-	ActionsPredictions, ActionsLosses, ActionsLabels tf.Output
+	ActionsBoardIndices, ActionsIsMove       tf.Output
+	ActionsSrcPositions, ActionsTgtPositions tf.Output
+	ActionsPieces, ActionsLabels             tf.Output
+	ActionsPredictions, ActionsLosses        tf.Output
 
 	IsTraining, LearningRate, CheckpointFile, TotalLoss tf.Output
 	SelfSupervision                                     tf.Output
@@ -211,16 +210,17 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 		BoardPredictions: t0("board_predictions"),
 		BoardLosses:      t0("board_losses"),
 
-		// Actions related tensors.
-		ActionsBoardIndices:        t0opt("actions_board_indices"),
-		ActionsFeatures:            t0opt("actions_features"),
-		ActionsSourceCenter:        t0opt("actions_source_center"),
-		ActionsSourceNeighbourhood: t0opt("actions_source_neighbourhood"),
-		ActionsTargetCenter:        t0opt("actions_target_center"),
-		ActionsTargetNeighbourhood: t0opt("actions_target_neighbourhood"),
-		ActionsPredictions:         t0opt("actions_predictions"),
-		ActionsLosses:              t0opt("actions_losses"),
-		ActionsLabels:              t0opt("actions_labels"),
+		// Actions inputs.
+		ActionsBoardIndices: t0opt("actions_board_indices"),
+		ActionsIsMove:       t0opt("actions_is_move"),
+		ActionsSrcPositions: t0opt("actions_src_positions"),
+		ActionsTgtPositions: t0opt("actions_tgt_positions"),
+		ActionsPieces:       t0opt("actions_pieces"),
+		ActionsLabels:       t0opt("actions_labels"),
+
+		// Actions related output.
+		ActionsPredictions: t0opt("actions_predictions"),
+		ActionsLosses:      t0opt("actions_losses"),
 
 		// Global parameters.
 		IsTraining:      t0opt("is_training"),
@@ -235,13 +235,16 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 		SaveOp:    op("save/control_dependency"),
 		RestoreOp: op("save/restore_all"),
 	}
-	if s.IsTraining.Op == nil {
-		glog.Errorf("Model %s has no \"is_training\" tensor.", s.Basename)
-	}
 
-	// Notice there must be a bug in the library that prevents it from taking
-	// tf.int32.
-	glog.V(3).Infof("ActionsBoardIndices: type=%s", dataType(s.ActionsBoardIndices))
+	// Model must have all actions tensors to be considered actions classifier.
+	s.isActionsClassifier =
+		s.ActionsBoardIndices.Op != nil && s.ActionsIsMove.Op != nil &&
+			s.ActionsSrcPositions.Op != nil && s.ActionsTgtPositions.Op != nil &&
+			s.ActionsPieces.Op != nil && s.ActionsLabels.Op != nil &&
+			s.ActionsPredictions.Op != nil && s.ActionsLosses.Op != nil
+	if !s.isActionsClassifier {
+		glog.Infof("%s can not be used for actions classification.", s)
+	}
 
 	// Set version to the size of the input.
 	s.version = int(s.BoardFeatures.Shape().Size(1))
@@ -267,6 +270,10 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 
 	go s.autoBatchDispatcher()
 	return s
+}
+
+func (s *Scorer) IsActionsClassifier() bool {
+	return s.isActionsClassifier
 }
 
 func (s *Scorer) HasFullBoard() bool {
@@ -387,34 +394,28 @@ func mustTensor(value interface{}) *tf.Tensor {
 // flatFeaturesCollection aggregate the features for several examples. It
 // can also hold the labels.
 type flatFeaturesCollection struct {
-	boardFeatures              [][]float32
-	fullBoardFeatures          [][][][]float32 // [batch, height, width, depth]
-	actionsBoardIndices        []int64         // Go tensorflow implementation is broken for int32.
-	actionsFeatures            [][1]float32
-	actionsSourceCenter        [][]float32
-	actionsSourceNeighbourhood [][6][]float32
-	actionsTargetCenter        [][]float32
-	actionsTargetNeighbourhood [][6][]float32
-	totalNumActions            int
+	boardFeatures     [][]float32
+	fullBoardFeatures [][][][]float32 // [batch, height, width, depth]
+	boardLabels       []float32
 
 	// Labels
-	boardLabels   []float32
-	actionsLabels []float32
+	actionsBoardIndices []int64 // Go tensorflow implementation is broken for int32.
+	actionsIsMove       []bool
+	actionsSrcPositions [][2]int64
+	actionsTgtPositions [][2]int64
+	actionsPieces       [][NUM_PIECE_TYPES]float32
+	actionsLabels       []float32
+	totalNumActions     int
 }
 
 func (s *Scorer) buildFeatures(boards []*Board, scoreActions bool) (fc *flatFeaturesCollection) {
-	fc = &flatFeaturesCollection{}
-	if scoreActions {
-		for _, board := range boards {
-			fc.totalNumActions += board.NumActions()
-		}
-	}
-
 	// Initialize Go objects, that need to be copied to tensors.
+	fc = &flatFeaturesCollection{}
 	fc.boardFeatures = make([][]float32, len(boards))
 	var batchWidth, batchHeight int
 	if s.HasFullBoard() {
 		fc.fullBoardFeatures = make([][][][]float32, len(boards))
+		batchWidth, batchHeight = ai.SuggestedFullBoardWidth, ai.SuggestedFullBoardHeight
 		for _, b := range boards {
 			w, h := ai.FullBoardDimensions(b)
 			if w > batchWidth {
@@ -427,32 +428,31 @@ func (s *Scorer) buildFeatures(boards []*Board, scoreActions bool) (fc *flatFeat
 	}
 
 	if scoreActions {
-		fc.actionsBoardIndices = make([]int64, 0, fc.totalNumActions) // Go tensorflow implementation is broken for int32.
-		fc.actionsFeatures = make([][1]float32, 0, fc.totalNumActions)
-		fc.actionsSourceCenter = make([][]float32, 0, fc.totalNumActions)
-		fc.actionsSourceNeighbourhood = make([][6][]float32, 0, fc.totalNumActions)
-		fc.actionsTargetCenter = make([][]float32, 0, fc.totalNumActions)
-		fc.actionsTargetNeighbourhood = make([][6][]float32, 0, fc.totalNumActions)
+		for _, board := range boards {
+			fc.totalNumActions += board.NumActions()
+		}
+		fc.actionsBoardIndices = make([]int64, fc.totalNumActions) // Go tensorflow implementation is broken for int32.
+		fc.actionsIsMove = make([]bool, fc.totalNumActions)
+		fc.actionsSrcPositions = make([][2]int64, fc.totalNumActions)
+		fc.actionsTgtPositions = make([][2]int64, fc.totalNumActions)
+		fc.actionsPieces = make([][NUM_PIECE_TYPES]float32, fc.totalNumActions)
 	}
 
 	// Generate features in Go slices.
+	actionIdx := 0
 	for boardIdx, board := range boards {
 		fc.boardFeatures[boardIdx] = ai.FeatureVector(board, s.version)
 		if s.HasFullBoard() {
-			fc.fullBoardFeatures[boardIdx], _, _ = ai.MakeFullBoardFeatures(board, batchWidth, batchHeight)
+			fc.fullBoardFeatures[boardIdx] = ai.MakeFullBoardFeatures(board, batchWidth, batchHeight)
 		}
 		if scoreActions {
 			for _, action := range board.Derived.Actions {
-				af := ai.NewActionFeatures(board, action, s.version)
-				fc.actionsBoardIndices = append(fc.actionsBoardIndices, int64(boardIdx))
-				fc.actionsFeatures = append(fc.actionsFeatures, [1]float32{af.Move})
-				fc.actionsSourceCenter = append(fc.actionsSourceCenter, af.SourceFeatures.Center)
-				fc.actionsSourceNeighbourhood = append(fc.actionsSourceNeighbourhood,
-					af.SourceFeatures.Sections)
-				fc.actionsTargetCenter = append(fc.actionsTargetCenter, af.TargetFeatures.Center)
-				fc.actionsTargetNeighbourhood = append(fc.actionsTargetNeighbourhood,
-					af.TargetFeatures.Sections)
-
+				fc.actionsBoardIndices[actionIdx] = int64(boardIdx)
+				fc.actionsIsMove[actionIdx] = action.Move
+				fc.actionsSrcPositions[actionIdx] = ai.PosToFullBoardPosition(board, action.SourcePos)
+				fc.actionsTgtPositions[actionIdx] = ai.PosToFullBoardPosition(board, action.TargetPos)
+				fc.actionsPieces[actionIdx][int(action.Piece)-1] = 1
+				actionIdx++
 			}
 		}
 	}
@@ -497,8 +497,7 @@ func (fc *flatFeaturesCollection) randomMiniBatches(batchSize int) (fcs []*flatF
 		srcIdxToBatchNum[srcIdx] = batchNum
 	}
 
-	srcActionIdx := 0
-	for srcIdx := 0; srcIdx < fc.Len(); srcIdx++ {
+	for srcIdx, srcActionIdx := 0, 0; srcIdx < fc.Len(); srcIdx++ {
 		batchNum := srcIdxToBatchNum[srcIdx]
 		if batchNum < 0 {
 			// Skip corresponding actions, even if board was not used.
@@ -506,6 +505,8 @@ func (fc *flatFeaturesCollection) randomMiniBatches(batchSize int) (fcs []*flatF
 			}
 			continue
 		}
+
+		// Get or allocate new flatFeaturesCollection for the corresponding batch.
 		batchFC := fcs[batchNum]
 		if batchFC == nil {
 			batchFC = &flatFeaturesCollection{
@@ -514,19 +515,22 @@ func (fc *flatFeaturesCollection) randomMiniBatches(batchSize int) (fcs []*flatF
 			}
 			fcs[batchNum] = batchFC
 		}
+
+		// Append board features.
 		batchFCIdx := batchFC.Len()
 		batchFC.boardFeatures = append(batchFC.boardFeatures, fc.boardFeatures[srcIdx])
 		batchFC.fullBoardFeatures = append(batchFC.fullBoardFeatures, fc.fullBoardFeatures[srcIdx])
 		batchFC.boardLabels = append(batchFC.boardLabels, fc.boardLabels[srcIdx])
+
+		// Append action features.
 		srcActionStart := srcActionIdx
 		for ; srcActionIdx < fc.totalNumActions && fc.actionsBoardIndices[srcActionIdx] == int64(srcIdx); srcActionIdx++ {
 			batchFC.actionsBoardIndices = append(batchFC.actionsBoardIndices, int64(batchFCIdx))
 		}
-		batchFC.actionsFeatures = append(batchFC.actionsFeatures, fc.actionsFeatures[srcActionStart:srcActionIdx]...)
-		batchFC.actionsSourceCenter = append(batchFC.actionsSourceCenter, fc.actionsSourceCenter[srcActionStart:srcActionIdx]...)
-		batchFC.actionsSourceNeighbourhood = append(batchFC.actionsSourceNeighbourhood, fc.actionsSourceNeighbourhood[srcActionStart:srcActionIdx]...)
-		batchFC.actionsTargetCenter = append(batchFC.actionsTargetCenter, fc.actionsTargetCenter[srcActionStart:srcActionIdx]...)
-		batchFC.actionsTargetNeighbourhood = append(batchFC.actionsTargetNeighbourhood, fc.actionsTargetNeighbourhood[srcActionStart:srcActionIdx]...)
+		batchFC.actionsIsMove = append(batchFC.actionsIsMove, fc.actionsIsMove[srcActionStart:srcActionIdx]...)
+		batchFC.actionsSrcPositions = append(batchFC.actionsSrcPositions, fc.actionsSrcPositions[srcActionStart:srcActionIdx]...)
+		batchFC.actionsTgtPositions = append(batchFC.actionsTgtPositions, fc.actionsTgtPositions[srcActionStart:srcActionIdx]...)
+		batchFC.actionsPieces = append(batchFC.actionsPieces, fc.actionsPieces[srcActionStart:srcActionIdx]...)
 		batchFC.actionsLabels = append(batchFC.actionsLabels, fc.actionsLabels[srcActionStart:srcActionIdx]...)
 		batchFC.totalNumActions += (srcActionIdx - srcActionStart)
 	}
@@ -537,9 +541,6 @@ func (fc *flatFeaturesCollection) randomMiniBatches(batchSize int) (fcs []*flatF
 			log.Panicf("Minibatch %d has %d boards, wanted %d (batchSize)", num, batchFC.Len(), batchSize)
 		}
 	}
-	if srcActionIdx != fc.totalNumActions {
-		log.Panicf("%d actions given, but only %d processed.", fc.totalNumActions, srcActionIdx)
-	}
 	return
 }
 
@@ -547,13 +548,12 @@ func (s *Scorer) buildFeeds(fc *flatFeaturesCollection, scoreActions bool) (feed
 	// Convert Go slices to tensors.
 	if scoreActions {
 		feeds = map[tf.Output]*tf.Tensor{
-			s.BoardFeatures:              mustTensor(fc.boardFeatures),
-			s.ActionsBoardIndices:        mustTensor(fc.actionsBoardIndices),
-			s.ActionsFeatures:            mustTensor(fc.actionsFeatures),
-			s.ActionsSourceCenter:        mustTensor(fc.actionsSourceCenter),
-			s.ActionsSourceNeighbourhood: mustTensor(fc.actionsSourceNeighbourhood),
-			s.ActionsTargetCenter:        mustTensor(fc.actionsTargetCenter),
-			s.ActionsTargetNeighbourhood: mustTensor(fc.actionsTargetNeighbourhood),
+			s.BoardFeatures:       mustTensor(fc.boardFeatures),
+			s.ActionsBoardIndices: mustTensor(fc.actionsBoardIndices),
+			s.ActionsIsMove:       mustTensor(fc.actionsIsMove),
+			s.ActionsSrcPositions: mustTensor(fc.actionsSrcPositions),
+			s.ActionsTgtPositions: mustTensor(fc.actionsTgtPositions),
+			s.ActionsPieces:       mustTensor(fc.actionsPieces),
 		}
 	} else {
 		feeds = map[tf.Output]*tf.Tensor{
@@ -565,6 +565,11 @@ func (s *Scorer) buildFeeds(fc *flatFeaturesCollection, scoreActions bool) (feed
 			f := fc.fullBoardFeatures
 			shape := []int{len(f), len(f[0]), len(f[0][0]), len(f[0][0][0])}
 			glog.Infof("fullBoardFeatures shape: %v", shape)
+			if scoreActions {
+				glog.Infof("ActionsBoardIndices shape: %v", []int{len(fc.actionsBoardIndices)})
+				glog.Infof("ActionsIsMove shape: %v", []int{len(fc.actionsIsMove)})
+				glog.Infof("ActionsActionsPieces shape: %v", []int{len(fc.actionsPieces), len(fc.actionsPieces[0])})
+			}
 		}
 		feeds[s.FullBoard] = mustTensor(fc.fullBoardFeatures)
 	}
@@ -611,12 +616,6 @@ func (s *Scorer) BatchScore(boards []*Board, scoreActions bool) (scores []float3
 		log.Panicf("Expected %d scores (=number of boards given), got %d",
 			len(boards), len(scores))
 	}
-	if *flag_useLinear {
-		glog.V(3).Infof("Rescoring with linear model.")
-		for ii := 0; ii < len(scores); ii++ {
-			scores[ii] = ai.TrainedBest.ScoreFeatures(fc.boardFeatures[ii])
-		}
-	}
 
 	actionProbsBatch = make([][]float32, len(boards))
 	if fc.totalNumActions > 0 {
@@ -641,7 +640,9 @@ func (s *Scorer) BatchScore(boards []*Board, scoreActions bool) (scores []float3
 	return
 }
 
-func (s *Scorer) learnOneMiniBatch(batch *flatFeaturesCollection, learningRate float32, steps int, scoreActions bool) (loss float32) {
+func (s *Scorer) learnOneMiniBatch(
+	batch *flatFeaturesCollection, learningRate float32, steps int, scoreActions bool) (
+	totalLoss, boardLoss, actionsLoss float32) {
 	feeds := s.buildFeeds(batch, scoreActions)
 
 	// Feed also the labels.
@@ -654,45 +655,48 @@ func (s *Scorer) learnOneMiniBatch(batch *flatFeaturesCollection, learningRate f
 		feeds[s.IsTraining] = mustTensor(true)
 	}
 	if s.SelfSupervision.Op != nil {
-		feeds[s.SelfSupervision] = mustTensor(float32(*flag_selfSupervision))
+		feeds[s.SelfSupervision] = mustTensor(float32(0))
 	}
 
 	// Loop over steps.
-	for step := 0; step < steps; step++ {
-		if _, err := s.sessionPool[0].Run(feeds, nil, []*tf.Operation{s.TrainOp}); err != nil {
+	for step := 0; step < steps || step == 0; step++ {
+		var fetches []tf.Output
+		if step == steps-1 || steps == 0 {
+			fetches = append(fetches, s.TotalLoss)
+			if scoreActions {
+				fetches = append(fetches, s.BoardLosses)
+				fetches = append(fetches, s.ActionsLosses)
+			}
+		}
+		var ops []*tf.Operation
+		if steps > 0 {
+			ops = append(ops, s.TrainOp)
+		}
+		results, err := s.sessionPool[0].Run(feeds, fetches, ops)
+		if err != nil {
 			log.Panicf("TensorFlow trainOp failed: %v", err)
 		}
-	}
-
-	fetches := []tf.Output{s.TotalLoss}
-	if bool(glog.V(2)) && scoreActions {
-		fetches = append(fetches, s.ActionsLosses)
-		fetches = append(fetches, s.BoardLosses)
-	}
-	results, err := s.sessionPool[0].Run(feeds, fetches, nil)
-	if err != nil {
-		log.Panicf("Loss evaluation failed: %v", err)
-	}
-	if glog.V(2) {
-		if scoreActions {
-			glog.Infof("Losses: total=%.4g, actions=%.4g, board=%.4g",
-				results[0].Value().(float32), results[1].Value().(float32), results[2].Value().(float32))
-		} else {
-			glog.Infof("Losses: total=%.4g",
-				results[0].Value().(float32))
+		if step == steps-1 || steps == 0 {
+			totalLoss = results[0].Value().(float32)
+			if scoreActions {
+				boardLoss = results[1].Value().(float32)
+				actionsLoss = results[2].Value().(float32)
+			}
 		}
 	}
-	return results[0].Value().(float32)
+	return
 }
 
-func (s *Scorer) Learn(boards []*Board, boardLabels []float32, actionsLabels [][]float32, learningRate float32, steps int) (loss float32) {
+func (s *Scorer) Learn(
+	boards []*Board, boardLabels []float32, actionsLabels [][]float32,
+	learningRate float32, steps int, perStepCallback func()) (loss float32) {
 	if len(boards) == 0 {
 		log.Panicf("Received empty list of boards to learn.")
 	}
 	if len(s.sessionPool) > 1 {
 		log.Panicf("Using SessionPool doesn't support training. You probably should use sessionPoolSize=1 in this case.")
 	}
-	scoreActions := false // Change back to true when actions are used.
+	scoreActions := s.IsActionsClassifier() && actionsLabels != nil
 	fc := s.buildFeatures(boards, scoreActions)
 	fc.boardLabels = boardLabels
 	for boardIdx := range fc.boardLabels {
@@ -711,27 +715,46 @@ func (s *Scorer) Learn(boards []*Board, boardLabels []float32, actionsLabels [][
 	}
 
 	if *flag_learnBatchSize == 0 || len(boards) < *flag_learnBatchSize {
-		return s.learnOneMiniBatch(fc, learningRate, steps, scoreActions)
+		// Only one batch case:
+		miniBatchSteps := 1
+		if steps == 0 {
+			miniBatchSteps = 0
+		}
+		for step := 0; step < steps || step == 0; step++ {
+			totalLoss, boardLoss, actionsLoss := s.learnOneMiniBatch(fc, learningRate, miniBatchSteps, scoreActions)
+			if steps > 0 && perStepCallback != nil {
+				perStepCallback()
+			}
+			glog.V(1).Infof("Loss after epoch: total=%g, board=%g, actions=%g",
+				totalLoss, boardLoss, actionsLoss)
+			loss = totalLoss
+		}
+		return
 	}
 
-	var averageLoss float32
-	toSteps := steps
-	if toSteps == 0 {
-		toSteps = 1
-	}
-	for step := 0; step < toSteps; step++ {
+	var averageLoss, averageBoardLoss, averageActionsLoss float32
+	for step := 0; step < steps || step == 0; step++ {
 		miniBatches := fc.randomMiniBatches(*flag_learnBatchSize)
 		glog.V(1).Infof("Learn with %d mini-batches of size %d, epoch %d", len(miniBatches), *flag_learnBatchSize, step)
-		averageLoss = 0
+		averageLoss, averageBoardLoss, averageActionsLoss = 0, 0, 0
 		miniBatchSteps := 1
 		if steps == 0 {
 			miniBatchSteps = 0
 		}
 		for _, batch := range miniBatches {
-			averageLoss += s.learnOneMiniBatch(batch, learningRate, miniBatchSteps, scoreActions)
+			totalLoss, boardLoss, actionsLoss := s.learnOneMiniBatch(batch, learningRate, miniBatchSteps, scoreActions)
+			averageLoss += totalLoss
+			averageBoardLoss += boardLoss
+			averageActionsLoss += actionsLoss
 		}
 		averageLoss /= float32(len(miniBatches))
-		glog.V(1).Infof("Loss after epoch: %g", averageLoss)
+		averageBoardLoss /= float32(len(miniBatches))
+		averageActionsLoss /= float32(len(miniBatches))
+		glog.V(1).Infof("Loss after epoch: total=%g, board=%g, actions=%g",
+			averageLoss, averageBoardLoss, averageActionsLoss)
+		if steps > 0 && perStepCallback != nil {
+			perStepCallback()
+		}
 	}
 	return averageLoss
 }
@@ -763,12 +786,15 @@ func (s *Scorer) Save() {
 }
 
 type AutoBatchRequest struct {
-	boardFeatures              []float32
-	actionsFeatures            [][1]float32
-	actionsSourceCenter        [][]float32
-	actionsSourceNeighbourhood [][6][]float32
-	actionsTargetCenter        [][]float32
-	actionsTargetNeighbourhood [][6][]float32
+	// Boards
+	boardFeatures     []float32
+	fullBoardFeatures [][][]float32 // [batch, height, width, depth]
+
+	// Actions
+	actionsIsMove       []bool
+	actionsSrcPositions [][2]int64
+	actionsTgtPositions [][2]int64
+	actionsPieces       [][NUM_PIECE_TYPES]float32
 
 	// Channel is closed when done.
 	done chan bool
@@ -783,25 +809,26 @@ func (s *Scorer) newAutoBatchRequest(b *Board, scoreActions bool) (req *AutoBatc
 		boardFeatures: ai.FeatureVector(b, s.version),
 		done:          make(chan bool),
 	}
-	if scoreActions {
-		req.actionsProbs = make([]float32, 0, b.NumActions())
+	if s.HasFullBoard() {
+		req.fullBoardFeatures = ai.MakeFullBoardFeatures(b, ai.SuggestedFullBoardWidth, ai.SuggestedFullBoardHeight)
 	}
-	if scoreActions {
-		for _, action := range b.Derived.Actions {
-			af := ai.NewActionFeatures(b, action, s.version)
-			req.actionsFeatures = append(req.actionsFeatures, [1]float32{af.Move})
-			req.actionsSourceCenter = append(req.actionsSourceCenter, af.SourceFeatures.Center)
-			req.actionsSourceNeighbourhood = append(req.actionsSourceNeighbourhood,
-				af.SourceFeatures.Sections)
-			req.actionsTargetCenter = append(req.actionsTargetCenter, af.TargetFeatures.Center)
-			req.actionsTargetNeighbourhood = append(req.actionsTargetNeighbourhood,
-				af.TargetFeatures.Sections)
+	scoreActions = scoreActions && s.IsActionsClassifier()
+	if scoreActions && b.NumActions() > 0 {
+		req.actionsIsMove = make([]bool, b.NumActions())
+		req.actionsSrcPositions = make([][2]int64, b.NumActions())
+		req.actionsTgtPositions = make([][2]int64, b.NumActions())
+		req.actionsPieces = make([][NUM_PIECE_TYPES]float32, b.NumActions())
+		for actionIdx, action := range b.Derived.Actions {
+			req.actionsIsMove[actionIdx] = action.Move
+			req.actionsSrcPositions[actionIdx] = ai.PosToFullBoardPosition(b, action.SourcePos)
+			req.actionsTgtPositions[actionIdx] = ai.PosToFullBoardPosition(b, action.TargetPos)
+			req.actionsPieces[actionIdx][int(action.Piece)-1] = 1
 		}
 	}
 	return
 }
 
-func (req *AutoBatchRequest) LenActions() int { return len(req.actionsFeatures) }
+func (req *AutoBatchRequest) LenActions() int { return len(req.actionsIsMove) }
 
 func (s *Scorer) scoreAutoBatch(b *Board, scoreActions bool) (score float32, actionsProbs []float32) {
 	// Send request and wait for it to be processed.
@@ -826,43 +853,53 @@ func (s *Scorer) SetBatchSize(batchSize int) {
 type AutoBatch struct {
 	requests []*AutoBatchRequest
 
-	boardFeatures              [][]float32
-	actionsBoardIndices        []int64
-	actionsFeatures            [][1]float32
-	actionsSourceCenter        [][]float32
-	actionsSourceNeighbourhood [][6][]float32
-	actionsTargetCenter        [][]float32
-	actionsTargetNeighbourhood [][6][]float32
+	// Boards
+	boardFeatures     [][]float32
+	fullBoardFeatures [][][][]float32 // [batch, height, width, depth]
+
+	// Actions
+	actionsBoardIndices []int64 // Go tensorflow implementation is broken for int32.
+	actionsIsMove       []bool
+	actionsSrcPositions [][2]int64
+	actionsTgtPositions [][2]int64
+	actionsPieces       [][NUM_PIECE_TYPES]float32
 }
 
 const MAX_ACTIONS_PER_BOARD = 200
 
 func (s *Scorer) newAutoBatch() *AutoBatch {
 	maxActions := s.autoBatchSize * MAX_ACTIONS_PER_BOARD
-	return &AutoBatch{
-		boardFeatures:              make([][]float32, 0, s.autoBatchSize),
-		actionsBoardIndices:        make([]int64, 0, maxActions), // Go tensorflow implementation is broken for int32.
-		actionsFeatures:            make([][1]float32, 0, maxActions),
-		actionsSourceCenter:        make([][]float32, 0, maxActions),
-		actionsSourceNeighbourhood: make([][6][]float32, 0, maxActions),
-		actionsTargetCenter:        make([][]float32, 0, maxActions),
-		actionsTargetNeighbourhood: make([][6][]float32, 0, maxActions),
+	ab := &AutoBatch{
+		boardFeatures: make([][]float32, 0, s.autoBatchSize),
 	}
+	if s.HasFullBoard() {
+		ab.fullBoardFeatures = make([][][][]float32, 0, s.autoBatchSize)
+	}
+	if s.IsActionsClassifier() {
+		ab.actionsBoardIndices = make([]int64, 0, maxActions)
+		ab.actionsIsMove = make([]bool, 0, maxActions)
+		ab.actionsSrcPositions = make([][2]int64, 0, maxActions)
+		ab.actionsTgtPositions = make([][2]int64, 0, maxActions)
+		ab.actionsPieces = make([][NUM_PIECE_TYPES]float32, 0, maxActions)
+	}
+	return ab
 }
 
 func (ab *AutoBatch) Append(req *AutoBatchRequest) {
 	requestIdx := int64(ab.Len())
 	ab.requests = append(ab.requests, req)
 	ab.boardFeatures = append(ab.boardFeatures, req.boardFeatures)
-	if req.actionsFeatures != nil {
-		for _ = range req.actionsFeatures {
+	if ab.fullBoardFeatures != nil {
+		ab.fullBoardFeatures = append(ab.fullBoardFeatures, req.fullBoardFeatures)
+	}
+	if ab.actionsBoardIndices != nil && req.actionsIsMove != nil {
+		for _ = range req.actionsIsMove {
 			ab.actionsBoardIndices = append(ab.actionsBoardIndices, requestIdx)
 		}
-		ab.actionsFeatures = append(ab.actionsFeatures, req.actionsFeatures...)
-		ab.actionsSourceCenter = append(ab.actionsSourceCenter, req.actionsSourceCenter...)
-		ab.actionsSourceNeighbourhood = append(ab.actionsSourceNeighbourhood, req.actionsSourceNeighbourhood...)
-		ab.actionsTargetCenter = append(ab.actionsTargetCenter, req.actionsTargetCenter...)
-		ab.actionsTargetNeighbourhood = append(ab.actionsTargetNeighbourhood, req.actionsTargetNeighbourhood...)
+		ab.actionsIsMove = append(ab.actionsIsMove, req.actionsIsMove...)
+		ab.actionsSrcPositions = append(ab.actionsSrcPositions, req.actionsSrcPositions...)
+		ab.actionsTgtPositions = append(ab.actionsTgtPositions, req.actionsTgtPositions...)
+		ab.actionsPieces = append(ab.actionsPieces, req.actionsPieces...)
 	}
 }
 
@@ -873,20 +910,27 @@ func (ab *AutoBatch) LenActions() int { return len(ab.actionsBoardIndices) }
 func (s *Scorer) autoBatchScoreAndDeliver(ab *AutoBatch) {
 	// Convert Go slices to tensors.
 	feeds := map[tf.Output]*tf.Tensor{
-		s.BoardFeatures:              mustTensor(ab.boardFeatures),
-		s.ActionsBoardIndices:        mustTensor(ab.actionsBoardIndices),
-		s.ActionsFeatures:            mustTensor(ab.actionsFeatures),
-		s.ActionsSourceCenter:        mustTensor(ab.actionsSourceCenter),
-		s.ActionsSourceNeighbourhood: mustTensor(ab.actionsSourceNeighbourhood),
-		s.ActionsTargetCenter:        mustTensor(ab.actionsTargetCenter),
-		s.ActionsTargetNeighbourhood: mustTensor(ab.actionsTargetNeighbourhood),
+		s.BoardFeatures: mustTensor(ab.boardFeatures),
+	}
+	if s.HasFullBoard() {
+		feeds[s.FullBoard] = mustTensor(ab.fullBoardFeatures)
+	}
+	if s.IsActionsClassifier() && ab.LenActions() > 0 {
+		feeds[s.ActionsBoardIndices] = mustTensor(ab.actionsBoardIndices)
+		feeds[s.ActionsIsMove] = mustTensor(ab.actionsIsMove)
+		feeds[s.ActionsSrcPositions] = mustTensor(ab.actionsSrcPositions)
+		feeds[s.ActionsTgtPositions] = mustTensor(ab.actionsTgtPositions)
+		feeds[s.ActionsPieces] = mustTensor(ab.actionsPieces)
 	}
 	if s.IsTraining.Op != nil {
 		feeds[s.IsTraining] = mustTensor(false)
 	}
+	if s.SelfSupervision.Op != nil {
+		feeds[s.SelfSupervision] = mustTensor(float32(0))
+	}
 
 	fetches := []tf.Output{s.BoardPredictions}
-	if ab.LenActions() > 0 {
+	if s.IsActionsClassifier() && ab.LenActions() > 0 {
 		fetches = append(fetches, s.ActionsPredictions)
 	}
 	// Evaluate: at most one evaluation at a same time.
@@ -912,15 +956,9 @@ func (s *Scorer) autoBatchScoreAndDeliver(ab *AutoBatch) {
 	for ii, score := range scores {
 		ab.requests[ii].score = score
 	}
-	if *flag_useLinear {
-		glog.V(3).Infof("Rescoring with linear model.")
-		for ii := 0; ii < ab.Len(); ii++ {
-			ab.requests[ii].score = ai.TrainedBest.ScoreFeatures(ab.boardFeatures[ii])
-		}
-	}
 
 	// Copy over resulting action probabilities
-	if ab.LenActions() > 0 {
+	if s.IsActionsClassifier() && ab.LenActions() > 0 {
 		allActionsProbs := results[1].Value().([]float32)
 		if len(allActionsProbs) != ab.LenActions() {
 			log.Panicf("Total probabilities returned was %d, wanted %d",

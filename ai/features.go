@@ -2,8 +2,9 @@ package ai
 
 import (
 	"fmt"
-	"github.com/golang/glog"
 	"log"
+
+	"github.com/golang/glog"
 
 	. "github.com/janpfeifer/hiveGo/state"
 )
@@ -320,6 +321,11 @@ func FullBoardDimensions(b *Board) (width, height int) {
 	return
 }
 
+const (
+	SuggestedFullBoardWidth  = 24
+	SuggestedFullBoardHeight = 24
+)
+
 // FullBoardFeatures will return features for the full board within
 // an area of height/width. It will panic if the area is not able to
 // contain the current board state -- use FullBoardDimensions.
@@ -333,7 +339,7 @@ func FullBoardDimensions(b *Board) (width, height int) {
 // Notice that shift_x will be even, so that the parity of the
 // hexagonal map remains constant -- the value of x%2 affects the neighbourhood
 // in the grid.
-func MakeFullBoardFeatures(b *Board, width, height int) (features [][][]float32, shift_x, shift_y int) {
+func MakeFullBoardFeatures(b *Board, width, height int) (features [][][]float32) {
 	minWidth, minHeight := FullBoardDimensions(b)
 	if width < minWidth || height < minHeight {
 		glog.Fatalf("FullBoardFeatures for board of size (%d, %d) not possible on reserved space (%d, %d)",
@@ -345,16 +351,26 @@ func MakeFullBoardFeatures(b *Board, width, height int) (features [][][]float32,
 		features[y] = make([][]float32, width)
 	}
 
-	shift_x = int(b.Derived.MinX) - 1
-	shift_y = int(b.Derived.MinY) - 1
-	if shift_x%2 != 0 {
-		shift_x--
-	}
+	shiftX, shiftY := FullBoardShift(b)
 	for fbY, row := range features {
 		for fbX := range row {
-			pos := Pos{int8(fbX - shift_x), int8(fbY - shift_y)}
+			pos := Pos{int8(fbX + shiftX), int8(fbY + shiftY)}
 			row[fbX] = PositionFeatures(b, pos)
 		}
 	}
 	return
+}
+
+func FullBoardShift(b *Board) (shiftX, shiftY int) {
+	shiftX = int(b.Derived.MinX) - 1
+	shiftY = int(b.Derived.MinY) - 1
+	if shiftX%2 != 0 {
+		shiftX--
+	}
+	return
+}
+
+func PosToFullBoardPosition(b *Board, pos Pos) [2]int64 {
+	shiftX, shiftY := FullBoardShift(b)
+	return [2]int64{int64(int(pos.X()) - shiftX), int64(int(pos.Y()) - shiftY)}
 }

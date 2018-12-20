@@ -104,11 +104,23 @@ func trainFromMatches(matches []*Match) {
 	trainFromExamples(boardExamples, boardLabels, actionsLabels)
 }
 
+func savePlayer0() {
+	if players[0].ModelFile != "" {
+		log.Printf("Saving to %s", players[0].ModelFile)
+		ai.LinearModelFileName = players[0].ModelFile // Hack for linear models. TODO: fix.
+		players[0].Learner.Save()
+		if glog.V(1) {
+			glog.V(1).Infof("Saved %s to %s", players[0].Learner, players[0].ModelFile)
+		}
+	}
+}
+
 // trainFromExamples: only player[0] is trained.
 func trainFromExamples(boards []*state.Board, boardLabels []float32, actionsLabels [][]float32) {
 	learningRate := float32(*flag_learningRate)
 	learn := func(steps int) float32 {
-		return players[0].Learner.Learn(boards, boardLabels, actionsLabels, learningRate, steps)
+		return players[0].Learner.Learn(boards, boardLabels, actionsLabels,
+			learningRate, steps, savePlayer0)
 	}
 	log.Printf("Number of labeled examples: %d", len(boards))
 	loss := learn(0)
