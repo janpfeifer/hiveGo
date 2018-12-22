@@ -123,22 +123,8 @@ func trainFromExamples(boards []*state.Board, boardLabels []float32, actionsLabe
 			learningRate, steps, savePlayer0)
 	}
 	log.Printf("Number of labeled examples: %d", len(boards))
-	loss := learn(0)
-	log.Printf("  Loss before train loop: %.4g", loss)
-	if *flag_trainLoops > 0 {
-		loss = learn(*flag_trainLoops)
-		log.Printf("  Loss after %dth train loop: %.4g", *flag_trainLoops, loss)
-		loss = learn(0)
-		log.Printf("  Loss after train loop: %.4g", loss)
-	}
-	if players[0].ModelFile != "" {
-		log.Printf("Saving to %s", players[0].ModelFile)
-		ai.LinearModelFileName = players[0].ModelFile // Hack for linear models. TODO: fix.
-		players[0].Learner.Save()
-		if glog.V(1) {
-			glog.V(1).Infof("%s", players[0].Learner)
-		}
-	}
+	loss := learn(*flag_trainLoops)
+	log.Printf("  Loss after %dth train loop: %.4g", *flag_trainLoops, loss)
 }
 
 // distill returns the score of the given board position, and no
