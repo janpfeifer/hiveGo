@@ -315,6 +315,7 @@ def main(argv=None):  # pylint: disable=unused-argument
 	print('Training:')
 	print('\tInitialize variables:\t', init.name)
 	print('\tTrain one step:\t', train_op.name)
+	print('\tGlobal step:\t', global_step.name, global_step.dtype, global_step.shape)
 
 	# Mean loss: more stable across batches of different sizes.
 	mean_loss = total_losses / tf.cast(tf.shape(board_features)[0], dtype=tf.float32)

@@ -86,9 +86,10 @@ type Scorer struct {
 	ActionsPieces, ActionsLabels             tf.Output
 	ActionsPredictions, ActionsLosses        tf.Output
 
-	IsTraining, LearningRate, CheckpointFile, TotalLoss tf.Output
-	SelfSupervision                                     tf.Output
-	InitOp, TrainOp, SaveOp, RestoreOp                  *tf.Operation
+	IsTraining, LearningRate, CheckpointFile tf.Output
+	GlobalStep, TotalLoss                    tf.Output
+	SelfSupervision                          tf.Output
+	InitOp, TrainOp, SaveOp, RestoreOp       *tf.Operation
 
 	version int
 	// Uses the number of input features used.
@@ -228,6 +229,7 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 		SelfSupervision: t0opt("self_supervision"),
 		CheckpointFile:  t0("save/Const"),
 		TotalLoss:       t0("mean_loss"),
+		GlobalStep:      t0("global_step"),
 
 		// Ops.
 		InitOp:    op("init"),
@@ -269,6 +271,8 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 	}
 
 	go s.autoBatchDispatcher()
+
+	glog.Infof("global_step=%d", s.ReadGlobalStep())
 	return s
 }
 
@@ -278,6 +282,15 @@ func (s *Scorer) IsActionsClassifier() bool {
 
 func (s *Scorer) HasFullBoard() bool {
 	return s.FullBoard.Op != nil
+}
+
+func (s *Scorer) ReadGlobalStep() int64 {
+	sess := s.NextSession()
+	res, err := sess.Run(nil, []tf.Output{s.GlobalStep}, nil)
+	if err != nil {
+		log.Panicf("Can't read GlobalStep: %v", err)
+	}
+	return res[0].Value().(int64)
 }
 
 func createSessionPool(graph *tf.Graph, size int, forceCPU bool) (sessions []*tf.Session) {
