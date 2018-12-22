@@ -285,8 +285,6 @@ func (s *Scorer) HasFullBoard() bool {
 }
 
 func (s *Scorer) ReadGlobalStep() int64 {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	sess := s.NextSession()
 	res, err := sess.Run(nil, []tf.Output{s.GlobalStep}, nil)
 	if err != nil {
