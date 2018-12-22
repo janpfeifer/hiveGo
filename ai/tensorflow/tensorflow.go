@@ -285,6 +285,8 @@ func (s *Scorer) HasFullBoard() bool {
 }
 
 func (s *Scorer) ReadGlobalStep() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	sess := s.NextSession()
 	res, err := sess.Run(nil, []tf.Output{s.GlobalStep}, nil)
 	if err != nil {
@@ -801,6 +803,17 @@ func (s *Scorer) Save() {
 	feeds := map[tf.Output]*tf.Tensor{s.CheckpointFile: t}
 	if _, err := s.sessionPool[0].Run(feeds, nil, []*tf.Operation{s.SaveOp}); err != nil {
 		log.Panicf("Failed to checkpoint (save) file to %s: %v", s.CheckpointBase(), err)
+	}
+
+	// Link files to version with global step.
+	globalStep := s.ReadGlobalStep()
+	data2 := fmt.Sprintf("%s.%09d", data, globalStep)
+	index2 := fmt.Sprintf("%s.%09d", data, globalStep)
+	if err := os.Link(data, data2); err != nil {
+		log.Panicf("Failed to link %s to %s: %v", data, data2)
+	}
+	if err := os.Link(index, index2); err != nil {
+		log.Panicf("Failed to link %s to %s: %v", index, index2)
 	}
 }
 
