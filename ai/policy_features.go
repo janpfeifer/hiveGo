@@ -30,6 +30,7 @@ package ai
 
 import (
 	"fmt"
+
 	"github.com/golang/glog"
 
 	. "github.com/janpfeifer/hiveGo/state"
@@ -168,8 +169,14 @@ func positionActionFeatures(b *Board, action Action, policyVersion int, pos Pos,
 	return stackFeatures(b, pos, stack)
 }
 
+var EmptyCellFeatures = make([]float32, FEATURES_PER_POSITION)
+
 func PositionFeatures(b *Board, pos Pos) []float32 {
-	return stackFeatures(b, pos, b.StackAt(pos))
+	stack := b.StackAt(pos)
+	if !stack.HasPiece() {
+		return EmptyCellFeatures
+	}
+	return stackFeatures(b, pos, stack)
 }
 
 func stackFeatures(b *Board, pos Pos, stack EncodedStack) (f []float32) {

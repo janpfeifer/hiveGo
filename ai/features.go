@@ -326,6 +326,14 @@ const (
 	SuggestedFullBoardHeight = 24
 )
 
+var EmptyCellRow = make([][]float32, SuggestedFullBoardWidth)
+
+func init() {
+	for col := range EmptyCellRow {
+		EmptyCellRow[col] = EmptyCellFeatures
+	}
+}
+
 // FullBoardFeatures will return features for the full board within
 // an area of height/width. It will panic if the area is not able to
 // contain the current board state -- use FullBoardDimensions.
@@ -347,15 +355,18 @@ func MakeFullBoardFeatures(b *Board, width, height int) (features [][][]float32)
 	}
 
 	features = make([][][]float32, height)
-	for y := range features {
-		features[y] = make([][]float32, width)
-	}
-
 	shiftX, shiftY := FullBoardShift(b)
-	for fbY, row := range features {
-		for fbX := range row {
-			pos := Pos{int8(fbX + shiftX), int8(fbY + shiftY)}
-			row[fbX] = PositionFeatures(b, pos)
+	for fbY := range features {
+		if fbY > minHeight+1 && width == SuggestedFullBoardWidth {
+			// Use
+			features[fbY] = EmptyCellRow
+		} else {
+			features[fbY] = make([][]float32, width)
+			row := features[fbY]
+			for fbX := range row {
+				pos := Pos{int8(fbX + shiftX), int8(fbY + shiftY)}
+				row[fbX] = PositionFeatures(b, pos)
+			}
 		}
 	}
 	return
