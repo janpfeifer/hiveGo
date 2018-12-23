@@ -7,6 +7,7 @@ import sys
 # Model internal type: tf.float16 presumably is faster in the RX2080 Ti GPU,
 # and not slower in others. Losses are still kept as float32 though.
 MODEL_DTYPE = tf.float16
+#MODEL_DTYPE = tf.float32
 
 
 tf.app.flags.DEFINE_string("output", "", "Where to save the graph definition.")
@@ -41,11 +42,8 @@ ACTIONS_NODES_PER_LAYER = 128
 # Full board convolutions
 FULL_BOARD_CONV_DEPTH = 64
 FULL_BOARD_CONV_LAYERS = 8
-
-# Neural Network parameters for actions embedding and value prediction.
-NEIGHBOURHOOD_NUM_HIDDEN_LAYERS = 3
-NEIGHBOURHOOD_NODES_PER_LAYER = 384 - NEIGHBOURHOOD_NUM_FEATURES
-NEIGHBOURHOOD_EMBEDDING_DIM = 32
+#FULL_BOARD_CONV_DEPTH = 32
+#FULL_BOARD_CONV_LAYERS = 2
 
 # ACTIVATION=tf.nn.selu
 ACTIVATION = tf.nn.leaky_relu
@@ -308,7 +306,7 @@ def main(argv=None):  # pylint: disable=unused-argument
 
 	update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
 	with tf.control_dependencies(update_ops):
-		train_op = optimizer.apply_gradients(capped_grads_and_vars, name='train')
+		train_op = optimizer.apply_gradients(capped_grads_and_vars, global_step=global_step, name='train')
 
 	init = tf.global_variables_initializer()
 

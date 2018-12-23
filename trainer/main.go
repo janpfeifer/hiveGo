@@ -63,6 +63,11 @@ var (
 	flag_maxAutoBatch = flag.Int("max_auto_batch", 0, "If > 0 ignore at most do given value of "+
 		"auto-batch for tensorflow evaluations.")
 
+	flag_continuosRescoreAndTrain = flag.Bool("rescore_and_train", false, "If set, continuously rescore and train matches.")
+	flag_rescoreAndTrainPoolSize  = flag.Int("rescore_and_train_pool_size", 1000,
+		"How many board positions to keep in pool (in a rotating buffer) used to train. "+
+			"At every --tf_batch_size the whole pool is learned again.")
+
 	players = [2]*ai_players.SearcherScorerPlayer{nil, nil}
 )
 

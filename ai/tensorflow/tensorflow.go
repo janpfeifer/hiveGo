@@ -779,6 +779,8 @@ func (s *Scorer) Learn(
 }
 
 func (s *Scorer) Save() {
+	globalStep := s.ReadGlobalStep()
+	glog.Infof("Saving %s, checkpointing at global_step=%09d", s, globalStep)
 	if len(s.sessionPool) > 1 {
 		log.Panicf("SessionPool doesn't support saving. You probably should use sessionPoolSize=1 in this case.")
 	}
@@ -804,14 +806,22 @@ func (s *Scorer) Save() {
 	}
 
 	// Link files to version with global step.
-	globalStep := s.ReadGlobalStep()
 	data2 := fmt.Sprintf("%s.%09d", data, globalStep)
-	index2 := fmt.Sprintf("%s.%09d", data, globalStep)
-	if err := os.Link(data, data2); err != nil {
-		log.Panicf("Failed to link %s to %s: %v", data, data2)
+	index2 := fmt.Sprintf("%s.%09d", index, globalStep)
+	linked := false
+	if _, err1 := os.Stat(data2); os.IsNotExist(err1) {
+		if _, err2 := os.Stat(index2); os.IsNotExist(err2) {
+			if err := os.Link(data, data2); err != nil {
+				log.Panicf("Failed to link %s to %s: %v", data, data2, err)
+			}
+			if err := os.Link(index, index2); err != nil {
+				log.Panicf("Failed to link %s to %s: %v", index, index2, err)
+			}
+			linked = true
+		}
 	}
-	if err := os.Link(index, index2); err != nil {
-		log.Panicf("Failed to link %s to %s: %v", index, index2)
+	if !linked {
+		glog.Errorf("Failed to link saved model in %s to global_step=%09d", s, globalStep)
 	}
 }
 
