@@ -134,9 +134,9 @@ func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchA
 			pool[count%poolSize] = ma
 		}
 		count++
-		glog.V(2).Infof("Pool=%d, count=%d", len(pool), count)
+		glog.V(2).Infof("Pool=%d, count=%d, batchSize=%d", len(pool), count, batchSize)
 
-		if count > batchSize {
+		if count >= batchSize {
 			if count <= 10*batchSize {
 				// Until enough examples are collected, only learn with newly rescored
 				// results.
