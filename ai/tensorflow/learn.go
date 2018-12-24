@@ -142,7 +142,8 @@ func (s *Scorer) learnOneMiniBatch(feeds map[tf.Output]*tf.Tensor, train, scoreA
 //
 func (s *Scorer) Learn(
 	boards []*Board, boardLabels []float32, actionsLabels [][]float32,
-	learningRate float32, epochs int, perStepCallback func()) (loss float32) {
+	learningRate float32, epochs int, perStepCallback func()) (
+	loss, boardLoss, actionsLoss float32) {
 	if len(boards) == 0 {
 		log.Panicf("Received empty list of boards to learn.")
 	}
@@ -169,16 +170,17 @@ func (s *Scorer) Learn(
 		}
 	}
 
-	if *flag_learnBatchSize == 0 || len(boards) < *flag_learnBatchSize {
+	if *Flag_learnBatchSize == 0 || len(boards) <= *Flag_learnBatchSize {
 		for epoch := 0; epoch < epochs || epoch == 0; epoch++ {
 			feeds := s.buildFeedsForLearning(fc, learningRate, scoreActions)
-			totalLoss, boardLoss, actionsLoss := s.learnOneMiniBatch(feeds, epochs > 0, scoreActions)
+			loss, boardLoss, actionsLoss = s.learnOneMiniBatch(feeds, epochs > 0, scoreActions)
+			boardLoss /= float32(*Flag_learnBatchSize)
+			actionsLoss /= float32(*Flag_learnBatchSize)
 			if epochs > 0 && perStepCallback != nil {
 				perStepCallback()
 			}
 			glog.V(1).Infof("Loss after epoch: total=%g, board=%g, actions=%g",
-				totalLoss, boardLoss/float32(len(boards)), actionsLoss/float32(len(boards)))
-			loss = totalLoss
+				loss, boardLoss, actionsLoss)
 		}
 		return
 	}
@@ -188,9 +190,9 @@ func (s *Scorer) Learn(
 	go func() {
 		first := true
 		for epoch := 0; epoch < epochs || epoch == 0; epoch++ {
-			miniBatches := fc.randomMiniBatches(*flag_learnBatchSize)
+			miniBatches := fc.randomMiniBatches(*Flag_learnBatchSize)
 			if first {
-				glog.V(1).Infof("Learn with %d mini-batches of size %d", len(miniBatches), *flag_learnBatchSize)
+				glog.V(1).Infof("Learn with %d mini-batches of size %d", len(miniBatches), *Flag_learnBatchSize)
 				first = false
 			}
 			for _, batch := range miniBatches {
@@ -224,8 +226,8 @@ func (s *Scorer) Learn(
 			averageActionsLoss /= float32(countExamples)
 			glog.V(1).Infof("Loss after epoch %d: total=%g, board=%g, actions=%g",
 				countEpoch, averageLoss,
-				averageBoardLoss/float32(*flag_learnBatchSize),
-				averageActionsLoss/float32(*flag_learnBatchSize))
+				averageBoardLoss/float32(*Flag_learnBatchSize),
+				averageActionsLoss/float32(*Flag_learnBatchSize))
 			countEpoch++
 			countExamples = 0
 			if epochs > 0 && perStepCallback != nil {
@@ -243,5 +245,5 @@ func (s *Scorer) Learn(
 		averageActionsLoss += actionsLoss
 		countExamples++
 	}
-	return averageLoss
+	return averageLoss, averageBoardLoss / float32(*Flag_learnBatchSize), averageActionsLoss / float32(*Flag_learnBatchSize)
 }

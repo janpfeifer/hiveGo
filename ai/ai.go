@@ -37,8 +37,10 @@ type LearnerScorer interface {
 	// steps is the number of times to repeat the training. If set to 0, the Learn() funciton
 	// will only report loss but not actually learn.
 	// If perStepCallback is given, it is called after each step, except if steps==0.
+	// It returns the total loss, the loss due to the board, and the loss due to actions (if
+	// also a actions classifier, otherwise 0)
 	Learn(boards []*Board, boardLabels []float32, actionsLabels [][]float32,
-		learningRate float32, steps int, perStepCallback func()) (loss float32)
+		learningRate float32, steps int, perStepCallback func()) (loss, boardLoss, actionsLoss float32)
 	Save()
 	String() string
 }

@@ -108,7 +108,7 @@ var (
 
 func (w LinearScorer) Learn(boards []*Board, boardLabels []float32,
 	actionsLabels [][]float32, learningRate float32, steps int,
-	perStepCallback func()) (loss float32) {
+	perStepCallback func()) (loss, boardLoss, actionsLoss float32) {
 	// Bulid features.
 	boardFeatures := make([][]float32, len(boards))
 	for boardIdx, board := range boards {
@@ -150,7 +150,7 @@ func (w LinearScorer) Learn(boards []*Board, boardLabels []float32,
 			}
 		}
 	}
-	return totalLoss
+	return totalLoss, totalLoss, 0
 }
 
 func length(vec []float32) float32 {

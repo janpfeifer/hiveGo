@@ -1,11 +1,12 @@
 package search
 
 import (
-	"github.com/golang/glog"
 	"log"
 	"math"
 	"math/rand"
 	"sort"
+
+	"github.com/golang/glog"
 
 	"github.com/janpfeifer/hiveGo/ai"
 	. "github.com/janpfeifer/hiveGo/state"
@@ -32,7 +33,7 @@ type Searcher interface {
 	// and following each one of the actions. In the end, len(scores) == len(actions)+1.
 	// It also outputs actionsLabels, which may be a one-hot-encoding, or a probability
 	// distribution over the actions.
-	ScoreMatch(b *Board, actions []Action, want []*Board) (scores []float32, actionsLabels [][]float32)
+	ScoreMatch(b *Board, actions []Action) (scores []float32, actionsLabels [][]float32)
 }
 
 // ExecuteAndScoreActions enumerates each of the available actions, along with the boards
@@ -177,7 +178,7 @@ func (rs *randomizedSearcher) Search(b *Board) (Action, *Board, float32, []float
 	return Action{}, nil, 0.0, nil
 }
 
-func (rs *randomizedSearcher) ScoreMatch(b *Board, actions []Action, _ []*Board) (
+func (rs *randomizedSearcher) ScoreMatch(b *Board, actions []Action) (
 	scores []float32, actionsLabels [][]float32) {
 	log.Panicf("ScoreMatch not implemented for RandomizedSearcher")
 	return

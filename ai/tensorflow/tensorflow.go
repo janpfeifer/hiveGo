@@ -59,7 +59,7 @@ const (
 	GPU_MEMORY_FRACTION_TO_USE = 0.3
 )
 
-var flag_learnBatchSize = flag.Int("tf_batch_size", 0,
+var Flag_learnBatchSize = flag.Int("tf_batch_size", 0,
 	"Batch size when learning: this is the number of boards, not actions. There is usually 100/1 ratio of "+
 		"actions per board. Examples are shuffled before being batched. 0 means no batching.")
 

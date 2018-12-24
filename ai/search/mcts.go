@@ -513,7 +513,7 @@ func (mcts *mctsSearcher) searchWithStats(stats *matchStats, b *Board) (
 // ScoreMatch will score the board at each board position, starting from the current one,
 // and following each one of the actions. In the end, len(scores) == len(actions)+1, and
 // len(actionsLabels) == len(actions).
-func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action, want []*Board) (
+func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action) (
 	scores []float32, actionsLabels [][]float32) {
 	stats := &matchStats{}
 	ui := ascii_ui.NewUI(true, false)
@@ -563,15 +563,6 @@ func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action, want []*Board) 
 				cn.actions[playedIdx], boardActionsLabels[playedIdx]*100, cn.actionsProbs[playedIdx], cn.Q[playedIdx])
 		}
 		cn = cn.Step(mcts, stats, playedIdx, true)
-		if cn.board.NumActions() != want[matchActionsIdx+1].NumActions() {
-			fmt.Println("Want board:")
-			ui.PrintBoard(want[matchActionsIdx+1])
-			fmt.Println("Got board:")
-			ui.PrintBoard(cn.board)
-			fmt.Printf("Action that diverged: %s\n", action)
-			log.Panicf("cn.board.NumActions=%d, want[matchActionsIdx+1].NumActions=%d",
-				cn.board.NumActions(), want[matchActionsIdx].NumActions())
-		}
 		if isEnd, score := ai.EndGameScore(cn.board); isEnd {
 			scores = append(scores, score)
 			return

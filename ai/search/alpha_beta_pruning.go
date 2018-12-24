@@ -215,8 +215,8 @@ func NewAlphaBetaSearcher(maxDepth int, parallelized bool, scorer ai.BatchScorer
 }
 
 // ScoreMatch will score the board at each board position, starting from the current one,
-// and following each one of the actions. In the end, len(scores) == len(actions)+1.
-func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action, want []*Board) (
+// and following each one of the actions. In the end, len(scores) == len(actions).
+func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action) (
 	scores []float32, actionsLabels [][]float32) {
 	scores = make([]float32, 0, len(actions)+1)
 	actionsLabels = make([][]float32, 0, len(actions))
@@ -242,14 +242,6 @@ func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action, want []*Boar
 			// Match action was different than what it would have played.
 			b = b.Act(action)
 		}
-	}
-
-	// Add the final board score, if the match hasn't ended yet.
-	if isEnd, score := ai.EndGameScore(b); isEnd {
-		scores = append(scores, score)
-	} else {
-		_, _, score = TimedAlphaBeta(b, ab.scorer, ab.maxDepth, ab.parallelized, ab.randomness)
-		scores = append(scores, score)
 	}
 	return
 }

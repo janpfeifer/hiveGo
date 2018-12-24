@@ -64,9 +64,10 @@ var (
 		"auto-batch for tensorflow evaluations.")
 
 	flag_continuosRescoreAndTrain = flag.Bool("rescore_and_train", false, "If set, continuously rescore and train matches.")
-	flag_rescoreAndTrainPoolSize  = flag.Int("rescore_and_train_pool_size", 1000,
-		"How many board positions to keep in pool (in a rotating buffer) used to train. "+
-			"At every --tf_batch_size the whole pool is learned again.")
+	flag_rescoreAndTrainPoolSize  = flag.Int("rescore_and_train_pool_size", 10000,
+		"How many board positions to keep in pool (in a rotating buffer) used to train. ")
+	flag_rescoreAndTrainIssueLearn = flag.Int("rescore_and_train_issue_learn", 10,
+		"After how many rescored matches/action to issue another learning mini-batch.")
 
 	players = [2]*ai_players.SearcherScorerPlayer{nil, nil}
 )
@@ -77,6 +78,8 @@ func init() {
 
 // Results and if the players were swapped.
 type Match struct {
+	mu sync.Mutex
+
 	// Wether p0/p1 swapped positions in this match.
 	Swapped bool
 
@@ -577,5 +580,8 @@ func main() {
 	}
 	if *flag_train {
 		trainFromMatches(matches)
+	}
+	if *flag_continuosRescoreAndTrain {
+		rescoreAndTrain(matches)
 	}
 }

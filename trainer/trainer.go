@@ -62,7 +62,7 @@ func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 				// from -> to refer to the actions. ScoreMatch scores the boards up to the action following
 				// the actions[to], hence one more than the number of actions.
 				newScores, actionsLabels := players[0].Searcher.ScoreMatch(
-					match.Boards[from], match.Actions[from:to], match.Boards[from:to+1])
+					match.Boards[from], match.Actions[from:to])
 				copy(match.Scores[from:from+len(newScores)-1], newScores)
 				copy(match.ActionsLabels[from:from+len(actionsLabels)], actionsLabels)
 				for ii := from; ii < len(match.Actions); ii++ {
@@ -118,13 +118,13 @@ func savePlayer0() {
 // trainFromExamples: only player[0] is trained.
 func trainFromExamples(boards []*state.Board, boardLabels []float32, actionsLabels [][]float32) {
 	learningRate := float32(*flag_learningRate)
-	learn := func(steps int) float32 {
+	learn := func(steps int) (float32, float32, float32) {
 		return players[0].Learner.Learn(boards, boardLabels, actionsLabels,
 			learningRate, steps, savePlayer0)
 	}
 	log.Printf("Number of labeled examples: %d", len(boards))
-	loss := learn(*flag_trainLoops)
-	log.Printf("  Loss after %dth train loop: %.4g", *flag_trainLoops, loss)
+	loss, boardLoss, actionsLoss := learn(*flag_trainLoops)
+	log.Printf("  Losses after %dth train loop: %.4g, %.4g, %.4g", *flag_trainLoops, loss, boardLoss, actionsLoss)
 }
 
 // distill returns the score of the given board position, and no
