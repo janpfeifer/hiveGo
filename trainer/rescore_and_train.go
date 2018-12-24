@@ -134,7 +134,7 @@ func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchA
 			pool[count%poolSize] = ma
 		}
 		count++
-		glog.V(2).Infof("Pool=%d, count=%d, batchSize=%d", len(pool), count, batchSize)
+		glog.V(3).Infof("Pool=%d, count=%d, batchSize=%d", len(pool), count, batchSize)
 
 		if count >= batchSize {
 			if count <= 10*batchSize {
@@ -174,7 +174,7 @@ func continuousLearning(learnInput <-chan LearnParams) {
 	var averageLoss, averageBoardLoss, averageActionsLoss float32
 	count := 0
 	for params := range learnInput {
-		glog.V(2).Infof("Learn: count=%d", count)
+		glog.V(3).Infof("Learn: count=%d", count)
 		loss, boardLoss, actionsLoss := players[0].Learner.Learn(
 			params.boards, params.boardLabels,
 			params.actionsLabels, float32(*flag_learningRate),
