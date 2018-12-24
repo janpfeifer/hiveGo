@@ -234,8 +234,6 @@ func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action) (
 		} else {
 			actionsLabels = append(actionsLabels, nil)
 		}
-		glog.V(1).Infof("Move #%d (%d left), Action taken: %s / Best action examined %s",
-			b.MoveNumber, len(actions)-actionIdx-1, action, bestAction)
 		if action == bestAction {
 			b = newBoard
 		} else {
