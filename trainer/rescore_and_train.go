@@ -158,7 +158,12 @@ func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchA
 				}
 				for ii := 0; ii < batchSize-issueFreq; ii++ {
 					r := rand.Float64()
-					r = (r * r) * float64(poolSize)
+					r = r * r
+					if count > poolSize {
+						r *= float64(poolSize)
+					} else {
+						r *= float64(count)
+					}
 					idx := (count - 1 - int(r)) % poolSize
 					lp.Append(matches, pool[idx])
 				}
