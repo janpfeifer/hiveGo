@@ -290,7 +290,7 @@ def main(argv=None):  # pylint: disable=unused-argument
 		actions_board_indices, 
 		actions_is_move, actions_src_positions, actions_tgt_positions, actions_pieces, 
 		actions_labels, initializer, l2_regularizer)
-	actions_losses *= actions_loss_ratio
+	actions_losses *= tf.cast(actions_loss_ratio, MODEL_DTYPE)
 	actions_predictions = tf.identity(
 		tf.cast(tf.reshape(actions_predictions, [-1]), tf.float32), name='actions_predictions')
 	actions_losses = tf.identity(
