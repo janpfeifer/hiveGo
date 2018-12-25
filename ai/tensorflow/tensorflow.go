@@ -59,6 +59,7 @@ var (
 	// set as placeholders). They can be overwritten using the flag --tf_params.
 	DefaultModelParams = map[string]float32{
 		"actions_loss_ratio": 0.005,
+		"l2_regularization":  1e-5,
 	}
 )
 
