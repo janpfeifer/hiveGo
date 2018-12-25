@@ -53,10 +53,15 @@ func rescoreAndTrain(matches []*Match) {
 	go continuousLearning(learnParamsChan)
 
 	ticker := time.NewTicker(60 * time.Second)
+	lastSaveStep := p0GlobalStep()
 	for _ = range ticker.C {
 		glog.V(1).Infof("Queues: sampling=%d, rescoring=%d, learning=%d",
 			len(maSampling), len(rescoredMA), len(learnParamsChan))
-		savePlayer0()
+		globalStep := p0GlobalStep()
+		if globalStep == -1 || globalStep > lastSaveStep {
+			lastSaveStep = globalStep
+			savePlayer0()
+		}
 	}
 }
 
@@ -193,12 +198,8 @@ func continuousLearning(learnInput <-chan LearnParams) {
 		averageBoardLoss = decayAverageLoss(averageBoardLoss, boardLoss, decay)
 		averageActionsLoss = decayAverageLoss(averageActionsLoss, actionsLoss, decay)
 		if glog.V(2) || count%100 == 0 {
-			globalStep := int64(-1)
-			if tf, ok := players[0].Learner.(*tensorflow.Scorer); ok && tf != nil {
-				globalStep = tf.ReadGlobalStep()
-			}
 			glog.Infof("Average Losses (step=%d): total=%.4g board=%.4g actions=%.4g",
-				globalStep, averageLoss, averageBoardLoss, averageActionsLoss)
+				p0GlobalStep(), averageLoss, averageBoardLoss, averageActionsLoss)
 		}
 		count++
 	}
@@ -208,4 +209,13 @@ const maxAverageLossDecay = float32(0.99)
 
 func decayAverageLoss(average, newValue, decay float32) float32 {
 	return average*decay + (1-decay)*newValue
+}
+
+// Returns tensorflow's GlobalStep for player 0, if using tensorflow,
+// or -1 if not.
+func p0GlobalStep() int64 {
+	if tf, ok := players[0].Learner.(*tensorflow.Scorer); ok && tf != nil {
+		return tf.ReadGlobalStep()
+	}
+	return -1
 }
