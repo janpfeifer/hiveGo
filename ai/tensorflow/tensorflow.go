@@ -38,6 +38,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/golang/protobuf/proto"
@@ -50,8 +51,16 @@ import (
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
-// Set this to true to force to use CPU, even when GPU is avaialble.
-var CpuOnly = false
+var (
+	// Set this to true to force to use CPU, even when GPU is avaialble.
+	CpuOnly = false
+
+	// These are default values for tensorflow models' tensors (if they are
+	// set as placeholders). They can be overwritten using the flag --tf_params.
+	DefaultModelParams = map[string]float32{
+		"actions_loss_ratio": 0.005,
+	}
+)
 
 const (
 	INTER_OP_PARALLELISM       = 4
@@ -62,6 +71,11 @@ const (
 var Flag_learnBatchSize = flag.Int("tf_batch_size", 0,
 	"Batch size when learning: this is the number of boards, not actions. There is usually 100/1 ratio of "+
 		"actions per board. Examples are shuffled before being batched. 0 means no batching.")
+var flag_tfParams = flag.String("tf_params", "",
+	"Comma separated list of `key=value` pairs where `key` is a string (name of a tensor), and "+
+		"`value` is a float32 value. These are assumed to be model's placeholders "+
+		"that will be set with the given value on all inference/train session runs. If "+
+		"tensor named `key` does not exist in model, it is reported but ignored.")
 
 type Scorer struct {
 	Basename            string
@@ -89,6 +103,9 @@ type Scorer struct {
 	GlobalStep, TotalLoss                    tf.Output
 	SelfSupervision                          tf.Output
 	InitOp, TrainOp, SaveOp, RestoreOp       *tf.Operation
+
+	// Params set by flag --tf_params.
+	Params map[tf.Output]*tf.Tensor
 
 	version int
 	// Uses the number of input features used.
@@ -235,6 +252,8 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 		TrainOp:   op("train"),
 		SaveOp:    op("save/control_dependency"),
 		RestoreOp: op("save/restore_all"),
+
+		Params: make(map[tf.Output]*tf.Tensor),
 	}
 
 	// Model must have all actions tensors to be considered actions classifier.
@@ -250,6 +269,16 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 	// Set version to the size of the input.
 	s.version = int(s.BoardFeatures.Shape().Size(1))
 	glog.V(1).Infof("TensorFlow model's version=%d", s.version)
+
+	// Set generic parameters.
+	for key, value := range parseFlagParams() {
+		tfOut := t0opt(key)
+		if tfOut.Op != nil {
+			s.Params[tfOut] = mustTensor(value)
+		} else {
+			glog.Errorf("Tensor '%s' not found and cannot be set", key)
+		}
+	}
 
 	// Either restore or initialize the network.
 	cpIndex, _ := s.CheckpointFiles()
@@ -273,6 +302,28 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 
 	glog.Infof("global_step=%d", s.ReadGlobalStep())
 	return s
+}
+
+func parseFlagParams() (keyValues map[string]float32) {
+	keyValues = make(map[string]float32)
+	for key, value := range DefaultModelParams {
+		keyValues[key] = value
+	}
+	for _, pair := range strings.Split(*flag_tfParams, ",") {
+		if pair == "" {
+			continue
+		}
+		keyValue := strings.Split(pair, "=")
+		if len(keyValue) != 2 {
+			log.Panicf("Malformed --tf_params entry: [ %s ]", keyValue)
+		}
+		if v, err := strconv.ParseFloat(keyValue[1], 32); err == nil {
+			keyValues[keyValue[0]] = float32(v)
+		} else {
+			log.Panicf("Malformed --tf_params entry [ %s ]: %v", keyValue, err)
+		}
+	}
+	return
 }
 
 func (s *Scorer) IsActionsClassifier() bool {
@@ -507,6 +558,9 @@ func (s *Scorer) buildFeeds(fc *flatFeaturesCollection, scoreActions bool) (feed
 			}
 		}
 		feeds[s.FullBoard] = mustTensor(fc.fullBoardFeatures)
+	}
+	for key, value := range s.Params {
+		feeds[key] = value
 	}
 	return
 }

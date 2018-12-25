@@ -185,16 +185,16 @@ func continuousLearning(learnInput <-chan LearnParams) {
 			params.actionsLabels, float32(*flag_learningRate),
 			1, nil)
 		glog.V(2).Infof("Losses: total=%g board=%g actions=%g", loss, boardLoss, actionsLoss)
-		decay := 1 / float32(1+count)
-		if decay > averageLossDecay {
-			decay = averageLossDecay
+		decay := 1 - 1/float32(1+count)
+		if decay > maxAverageLossDecay {
+			decay = maxAverageLossDecay
 		}
 		averageLoss = decayAverageLoss(averageLoss, loss, decay)
 		averageBoardLoss = decayAverageLoss(averageBoardLoss, boardLoss, decay)
 		averageActionsLoss = decayAverageLoss(averageActionsLoss, actionsLoss, decay)
 		if glog.V(2) || count%100 == 0 {
 			globalStep := int64(-1)
-			if tf := players[0].Learner.(*tensorflow.Scorer); tf != nil {
+			if tf, ok := players[0].Learner.(*tensorflow.Scorer); ok && tf != nil {
 				globalStep = tf.ReadGlobalStep()
 			}
 			glog.Infof("Average Losses (step=%d): total=%.4g board=%.4g actions=%.4g",
@@ -204,7 +204,7 @@ func continuousLearning(learnInput <-chan LearnParams) {
 	}
 }
 
-const averageLossDecay = float32(0.99)
+const maxAverageLossDecay = float32(0.99)
 
 func decayAverageLoss(average, newValue, decay float32) float32 {
 	return average*decay + (1-decay)*newValue

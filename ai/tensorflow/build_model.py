@@ -7,7 +7,7 @@ import sys
 # Model internal type: tf.float16 presumably is faster in the RX2080 Ti GPU,
 # and not slower in others. Losses are still kept as float32 though.
 MODEL_DTYPE = tf.float16
-#MODEL_DTYPE = tf.float32
+# MODEL_DTYPE = tf.float32
 
 
 tf.app.flags.DEFINE_string("output", "", "Where to save the graph definition.")
@@ -42,8 +42,8 @@ ACTIONS_NODES_PER_LAYER = 128
 # Full board convolutions
 FULL_BOARD_CONV_DEPTH = 64
 FULL_BOARD_CONV_LAYERS = 8
-#FULL_BOARD_CONV_DEPTH = 32
-#FULL_BOARD_CONV_LAYERS = 2
+# FULL_BOARD_CONV_DEPTH = 32
+# FULL_BOARD_CONV_LAYERS = 2
 
 # ACTIVATION=tf.nn.selu
 ACTIVATION = tf.nn.leaky_relu
@@ -275,10 +275,13 @@ def main(argv=None):  # pylint: disable=unused-argument
 		tf.float32, shape=[None, NUM_PIECE_TYPES], name='actions_pieces')
 	actions_labels = tf.placeholder(
 		tf.float32, shape=[None], name='actions_labels')
+	actions_loss_ratio = tf.placeholder(tf.float32, shape=(), name='actions_loss_ratio')
+
 
 	hive_lib.report_tensors('Actions inputs:', [
 		actions_board_indices, actions_is_move, actions_src_positions,
-		actions_tgt_positions, actions_pieces, actions_labels
+		actions_tgt_positions, actions_pieces, actions_labels,
+		actions_loss_ratio
 	])
 
 	# Build actions model.
@@ -287,6 +290,7 @@ def main(argv=None):  # pylint: disable=unused-argument
 		actions_board_indices, 
 		actions_is_move, actions_src_positions, actions_tgt_positions, actions_pieces, 
 		actions_labels, initializer, l2_regularizer)
+	actions_losses *= actions_loss_ratio
 	actions_predictions = tf.identity(
 		tf.cast(tf.reshape(actions_predictions, [-1]), tf.float32), name='actions_predictions')
 	actions_losses = tf.identity(
