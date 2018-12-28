@@ -6,8 +6,6 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/janpfeifer/hiveGo/state"
-
 	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
 )
@@ -93,15 +91,18 @@ func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 
 func trainFromMatches(matches []*Match) {
 	var (
-		boardExamples []*state.Board
-		boardLabels   []float32
-		actionsLabels [][]float32
+		leTrain      = &LabeledExamples{}
+		leValidation = &LabeledExamples{}
 	)
 	for _, match := range matches {
-		boardExamples, boardLabels, actionsLabels = match.AppendLabeledExamples(
-			boardExamples, boardLabels, actionsLabels)
+		hashNum := match.FinalBoard().Derived.Hash
+		if int(hashNum%100) >= *flag_trainValidation {
+			match.AppendLabeledExamples(leTrain)
+		} else {
+			match.AppendLabeledExamples(leValidation)
+		}
 	}
-	trainFromExamples(boardExamples, boardLabels, actionsLabels)
+	trainFromExamples(leTrain, leValidation)
 }
 
 func savePlayer0() {
@@ -116,15 +117,26 @@ func savePlayer0() {
 }
 
 // trainFromExamples: only player[0] is trained.
-func trainFromExamples(boards []*state.Board, boardLabels []float32, actionsLabels [][]float32) {
+func trainFromExamples(leTrain, leValidation *LabeledExamples) {
 	learningRate := float32(*flag_learningRate)
-	learn := func(steps int) (float32, float32, float32) {
-		return players[0].Learner.Learn(boards, boardLabels, actionsLabels,
-			learningRate, steps, savePlayer0)
+	epochs := int(*flag_trainLoops)
+	perEpochCallback := func() {
+		if leValidation.Len() > 0 {
+			loss, boardLoss, actionsLoss := players[0].Learner.Learn(
+				leValidation.boardExamples, leValidation.boardLabels, leValidation.actionsLabels,
+				learningRate, 0, nil)
+			log.Printf("  Validation losses: %.4g, %.4g, %.4g", loss, boardLoss, actionsLoss)
+		}
+		if epochs > 0 {
+			savePlayer0()
+		}
 	}
-	log.Printf("Number of labeled examples: %d", len(boards))
-	loss, boardLoss, actionsLoss := learn(*flag_trainLoops)
-	log.Printf("  Losses after %dth train loop: %.4g, %.4g, %.4g", *flag_trainLoops, loss, boardLoss, actionsLoss)
+	log.Printf("Number of labeled examples: train=%d validation=%d", leTrain.Len(), leValidation.Len())
+	loss, boardLoss, actionsLoss := players[0].Learner.Learn(
+		leTrain.boardExamples, leTrain.boardLabels, leTrain.actionsLabels,
+		learningRate, epochs, perEpochCallback)
+	log.Printf("  Training losses after %dth traininig loops (epochs): %.4g, %.4g, %.4g",
+		epochs, loss, boardLoss, actionsLoss)
 }
 
 // distill returns the score of the given board position, and no

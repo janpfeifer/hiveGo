@@ -51,12 +51,13 @@ var (
 		"Must be used in combination with --last_actions. If set, it defines the first action to start using "+
 			"for training, and --last_actions will define how many actions to learn from.")
 
-	flag_train      = flag.Bool("train", false, "Set to true to train with match data.")
-	flag_trainLoops = flag.Int("train_loops", 1, "After acquiring data for all matches, how many times to loop the training over it.")
-	flag_rescore    = flag.Bool("rescore", false, "If to rescore matches.")
-	flag_distill    = flag.Bool("distill", false,
+	flag_train           = flag.Bool("train", false, "Set to true to train with match data.")
+	flag_trainLoops      = flag.Int("train_loops", 1, "After acquiring data for all matches, how many times to loop the training over it.")
+	flag_trainValidation = flag.Int("train_validation", 0, "Percentage (int value) of matches used for validation (evaluation only).")
+	flag_learningRate    = flag.Float64("learning_rate", 1e-5, "Learning rate when learning")
+	flag_rescore         = flag.Bool("rescore", false, "If to rescore matches.")
+	flag_distill         = flag.Bool("distill", false,
 		"If set it will simply distill from --ai1 to --ai0, without serching for best moves.")
-	flag_learningRate = flag.Float64("learning_rate", 1e-5, "Learning rate when learning")
 
 	flag_parallelism = flag.Int("parallelism", 0, "If > 0 ignore GOMAXPROCS and play "+
 		"these many matches simultaneously.")
@@ -128,23 +129,31 @@ func (m *Match) SelectRangeOfActions() (from, to int) {
 	return
 }
 
+type LabeledExamples struct {
+	boardExamples []*Board
+	boardLabels   []float32
+	actionsLabels [][]float32
+}
+
+func (le *LabeledExamples) Len() int {
+	return len(le.boardExamples)
+}
+
 // AppendLabeledExamples will add examples for learning _for Player 0 only_.
-func (m *Match) AppendLabeledExamples(boardExamples []*Board, boardLabels []float32, actionsLabels [][]float32) (
-	[]*Board, []float32, [][]float32) {
+func (m *Match) AppendLabeledExamples(le *LabeledExamples) {
 	from, to := m.SelectRangeOfActions()
 	if to == -1 {
 		// No actions selected.
-		return boardExamples, boardLabels, actionsLabels
+		return
 	}
 	glog.V(2).Infof("Making LabeledExample, version=%d", players[0].Scorer.Version())
 	for ii := from; ii < to; ii++ {
 		if !m.Boards[ii].IsFinished() {
-			boardExamples = append(boardExamples, m.Boards[ii])
-			boardLabels = append(boardLabels, m.Scores[ii])
-			actionsLabels = append(actionsLabels, m.ActionsLabels[ii])
+			le.boardExamples = append(le.boardExamples, m.Boards[ii])
+			le.boardLabels = append(le.boardLabels, m.Scores[ii])
+			le.actionsLabels = append(le.actionsLabels, m.ActionsLabels[ii])
 		}
 	}
-	return boardExamples, boardLabels, actionsLabels
 }
 
 // playActions fills the boards by playing one action at a time. The

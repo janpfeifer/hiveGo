@@ -7,7 +7,6 @@ import (
 	. "github.com/janpfeifer/hiveGo/state"
 
 	"github.com/golang/glog"
-	"github.com/janpfeifer/hiveGo/ai"
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
@@ -138,8 +137,7 @@ func (s *Scorer) learnOneMiniBatch(feeds map[tf.Output]*tf.Tensor, train, scoreA
 	return
 }
 
-// Learn will train the tensorflow model for the given labels and actionLabels.
-//
+// Learn will train the tensorflow model for the given labels and actionLabels.s
 func (s *Scorer) Learn(
 	boards []*Board, boardLabels []float32, actionsLabels [][]float32,
 	learningRate float32, epochs int, perStepCallback func()) (
@@ -153,9 +151,6 @@ func (s *Scorer) Learn(
 	scoreActions := s.IsActionsClassifier() && actionsLabels != nil
 	fc := s.buildFeatures(boards, scoreActions)
 	fc.boardLabels = boardLabels
-	for boardIdx := range fc.boardLabels {
-		fc.boardLabels[boardIdx] = ai.SigmoidTo10(fc.boardLabels[boardIdx])
-	}
 	if scoreActions {
 		for boardIdx, a := range actionsLabels {
 			if boards[boardIdx].NumActions() > 1 {

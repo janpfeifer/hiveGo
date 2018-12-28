@@ -15,13 +15,6 @@ type MatchAction struct {
 	matchNum, actionNum int32
 }
 
-// LearnParams holds parameters of one batch to learn.
-type LearnParams struct {
-	boards        []*Board
-	boardLabels   []float32
-	actionsLabels [][]float32
-}
-
 // RescoreAndTrain indefinitely pipes rescored board positions to a learner. Since the learner
 // is updating the same model as used by the scorer, the model will constantly improve.
 //
@@ -46,17 +39,17 @@ func rescoreAndTrain(matches []*Match) {
 	}
 
 	// Collect rescored matches and issue learning.
-	learnParamsChan := make(chan LearnParams, 2*parallelism)
-	go collectMatchActionsAndIssueLearning(matches, rescoredMA, learnParamsChan)
+	labeledExamplesChan := make(chan LabeledExamples, 2*parallelism)
+	go collectMatchActionsAndIssueLearning(matches, rescoredMA, labeledExamplesChan)
 
 	// Continuously learn.
-	go continuousLearning(learnParamsChan)
+	go continuousLearning(labeledExamplesChan)
 
 	ticker := time.NewTicker(60 * time.Second)
 	lastSaveStep := p0GlobalStep()
 	for _ = range ticker.C {
 		glog.V(1).Infof("Queues: sampling=%d, rescoring=%d, learning=%d",
-			len(maSampling), len(rescoredMA), len(learnParamsChan))
+			len(maSampling), len(rescoredMA), len(labeledExamplesChan))
 		globalStep := p0GlobalStep()
 		if globalStep == -1 || globalStep > lastSaveStep {
 			lastSaveStep = globalStep
@@ -109,22 +102,22 @@ func rescoreMatchActions(matches []*Match, maInput <-chan MatchAction, maOutput 
 	}
 }
 
-func MakeLearnParams(batchSize int) LearnParams {
-	return LearnParams{
-		boards:        make([]*Board, 0, batchSize),
+func MakeLabeledExamples(batchSize int) LabeledExamples {
+	return LabeledExamples{
+		boardExamples: make([]*Board, 0, batchSize),
 		boardLabels:   make([]float32, 0, batchSize),
 		actionsLabels: make([][]float32, 0, batchSize),
 	}
 }
 
-func (l *LearnParams) Append(matches []*Match, ma MatchAction) {
+func (le *LabeledExamples) AppendMatchAction(matches []*Match, ma MatchAction) {
 	match := matches[ma.matchNum]
-	l.boards = append(l.boards, match.Boards[ma.actionNum])
-	l.boardLabels = append(l.boardLabels, match.Scores[ma.actionNum])
-	l.actionsLabels = append(l.actionsLabels, match.ActionsLabels[ma.actionNum])
+	le.boardExamples = append(le.boardExamples, match.Boards[ma.actionNum])
+	le.boardLabels = append(le.boardLabels, match.Scores[ma.actionNum])
+	le.actionsLabels = append(le.actionsLabels, match.ActionsLabels[ma.actionNum])
 }
 
-func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchAction, learnOutput chan<- LearnParams) {
+func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchAction, learnOutput chan<- LabeledExamples) {
 	poolSize := *flag_rescoreAndTrainPoolSize
 	batchSize := *tensorflow.Flag_learnBatchSize
 	issueFreq := *flag_rescoreAndTrainIssueLearn
@@ -146,20 +139,20 @@ func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchA
 				// Until enough examples are collected, only learn with newly rescored
 				// results.
 				if count%batchSize == 0 {
-					lp := MakeLearnParams(batchSize)
+					lp := MakeLabeledExamples(batchSize)
 					for ii := 0; ii < batchSize; ii++ {
 						idx := (count - 1 - ii) % poolSize
-						lp.Append(matches, pool[idx])
+						lp.AppendMatchAction(matches, pool[idx])
 					}
 					learnOutput <- lp
 				}
 			} else if count%issueFreq == 0 {
 				// After we have enough examples, train at every few new
 				// rescored examples, plus some random ones.
-				lp := MakeLearnParams(batchSize)
+				lp := MakeLabeledExamples(batchSize)
 				for ii := 0; ii < issueFreq; ii++ {
 					idx := (count - 1 - ii) % poolSize
-					lp.Append(matches, pool[idx])
+					lp.AppendMatchAction(matches, pool[idx])
 				}
 				for ii := 0; ii < batchSize-issueFreq; ii++ {
 					r := rand.Float64()
@@ -170,7 +163,7 @@ func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchA
 						r *= float64(count)
 					}
 					idx := (count - 1 - int(r)) % poolSize
-					lp.Append(matches, pool[idx])
+					lp.AppendMatchAction(matches, pool[idx])
 				}
 				learnOutput <- lp
 			}
@@ -180,13 +173,13 @@ func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchA
 }
 
 // learnSelection continuously learns from the selected board data.
-func continuousLearning(learnInput <-chan LearnParams) {
+func continuousLearning(learnInput <-chan LabeledExamples) {
 	var averageLoss, averageBoardLoss, averageActionsLoss float32
 	count := 0
 	for params := range learnInput {
 		glog.V(3).Infof("Learn: count=%d", count)
 		loss, boardLoss, actionsLoss := players[0].Learner.Learn(
-			params.boards, params.boardLabels,
+			params.boardExamples, params.boardLabels,
 			params.actionsLabels, float32(*flag_learningRate),
 			1, nil)
 		glog.V(2).Infof("Losses: total=%g board=%g actions=%g", loss, boardLoss, actionsLoss)
