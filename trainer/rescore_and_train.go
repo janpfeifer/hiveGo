@@ -1,8 +1,9 @@
 package main
 
+// This file implements continuous rescore and train of a matches database.
+
 import (
 	"math/rand"
-	"runtime"
 	"time"
 
 	"github.com/golang/glog"
@@ -23,10 +24,7 @@ type MatchAction struct {
 // --rescore_pool_size: how many board positions to keep in pool. The larger the more times a
 //   rescored board will be used for training. It must be larger than --tf_batch_size.
 func rescoreAndTrain(matches []*Match) {
-	parallelism := runtime.GOMAXPROCS(0)
-	if *flag_parallelism > 0 {
-		parallelism = *flag_parallelism
-	}
+	parallelism := getParallelism()
 
 	// Sample random match/action to rescore.
 	maSampling := make(chan MatchAction, 2*parallelism)

@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"math"
-	"runtime"
 	"sync"
 
 	"github.com/golang/glog"
@@ -17,10 +16,7 @@ import (
 // until enough matches are
 func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 	var wg sync.WaitGroup
-	parallelism := runtime.GOMAXPROCS(0)
-	if *flag_parallelism > 0 {
-		parallelism = *flag_parallelism
-	}
+	parallelism := getParallelism()
 	setAutoBatchSizes(parallelism / 2)
 	glog.V(1).Infof("Rescoring: parallelization=%d", parallelism)
 	semaphore := make(chan bool, parallelism)

@@ -70,6 +70,9 @@ var (
 	flag_rescoreAndTrainIssueLearn = flag.Int("rescore_and_train_issue_learn", 10,
 		"After how many rescored matches/action to issue another learning mini-batch.")
 
+	flag_continuosPlayAndTrain = flag.Bool("play_and_train", false, "If set, continuously play and train matches.")
+
+	// AI for the players. If their configuration is exactly the same, they will point to the same object.
 	players = [2]*ai_players.SearcherScorerPlayer{nil, nil}
 )
 
@@ -80,6 +83,9 @@ func init() {
 // Results and if the players were swapped.
 type Match struct {
 	mu sync.Mutex
+
+	// Match number: only for printing.
+	MatchNum int
 
 	// Wether p0/p1 swapped positions in this match.
 	Swapped bool
@@ -215,7 +221,7 @@ func runMatch(matchNum int) *Match {
 	swapped := (matchNum%2 == 1)
 	board := NewBoard()
 	board.MaxMoves = *flag_maxMoves
-	match := &Match{Swapped: swapped, Boards: []*Board{board}}
+	match := &Match{MatchNum: matchNum, Swapped: swapped, Boards: []*Board{board}}
 	reorderedPlayers := players
 	if swapped {
 		reorderedPlayers[0], reorderedPlayers[1] = players[1], players[0]
@@ -322,10 +328,7 @@ func runMatches(results chan<- *Match) {
 	}
 	// Run at most GOMAXPROCS simultaneously.
 	var wg sync.WaitGroup
-	parallelism := runtime.GOMAXPROCS(0)
-	if *flag_parallelism > 0 {
-		parallelism = *flag_parallelism
-	}
+	parallelism := getParallelism()
 	setAutoBatchSizesForParallelism(parallelism)
 	glog.V(1).Infof("Parallelism for running matches=%d", parallelism)
 	semaphore := make(chan bool, parallelism)
@@ -530,6 +533,15 @@ func reportMatches(results <-chan *Match) (matches []*Match) {
 	return
 }
 
+// getParallelism returns the parallelism.
+func getParallelism() (parallelism int) {
+	parallelism = runtime.GOMAXPROCS(0)
+	if *flag_parallelism > 0 {
+		parallelism = *flag_parallelism
+	}
+	return
+}
+
 // main orchestrates playing, loading, rescoring, saving and training of matches.
 func main() {
 	flag.Parse()
@@ -559,6 +571,11 @@ func main() {
 		isSamePlayer = true
 	} else {
 		players[1] = ai_players.NewAIPlayer(*flag_players[1], *flag_numMatches == 1)
+	}
+
+	if *flag_continuosPlayAndTrain {
+		playAndTrain()
+		return
 	}
 
 	// Run/load matches.
