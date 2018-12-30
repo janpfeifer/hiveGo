@@ -6,7 +6,7 @@ WINS_DATA="$(mktemp /tmp/wins_stats.XXXXXXXXX)"
 function createTSV() {
 	printf '"Player 0 Wins" "Player 1 Wins" "Draws"\n' > "${WINS_DATA}"
 	cat "${LOGS_FILE}" \
-	| egrep  '(draw=|Loss|checkpointing)' /tmp/play_and_train.txt \
+	| egrep  '(draw=|Loss|checkpointing)' \
 	| perl -ne '/^.*p0 win=(\d+), p1 win=(\d+), draw=(\d+)/ && $1 + $2 + $3 == 100 && print "$1 $2 $3\n";' \
 	>> "${WINS_DATA}"
 }
