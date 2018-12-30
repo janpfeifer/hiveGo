@@ -98,7 +98,9 @@ func playAndTrain() {
 	// Rescore player1's moves, for learning.
 	rescoreMatchChan := make(chan *Match, 2*parallelism)
 	if !isSamePlayer {
-		go continuouslyRescorePlayer1(matchChan, rescoreMatchChan)
+		for i := 0; i < parallelism; i++ {
+			go continuouslyRescorePlayer1(matchChan, rescoreMatchChan)
+		}
 		// Swap matchChan and rescoreMatchChan, so that matchChan holds the
 		// correctly labeled matches.
 		matchChan, rescoreMatchChan = rescoreMatchChan, matchChan
