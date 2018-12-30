@@ -103,7 +103,7 @@ func playAndTrain() {
 	go continuousLearning(labeledExamplesChan)
 
 	// Occasionally monitor queue sizes and save.
-	ticker := time.NewTicker(60 * time.Second)
+	ticker := time.NewTicker(300 * time.Second)
 	lastSaveStep := p0GlobalStep()
 	for _ = range ticker.C {
 		glog.V(1).Infof("Queues: matches=%d, learning=%d", len(matchChan), len(labeledExamplesChan))

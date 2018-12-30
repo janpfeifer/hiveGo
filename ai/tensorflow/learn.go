@@ -169,8 +169,8 @@ func (s *Scorer) Learn(
 		for epoch := 0; epoch < epochs || epoch == 0; epoch++ {
 			feeds := s.buildFeedsForLearning(fc, learningRate, scoreActions)
 			loss, boardLoss, actionsLoss = s.learnOneMiniBatch(feeds, epochs > 0, scoreActions)
-			boardLoss /= float32(*Flag_learnBatchSize)
-			actionsLoss /= float32(*Flag_learnBatchSize)
+			boardLoss /= float32(len(boards))
+			actionsLoss /= float32(len(boards))
 			if epochs > 0 && perStepCallback != nil {
 				perStepCallback()
 			}

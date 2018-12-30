@@ -565,11 +565,14 @@ func main() {
 
 	// Create AI players. If they are the same, reuse -- sharing same TF Session can be more
 	// efficient.
+	glog.Infof("Creating player 0 from '%s'", *flag_players[0])
 	players[0] = ai_players.NewAIPlayer(*flag_players[0], *flag_numMatches == 1)
 	if *flag_players[1] == *flag_players[0] {
 		players[1] = players[0]
 		isSamePlayer = true
+		glog.Infof("Player 1 is the same as player 0, reusing AI player object.")
 	} else {
+		glog.Infof("Creating player 1 from '%s'", *flag_players[1])
 		players[1] = ai_players.NewAIPlayer(*flag_players[1], *flag_numMatches == 1)
 	}
 
