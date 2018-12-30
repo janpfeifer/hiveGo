@@ -275,6 +275,7 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 	for key, value := range parseFlagParams() {
 		tfOut := t0opt(key)
 		if tfOut.Op != nil {
+			glog.Infof("Tensor '%s' set to %g", key, value)
 			s.Params[tfOut] = mustTensor(value)
 		} else {
 			glog.Errorf("Tensor '%s' not found and cannot be set", key)
