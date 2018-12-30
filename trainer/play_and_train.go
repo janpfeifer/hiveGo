@@ -95,6 +95,15 @@ func playAndTrain() {
 		go continuouslyPlay(matchIdGen, matchStats, matchChan)
 	}
 
+	// Rescore player1's moves, for learning.
+	rescoreMatchChan := make(chan *Match, 2*parallelism)
+	if !isSamePlayer {
+		go continuouslyRescorePlayer1(matchChan, rescoreMatchChan)
+		// Swap matchChan and rescoreMatchChan, so that matchChan holds the
+		// correctly labeled matches.
+		matchChan, rescoreMatchChan = rescoreMatchChan, matchChan
+	}
+
 	// Convert matches to labeled examples.
 	labeledExamplesChan := make(chan LabeledExamples, 2*parallelism)
 	go continuousMatchesToLabeledExamples(matchChan, labeledExamplesChan)
@@ -106,7 +115,11 @@ func playAndTrain() {
 	ticker := time.NewTicker(300 * time.Second)
 	lastSaveStep := p0GlobalStep()
 	for _ = range ticker.C {
-		glog.V(1).Infof("Queues: matches=%d, learning=%d", len(matchChan), len(labeledExamplesChan))
+		if isSamePlayer {
+			glog.V(1).Infof("Queues: matches=%d learning=%d", len(matchChan), len(labeledExamplesChan))
+		} else {
+			glog.V(1).Infof("Queues: matches=%d rescoredMatches=%d learning=%d", len(rescoreMatchChan), len(matchChan), len(labeledExamplesChan))
+		}
 		globalStep := p0GlobalStep()
 		if globalStep == -1 || globalStep > lastSaveStep {
 			lastSaveStep = globalStep
@@ -127,36 +140,47 @@ func continuouslyPlay(matchIdGen *IdGen, matchStats *MatchStats, matchChan chan<
 	}
 }
 
+func continuouslyRescorePlayer1(mInput <-chan *Match, mOutput chan<- *Match) {
+	for match := range mInput {
+		// Pick only moves done by player 0 (or both if they are the same)
+		for idx := range match.Actions {
+			board := match.Boards[idx]
+			if board.NumActions() < 2 {
+				// Skip when there is none or only one action available.
+				continue
+			}
+			player := board.NextPlayer
+			if match.Swapped {
+				player = 1 - player
+			}
+			if player == 0 {
+				// No need to rescore.
+				continue
+			}
+
+			// Rescore action.
+			newScores, actionsLabels := players[0].Searcher.ScoreMatch(board, match.Actions[idx:idx+1])
+
+			// Copy over new scores and labels for the particular action on the match.
+			match.Scores[idx] = newScores[0]
+			if actionsLabels != nil {
+				match.ActionsLabels[idx] = actionsLabels[0]
+			}
+		}
+		mOutput <- match
+	}
+}
+
 func continuousMatchesToLabeledExamples(matchChan <-chan *Match, labeledExamplesChan chan<- LabeledExamples) {
 	for match := range matchChan {
 		// Prepare set of labeled examples.
 		n := len(match.Actions)
-		if !isSamePlayer {
-			n = (n + 1) / 2
-		}
 		le := LabeledExamples{
 			boardExamples: make([]*Board, 0, n),
 			boardLabels:   make([]float32, 0, n),
 			actionsLabels: make([][]float32, 0, n),
 		}
-
-		// Pick only moves done by player 0 (or both if they are the same)
-		for idx := range match.Actions {
-			board := match.Boards[idx]
-			player := board.NextPlayer
-			if match.Swapped {
-				player = 1 - player
-			}
-			if player == 0 || isSamePlayer {
-				if board.NumActions() < 2 {
-					// Skip when there is none or only one action available.
-					continue
-				}
-				le.boardExamples = append(le.boardExamples, board)
-				le.boardLabels = append(le.boardLabels, match.Scores[idx])
-				le.actionsLabels = append(le.actionsLabels, match.ActionsLabels[idx])
-			}
-		}
+		match.AppendLabeledExamples(&le)
 		labeledExamplesChan <- le
 	}
 }
