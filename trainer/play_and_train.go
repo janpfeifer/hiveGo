@@ -50,7 +50,7 @@ func (ms *MatchStats) AddResult(match *Match) {
 		if b.Draw() {
 			ms.Draws--
 		} else {
-			player := match.FinalBoard().Winner()
+			player := b.Winner()
 			if oldMatch.Swapped {
 				player = 1 - player
 			}
@@ -69,7 +69,7 @@ func (ms *MatchStats) AddResult(match *Match) {
 	if b.Draw() {
 		ms.Draws++
 	} else {
-		player := match.FinalBoard().Winner()
+		player := b.Winner()
 		if match.Swapped {
 			player = 1 - player
 		}
