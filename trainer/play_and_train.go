@@ -108,7 +108,9 @@ func playAndTrain() {
 
 	// Convert matches to labeled examples.
 	labeledExamplesChan := make(chan LabeledExamples, 2*parallelism)
-	go continuousMatchesToLabeledExamples(matchChan, labeledExamplesChan)
+	for i := 0; i < parallelism; i++ {
+		go continuousMatchesToLabeledExamples(matchChan, labeledExamplesChan)
+	}
 
 	// Continuously learn.
 	go continuousLearning(labeledExamplesChan)
@@ -120,7 +122,7 @@ func playAndTrain() {
 		if isSamePlayer {
 			glog.V(1).Infof("Queues: matches=%d learning=%d", len(matchChan), len(labeledExamplesChan))
 		} else {
-			glog.V(1).Infof("Queues: matches=%d rescoredMatches=%d learning=%d", len(rescoreMatchChan), len(matchChan), len(labeledExamplesChan))
+			glog.V(1).Infof("Queues: finishedMatches=%d rescoreMatches=%d learning=%d", len(rescoreMatchChan), len(matchChan), len(labeledExamplesChan))
 		}
 		globalStep := p0GlobalStep()
 		if globalStep == -1 || globalStep > lastSaveStep {
