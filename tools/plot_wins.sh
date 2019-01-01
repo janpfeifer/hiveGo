@@ -24,10 +24,9 @@ function loss_plot() {
 	printf '"Total Loss" "Board Loss" "Actions Loss * 1e3"\n' > ${LOSS_DATA}
 	cat "${LOGS_FILE}" \
 	| egrep  '(draw=|Loss|checkpointing)' \
-	| tail -n +200 \
 	| perl -e '$ma=0.99 ; $t_m=0.0; $b_m=0.0; $a_m=0.0; $c=0;
 	 	while (<>) { 
-	 		if ( m/.*Loss after epoch: total=(.*?), board=(.*?), actions=(.*)$/ ) { 
+	 		if ( m/.*Loss after epoch.*?: total=(.*?), board=(.*?), actions=(.*)$/ ) {
 	 			$t=$1; $b=$2; $a=$3 ; 
 	 			$r=$c/($c+1) ; if ($r>$ma) { $r=$ma } ; $r1=1.0-$r ; 
 	 			$t_m=$t_m*$r+$t*$r1; 
@@ -43,6 +42,7 @@ function loss_plot() {
 	gnuplot <<EOF
 		set term png giant size 2048,1024 font '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 		set output '${LOSS_PNG}'
+		set logscale y 10
 		plot for [i=1:3] "${LOSS_DATA}" using i title columnhead(i) with lines
 EOF
 	rm $LOSS_DATA
