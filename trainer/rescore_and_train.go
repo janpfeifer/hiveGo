@@ -179,7 +179,7 @@ func continuousLearning(learnInput <-chan LabeledExamples) {
 		loss, boardLoss, actionsLoss := players[0].Learner.Learn(
 			params.boardExamples, params.boardLabels,
 			params.actionsLabels, float32(*flag_learningRate),
-			1, nil)
+			*flag_trainLoops, nil)
 		glog.V(2).Infof("Losses: total=%g board=%g actions=%g", loss, boardLoss, actionsLoss)
 		decay := 1 - 1/float32(1+count)
 		if decay > maxAverageLossDecay {

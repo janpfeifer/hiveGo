@@ -23,9 +23,10 @@ const (
 )
 
 const (
-	NUM_PLAYERS     = 2
-	NUM_NEIGHBOURS  = 6
-	NUM_PIECE_TYPES = LAST_PIECE_TYPE - 1 // Includes the "NO_PIECE" type.
+	NUM_PLAYERS       = 2
+	NUM_NEIGHBOURS    = 6
+	NUM_PIECE_TYPES   = LAST_PIECE_TYPE - 1 // Includes the "NO_PIECE" type.
+	DEFAULT_MAX_MOVES = 100
 )
 
 var (
@@ -189,7 +190,7 @@ func NewBoard() *Board {
 			INITIAL_AVAILABILITY, INITIAL_AVAILABILITY},
 		board:      map[Pos]EncodedStack{},
 		MoveNumber: 1,
-		MaxMoves:   100,
+		MaxMoves:   DEFAULT_MAX_MOVES,
 		NextPlayer: 0,
 		Previous:   nil,
 	}
@@ -431,13 +432,13 @@ func LoadMatch(dec *gob.Decoder) (initial *Board, actions []Action, scores []flo
 			return
 		}
 	}
-	glog.V(2).Infof("Loaded MaxMoves=%d, %d scores, %d actions, %d actionsLables",
+	glog.V(2).Infof("Loaded MaxMoves=%d, %d scores, %d actions, %d actionsLabels",
 		initial.MaxMoves, len(scores), len(actions), len(actionsLabels))
 	return
 }
 
 // SaveMatch will "save" (encode) the match and scores for future reconstruction.
-// scores is opional.
+// scores is optional.
 func SaveMatch(enc *gob.Encoder, MaxMoves int, actions []Action, scores []float32, actionsLabels [][]float32) error {
 	saveFileVersion := -1
 	if err := enc.Encode(saveFileVersion); err != nil {

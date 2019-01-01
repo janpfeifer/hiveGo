@@ -3,11 +3,20 @@ package main
 // This file implements continuous play and train.
 
 import (
+	"flag"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/golang/glog"
 	. "github.com/janpfeifer/hiveGo/state"
+)
+
+var (
+	flag_continuosPlayAndTrain = flag.Bool("play_and_train",
+		false, "If set, continuously play and train matches.")
+	flag_continuosPlayAndTrainBatchMatches = flag.Int("play_and_train_batch_matches",
+		10, "Number of matches to batch before learning.")
 )
 
 type IdGen struct {
@@ -106,10 +115,14 @@ func playAndTrain() {
 		matchChan, rescoreMatchChan = rescoreMatchChan, matchChan
 	}
 
+	// Batch matches.
+	batchChan := make(chan []*Match, 2*parallelism)
+	go batchMatches(matchChan, batchChan)
+
 	// Convert matches to labeled examples.
 	labeledExamplesChan := make(chan LabeledExamples, 2*parallelism)
 	for i := 0; i < parallelism; i++ {
-		go continuousMatchesToLabeledExamples(matchChan, labeledExamplesChan)
+		go continuousMatchesToLabeledExamples(batchChan, labeledExamplesChan)
 	}
 
 	// Continuously learn.
@@ -137,8 +150,17 @@ func continuouslyPlay(matchIdGen *IdGen, matchStats *MatchStats, matchChan chan<
 		id := matchIdGen.NextId()
 		match := runMatch(id)
 		matchStats.AddResult(match)
-		glog.V(1).Infof("Match %d finished. %d matches played so far. Last %d results: p0 win=%d, p1 win=%d, draw=%d",
-			id, matchStats.TotalCount, NumMatchesToKeepForStats,
+		msg := "draw"
+		if !match.FinalBoard().Draw() {
+			player := match.FinalBoard().Winner()
+			if match.Swapped {
+				player = 1 - player
+			}
+			msg = fmt.Sprintf("player %d wins", player)
+		}
+		glog.V(1).Infof("Match %d finished (%s in %d moves). %d matches played so far. "+
+			"Last %d results: p0 win=%d, p1 win=%d, draw=%d",
+			id, msg, len(match.Actions), matchStats.TotalCount, NumMatchesToKeepForStats,
 			matchStats.Wins[0], matchStats.Wins[1], matchStats.Draws)
 		matchChan <- match
 	}
@@ -175,16 +197,33 @@ func continuouslyRescorePlayer1(mInput <-chan *Match, mOutput chan<- *Match) {
 	}
 }
 
-func continuousMatchesToLabeledExamples(matchChan <-chan *Match, labeledExamplesChan chan<- LabeledExamples) {
+func batchMatches(matchChan <-chan *Match, batchChan chan<- []*Match) {
+	batchSize := *flag_continuosPlayAndTrainBatchMatches
+	batch := make([]*Match, 0, batchSize)
 	for match := range matchChan {
-		// Prepare set of labeled examples.
-		n := len(match.Actions)
+		batch = append(batch, match)
+		if len(batch) == batchSize {
+			batchChan <- batch
+			batch = make([]*Match, 0, batchSize)
+		}
+	}
+}
+
+func continuousMatchesToLabeledExamples(batchChan <-chan []*Match, labeledExamplesChan chan<- LabeledExamples) {
+	for batch := range batchChan {
+		n := 0
+		for _, match := range batch {
+			n += len(match.Actions)
+		}
 		le := LabeledExamples{
 			boardExamples: make([]*Board, 0, n),
 			boardLabels:   make([]float32, 0, n),
 			actionsLabels: make([][]float32, 0, n),
 		}
-		match.AppendLabeledExamples(&le)
+		for _, match := range batch {
+			match.AppendLabeledExamples(&le)
+		}
 		labeledExamplesChan <- le
 	}
 }
+

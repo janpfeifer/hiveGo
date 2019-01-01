@@ -32,7 +32,7 @@ var (
 	}
 
 	flag_maxMoves = flag.Int(
-		"max_moves", 100, "Max moves before game is assumed to be a draw.")
+		"max_moves", DEFAULT_MAX_MOVES, "Max moves before game is assumed to be a draw.")
 
 	flag_numMatches = flag.Int("num_matches", 0, "Number of matches to play. If larger "+
 		"than one, starting position is alternated. Value of 0 means 1 match to play, or load all file.")
@@ -69,8 +69,6 @@ var (
 		"How many board positions to keep in pool (in a rotating buffer) used to train. ")
 	flag_rescoreAndTrainIssueLearn = flag.Int("rescore_and_train_issue_learn", 10,
 		"After how many rescored matches/action to issue another learning mini-batch.")
-
-	flag_continuosPlayAndTrain = flag.Bool("play_and_train", false, "If set, continuously play and train matches.")
 
 	// AI for the players. If their configuration is exactly the same, they will point to the same object.
 	players = [2]*ai_players.SearcherScorerPlayer{nil, nil}
