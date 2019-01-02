@@ -2,6 +2,7 @@
 LOGS_FILE="$1" ; shift
 WINS_PNG="$1" ; shift
 LOSS_PNG="$1" ; shift
+SCORES_PNG="$1" ; shift
 
 function wins_plot() {
 	WINS_DATA="$(mktemp /tmp/wins_stats.XXXXXXXXX)"
@@ -16,7 +17,7 @@ function wins_plot() {
 		set output '${WINS_PNG}'
 		plot for [i=1:3] "${WINS_DATA}" using i title columnhead(i) with lines
 EOF
-	rm $WINS_DATA
+	rm "${WINS_DATA}"
 }
 
 function loss_plot() {
@@ -45,9 +46,34 @@ function loss_plot() {
 		set logscale y 10
 		plot for [i=1:3] "${LOSS_DATA}" using i title columnhead(i) with lines
 EOF
-	rm $LOSS_DATA
+	rm "${LOSS_DATA}"
 }
 
+function scores_scatter_plot() {
+	SCORES_DATA="$(mktemp /tmp/scores_stats.XXXXXXXXX)"
+	# printf '"Model" "Move" "Score"\n' > ${SCORES_DATA}
+
+	cat "${LOGS_FILE}" \
+    | egrep -i 'Move #' | cut -d']' -f2 | grep -v 'left)' \
+    | perl -ne '/Move #(\d+) \((.*?)\).*score=(.*)$/ && print $1." ".$3." ".$2."\n";' \
+    | perl -ne 's/a0_v2/0/g; s/conv_v\d+/1/g; print;' \
+    | tail -n 5000 \
+    >> ${SCORES_DATA}
+
+	gnuplot <<EOF
+		set term png giant size 2048,1024 font '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+		set output '${SCORES_PNG}'
+		set style data points
+		set xlabel "Move #"
+		set ylabel "Score"
+		set palette rgb 3,11
+		plot("${SCORES_DATA}") with points palette
+EOF
+    # rm "${SCORES_DATA}"
+}
 
 wins_plot
 loss_plot
+if [[ "${SCORES_PNG}" != "" ]] ; then
+    scores_scatter_plot
+fi
