@@ -6,8 +6,8 @@ import sys
 
 # Model internal type: tf.float16 presumably is faster in the RX2080 Ti GPU,
 # and not slower in others. Losses are still kept as float32 though.
-MODEL_DTYPE = tf.float16
-# MODEL_DTYPE = tf.float32
+# MODEL_DTYPE = tf.float16
+MODEL_DTYPE = tf.float32
 
 
 tf.app.flags.DEFINE_string("output", "", "Where to save the graph definition.")
