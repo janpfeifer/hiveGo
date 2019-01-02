@@ -31,6 +31,7 @@ package tensorflow
 //      You can convert other protos as needed -- yes, unfortunately I only need config.proto
 //      but had to manually track the dependencies ... :(
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -40,6 +41,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	tfconfig "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf"
@@ -58,6 +60,7 @@ var (
 	// These are default values for tensorflow models' tensors (if they are
 	// set as placeholders). They can be overwritten using the flag --tf_params.
 	DefaultModelParams = map[string]float32{
+		"learning_rate": 1e-5,
 		"actions_loss_ratio": 0.005,
 		"l2_regularization":  1e-5,
 	}
@@ -69,14 +72,25 @@ const (
 	GPU_MEMORY_FRACTION_TO_USE = 0.3
 )
 
-var Flag_learnBatchSize = flag.Int("tf_batch_size", 0,
+var (
+	Flag_learnBatchSize = flag.Int("tf_batch_size", 0,
 	"Batch size when learning: this is the number of boards, not actions. There is usually 100/1 ratio of "+
 		"actions per board. Examples are shuffled before being batched. 0 means no batching.")
-var flag_tfParams = flag.String("tf_params", "",
+	flag_tfParams = flag.String("tf_params", "",
 	"Comma separated list of `key=value` pairs where `key` is a string (name of a tensor), and "+
 		"`value` is a float32 value. These are assumed to be model's placeholders "+
 		"that will be set with the given value on all inference/train session runs. If "+
 		"tensor named `key` does not exist in model, it is reported but ignored.")
+	flag_tfParamsFile = flag.String("tf_params_file", "",
+		"Similar to tf_params, but instead read `key=values` pairs from given file. "+
+		"The file is re-read before each call to learn(), so parameters can be changed "+
+		"dynamically during long training periods.")
+)
+
+type tfOutputTensor struct{
+	key tf.Output
+	value *tf.Tensor
+}
 
 type Scorer struct {
 	Basename            string
@@ -100,17 +114,20 @@ type Scorer struct {
 	ActionsPieces, ActionsLabels             tf.Output
 	ActionsPredictions, ActionsLosses        tf.Output
 
-	IsTraining, LearningRate, CheckpointFile tf.Output
+	IsTraining, CheckpointFile 				 tf.Output
 	GlobalStep, TotalLoss                    tf.Output
 	SelfSupervision                          tf.Output
 	InitOp, TrainOp, SaveOp, RestoreOp       *tf.Operation
 
 	// Params set by flag --tf_params.
-	Params map[tf.Output]*tf.Tensor
+	Params   map[string]*tfOutputTensor
+	paramsFileLastModifiedTime time.Time
 
 	version int
 	// Uses the number of input features used.
 }
+
+
 
 // Data used for parsing of player options.
 type ParsingData struct {
@@ -242,7 +259,6 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 
 		// Global parameters.
 		IsTraining:      t0opt("is_training"),
-		LearningRate:    t0("learning_rate"),
 		SelfSupervision: t0opt("self_supervision"),
 		CheckpointFile:  t0("save/Const"),
 		TotalLoss:       t0("mean_loss"),
@@ -254,7 +270,7 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 		SaveOp:    op("save/control_dependency"),
 		RestoreOp: op("save/restore_all"),
 
-		Params: make(map[tf.Output]*tf.Tensor),
+		Params: make(map[string]*tfOutputTensor),
 	}
 
 	// Model must have all actions tensors to be considered actions classifier.
@@ -272,15 +288,8 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 	glog.V(1).Infof("TensorFlow model's version=%d", s.version)
 
 	// Set generic parameters.
-	for key, value := range parseFlagParams() {
-		tfOut := t0opt(key)
-		if tfOut.Op != nil {
-			glog.Infof("Tensor '%s' set to %g", key, value)
-			s.Params[tfOut] = mustTensor(value)
-		} else {
-			glog.Errorf("Tensor '%s' not found and cannot be set", key)
-		}
-	}
+	s.parseFlagParams()
+	s.parseFlagParamsFile()
 
 	// Either restore or initialize the network.
 	cpIndex, _ := s.CheckpointFiles()
@@ -306,8 +315,31 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 	return s
 }
 
-func parseFlagParams() (keyValues map[string]float32) {
-	keyValues = make(map[string]float32)
+func (s *Scorer) setParam(key string, value float32) {
+	t0opt := func(tensorName string) (to tf.Output) {
+		op := s.graph.Operation(tensorName)
+		if op == nil {
+			return
+		}
+		return op.Output(0)
+	}
+
+	tfOut := t0opt(key)
+	if tfOut.Op != nil {
+		if pair, found := s.Params[key]; found {
+			glog.Infof("Tensor '%s' updated to %g", key, value)
+			pair.value = mustTensor(value)
+		} else {
+			glog.Infof("Tensor '%s' set to %g", key, value)
+			s.Params[key] = &tfOutputTensor{tfOut, mustTensor(value)}
+		}
+	} else {
+		glog.Errorf("Tensor '%s' not found and cannot be set", key)
+	}
+}
+
+func (s *Scorer) parseFlagParams() {
+	keyValues := make(map[string]float32)
 	for key, value := range DefaultModelParams {
 		keyValues[key] = value
 	}
@@ -324,6 +356,60 @@ func parseFlagParams() (keyValues map[string]float32) {
 		} else {
 			log.Panicf("Malformed --tf_params entry [ %s ]: %v", keyValue, err)
 		}
+	}
+	for key, value := range keyValues {
+		s.setParam(key, value)
+	}
+	return
+}
+
+func (s *Scorer) parseFlagParamsFile() {
+	// Skip if no file configured.
+	if *flag_tfParamsFile == "" {
+		return
+	}
+
+	// Check if file changed since last time it was parsed.
+	info, err := os.Stat(*flag_tfParamsFile)
+	if err != nil {
+		log.Panicf("Cannot stat file given by --tf_params_file=%s: %v", *flag_tfParamsFile, err)
+	}
+	if info.ModTime().Equal(s.paramsFileLastModifiedTime) {
+		// File not modified.
+		return
+	}
+	s.paramsFileLastModifiedTime = info.ModTime()
+	glog.Infof("Parsing TensorFlow parameters in %s for model %s", *flag_tfParamsFile, s)
+
+	// Parse key value pairs.
+	keyValues := make(map[string]float32)
+	file, err := os.Open(*flag_tfParamsFile)
+	if err != nil {
+		log.Panicf("Failed reading file given by --tf_params_file=%s: %v", *flag_tfParamsFile, err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		pair := scanner.Text()
+		if pair == "" {
+			continue
+		}
+		keyValue := strings.Split(pair, "=")
+		if len(keyValue) != 2 {
+			log.Panicf("Malformed --tf_params_file entry: [ %s ]", keyValue)
+		}
+		if v, err := strconv.ParseFloat(keyValue[1], 32); err == nil {
+			keyValues[keyValue[0]] = float32(v)
+		} else {
+			log.Panicf("Malformed --tf_params_file entry [ %s ]: %v", keyValue, err)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		log.Panicf("Failed reading file given by --tf_params_file=%s: %v", *flag_tfParamsFile, err)
+	}
+	for key, value := range keyValues {
+		s.setParam(key, value)
 	}
 	return
 }
@@ -561,8 +647,8 @@ func (s *Scorer) buildFeeds(fc *flatFeaturesCollection, scoreActions bool) (feed
 		}
 		feeds[s.FullBoard] = mustTensor(fc.fullBoardFeatures)
 	}
-	for key, value := range s.Params {
-		feeds[key] = value
+	for _, pair := range s.Params {
+		feeds[pair.key] = pair.value
 	}
 	return
 }

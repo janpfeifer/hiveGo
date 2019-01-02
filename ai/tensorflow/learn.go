@@ -91,7 +91,8 @@ func (fc *flatFeaturesCollection) randomMiniBatches(batchSize int) (fcs []*flatF
 	return
 }
 
-func (s *Scorer) buildFeedsForLearning(batch *flatFeaturesCollection, learningRate float32, scoreActions bool) (feeds map[tf.Output]*tf.Tensor) {
+func (s *Scorer) buildFeedsForLearning(batch *flatFeaturesCollection, scoreActions bool) (
+	feeds map[tf.Output]*tf.Tensor) {
 	feeds = s.buildFeeds(batch, scoreActions)
 
 	// Feed also the labels.
@@ -99,7 +100,6 @@ func (s *Scorer) buildFeedsForLearning(batch *flatFeaturesCollection, learningRa
 	if scoreActions {
 		feeds[s.ActionsLabels] = mustTensor(batch.actionsLabels)
 	}
-	feeds[s.LearningRate] = mustTensor(learningRate)
 	if s.IsTraining.Op != nil {
 		feeds[s.IsTraining] = mustTensor(true)
 	}
@@ -121,6 +121,11 @@ func (s *Scorer) learnOneMiniBatch(feeds map[tf.Output]*tf.Tensor, train, scoreA
 	var ops []*tf.Operation
 	if train {
 		ops = append(ops, s.TrainOp)
+	} else {
+		if s.IsTraining.Op != nil {
+			// If only evaluating, set IsTraining to false (which disables dropout).
+			feeds[s.IsTraining] = mustTensor(false)
+		}
 	}
 	results, err := s.sessionPool[0].Run(feeds, fetches, ops)
 	if err != nil {
@@ -137,11 +142,13 @@ func (s *Scorer) learnOneMiniBatch(feeds map[tf.Output]*tf.Tensor, train, scoreA
 	return
 }
 
-// Learn will train the tensorflow model for the given labels and actionLabels.s
+// Learn will train the tensorflow model for the given labels and actionLabels.
+// learningRate is ignored, instead it is read as a standard parameter.
 func (s *Scorer) Learn(
 	boards []*Board, boardLabels []float32, actionsLabels [][]float32,
-	learningRate float32, epochs int, perStepCallback func()) (
+	_ float32, epochs int, perStepCallback func()) (
 	loss, boardLoss, actionsLoss float32) {
+	s.parseFlagParamsFile()
 	if len(boards) == 0 {
 		log.Panicf("Received empty list of boards to learn.")
 	}
@@ -167,7 +174,7 @@ func (s *Scorer) Learn(
 
 	if *Flag_learnBatchSize == 0 || len(boards) <= *Flag_learnBatchSize {
 		for epoch := 0; epoch < epochs || epoch == 0; epoch++ {
-			feeds := s.buildFeedsForLearning(fc, learningRate, scoreActions)
+			feeds := s.buildFeedsForLearning(fc, scoreActions)
 			loss, boardLoss, actionsLoss = s.learnOneMiniBatch(feeds, epochs > 0, scoreActions)
 			boardLoss /= float32(len(boards))
 			actionsLoss /= float32(len(boards))
@@ -198,7 +205,7 @@ func (s *Scorer) Learn(
 		close(batchesChan)
 	}()
 
-	// Write feeds in a separte goroutine.
+	// Write feeds in a separate goroutine.
 	feedsChan := make(chan map[tf.Output]*tf.Tensor, 10)
 	go func() {
 		for batch := range batchesChan {
@@ -206,7 +213,7 @@ func (s *Scorer) Learn(
 				feedsChan <- nil
 				continue
 			}
-			feedsChan <- s.buildFeedsForLearning(batch, learningRate, scoreActions)
+			feedsChan <- s.buildFeedsForLearning(batch, scoreActions)
 		}
 		close(feedsChan)
 	}()
