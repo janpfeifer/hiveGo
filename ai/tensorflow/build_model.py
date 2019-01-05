@@ -40,8 +40,8 @@ ACTIONS_NUM_HIDDEN_LAYERS = 4
 ACTIONS_NODES_PER_LAYER = 128
 
 # Full board convolutions
-FULL_BOARD_CONV_DEPTH = 64
-FULL_BOARD_CONV_LAYERS = 8
+FULL_BOARD_CONV_DEPTH = 128
+FULL_BOARD_CONV_LAYERS = 4
 # FULL_BOARD_CONV_DEPTH = 32
 # FULL_BOARD_CONV_LAYERS = 2
 
@@ -52,7 +52,8 @@ NORMALIZATION = None
 NORMALIZATION = tf.layers.batch_normalization
 
 
-def BuildBoardEmbeddings(board_features, initializer, l2_regularizer, dropout_keep_probability):
+def BuildBoardEmbeddings(board_features, initializer, l2_regularizer,
+                         dropout_keep_probability):
     global ACTIVATION
     with tf.name_scope("BuildBoardEmbeddings"):
         with tf.variable_scope("board_kernel", reuse=tf.AUTO_REUSE):
@@ -209,6 +210,8 @@ def main(argv=None):  # pylint: disable=unused-argument
         tf.float32, shape=(), name='prediction_l2_regularization')
     dropout_keep_probability = tf.placeholder(
         tf.float32, shape=(), name='dropout_keep_probability')
+    clip_global_norm = tf.placeholder(
+        tf.float32, shape=(), name='clip_global_norm')
 
     # Board data.
     board_features = tf.placeholder(
@@ -222,6 +225,7 @@ def main(argv=None):  # pylint: disable=unused-argument
     hive_lib.report_tensors('Board inputs:', [
         is_training, learning_rate,
         l2_regularization, prediction_l2_regularization, dropout_keep_probability,
+        clip_global_norm,
         board_features, full_board, board_labels
     ])
 
@@ -229,7 +233,6 @@ def main(argv=None):  # pylint: disable=unused-argument
         is_training,
         lambda: tf.cast(dropout_keep_probability, dtype=MODEL_DTYPE),
         lambda: tf.constant(1, dtype=MODEL_DTYPE))
-
 
     # Add Batch Normalization to the activation function.
     global NORMALIZATION
@@ -318,17 +321,24 @@ def main(argv=None):  # pylint: disable=unused-argument
     # Build optimizer and train opt.
     global_step = tf.train.create_global_step()
     # optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-    with tf.name_scope("capped_grad_loss_wrt_vars"):
+    with tf.name_scope("clipped_grad_loss_wrt_vars"):
         optimizer = tf.train.GradientDescentOptimizer(
             learning_rate=learning_rate)
         grads_and_vars = optimizer.compute_gradients(total_losses)
-        capped_grads_and_vars = [
-            (tf.clip_by_value(grad, -0.05, 0.05), var) for grad, var in grads_and_vars]
+        # clipped_grads_and_vars = [
+        #     (tf.clip_by_value(grad, -0.05, 0.05), var) for grad, var in grads_and_vars]
+        vars = [x[1] for x in grads_and_vars]
+        grads = [x[0] for x in grads_and_vars]
+        clipped_grads = tf.cond(
+            clip_global_norm > 0.0,
+            lambda: tf.clip_by_global_norm(grads, clip_global_norm)[0],
+            lambda: grads)
+        clipped_grads_and_vars = zip(clipped_grads, vars)
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
         train_op = optimizer.apply_gradients(
-            capped_grads_and_vars, global_step=global_step, name='train')
+            clipped_grads_and_vars, global_step=global_step, name='train')
 
     init = tf.global_variables_initializer()
 

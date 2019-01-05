@@ -28,7 +28,7 @@ func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
-			from, to := match.SelectRangeOfActions()
+			from, to, _ := match.SelectRangeOfActions()
 			if from > len(match.Actions) {
 				return
 			}

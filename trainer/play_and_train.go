@@ -97,7 +97,7 @@ func playAndTrain() {
 	}
 
 	// Generate played games.
-	matchChan := make(chan *Match, 2*parallelism)
+	matchChan := make(chan *Match, 5)
 	matchIdGen := &IdGen{}
 	matchStats := NewMatchStats()
 	for i := 0; i < parallelism; i++ {
@@ -105,8 +105,9 @@ func playAndTrain() {
 	}
 
 	// Rescore player1's moves, for learning.
-	rescoreMatchChan := make(chan *Match, 2*parallelism)
-	if !isSamePlayer {
+	var rescoreMatchChan chan *Match
+	if !isSamePlayer && *flag_rescore {
+		rescoreMatchChan = make(chan *Match, 5)
 		for i := 0; i < parallelism; i++ {
 			go continuouslyRescorePlayer1(matchChan, rescoreMatchChan)
 		}
@@ -116,11 +117,11 @@ func playAndTrain() {
 	}
 
 	// Batch matches.
-	batchChan := make(chan []*Match, 2*parallelism)
+	batchChan := make(chan []*Match, 5)
 	go batchMatches(matchChan, batchChan)
 
 	// Convert matches to labeled examples.
-	labeledExamplesChan := make(chan LabeledExamples, 2*parallelism)
+	labeledExamplesChan := make(chan LabeledExamples, 5)
 	for i := 0; i < parallelism; i++ {
 		go continuousMatchesToLabeledExamples(batchChan, labeledExamplesChan)
 	}
@@ -132,10 +133,12 @@ func playAndTrain() {
 	ticker := time.NewTicker(300 * time.Second)
 	lastSaveStep := p0GlobalStep()
 	for _ = range ticker.C {
-		if isSamePlayer {
-			glog.V(1).Infof("Queues: matches=%d learning=%d", len(matchChan), len(labeledExamplesChan))
+		if rescoreMatchChan == nil {
+			glog.V(1).Infof("Queues: matches=%d batches=%d learning=%d",
+				len(matchChan), len(batchChan), len(labeledExamplesChan))
 		} else {
-			glog.V(1).Infof("Queues: finishedMatches=%d rescoreMatches=%d learning=%d", len(rescoreMatchChan), len(matchChan), len(labeledExamplesChan))
+			glog.V(1).Infof("Queues: finishedMatches=%d rescoreMatches=%d batches=%d learning=%d",
+				len(rescoreMatchChan), len(matchChan), len(batchChan), len(labeledExamplesChan))
 		}
 		globalStep := p0GlobalStep()
 		if globalStep == -1 || globalStep > lastSaveStep {
@@ -168,8 +171,15 @@ func continuouslyPlay(matchIdGen *IdGen, matchStats *MatchStats, matchChan chan<
 
 func continuouslyRescorePlayer1(mInput <-chan *Match, mOutput chan<- *Match) {
 	for match := range mInput {
+		glog.V(1).Infof("Match received for rescoring.")
 		// Pick only moves done by player 0 (or both if they are the same)
+		from, to, _ := match.SelectRangeOfActions()
 		for idx := range match.Actions {
+			if idx < from || idx >= to {
+				// We only need to rescore those actions that are actually going
+				// to be used.
+				continue
+			}
 			board := match.Boards[idx]
 			if board.NumActions() < 2 {
 				// Skip when there is none or only one action available.
@@ -193,6 +203,7 @@ func continuouslyRescorePlayer1(mInput <-chan *Match, mOutput chan<- *Match) {
 				match.ActionsLabels[idx] = actionsLabels[0]
 			}
 		}
+		glog.V(1).Infof("Rescored match issued.")
 		mOutput <- match
 	}
 }
@@ -202,7 +213,9 @@ func batchMatches(matchChan <-chan *Match, batchChan chan<- []*Match) {
 	batch := make([]*Match, 0, batchSize)
 	for match := range matchChan {
 		batch = append(batch, match)
+		glog.V(1).Infof("Current batch: %d", len(batch))
 		if len(batch) == batchSize {
+			glog.V(1).Infof("Batch of %d matches issued.", len(batch))
 			batchChan <- batch
 			batch = make([]*Match, 0, batchSize)
 		}
@@ -211,9 +224,13 @@ func batchMatches(matchChan <-chan *Match, batchChan chan<- []*Match) {
 
 func continuousMatchesToLabeledExamples(batchChan <-chan []*Match, labeledExamplesChan chan<- LabeledExamples) {
 	for batch := range batchChan {
+		glog.V(1).Infof("Batch received: generating labeled examples.")
 		n := 0
 		for _, match := range batch {
-			n += len(match.Actions)
+			n += len(match.Actions) + 42
+		}
+		if !isSamePlayer && !*flag_distill && !*flag_rescore {
+			n /= 2
 		}
 		le := LabeledExamples{
 			boardExamples: make([]*Board, 0, n),
@@ -221,9 +238,20 @@ func continuousMatchesToLabeledExamples(batchChan <-chan []*Match, labeledExampl
 			actionsLabels: make([][]float32, 0, n),
 		}
 		for _, match := range batch {
-			match.AppendLabeledExamples(&le)
+			if isSamePlayer || *flag_distill || *flag_rescore {
+				// Include both players data.
+				match.AppendLabeledExamples(&le)
+			} else {
+				// Only include data from player training.
+				if match.Swapped {
+					match.AppendLabeledExamplesForPlayers(&le, [2]bool{false, true})
+				} else {
+					match.AppendLabeledExamplesForPlayers(&le, [2]bool{true, false})
+				}
+			}
 		}
+		glog.V(1).Infof("Labeled examples issued.")
 		labeledExamplesChan <- le
+		glog.V(3).Infof("boardLabels=%v", le.boardLabels)
 	}
 }
-

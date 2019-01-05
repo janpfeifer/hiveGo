@@ -16,6 +16,8 @@ import (
 
 	"github.com/golang/glog"
 	ai_players "github.com/janpfeifer/hiveGo/ai/players"
+	_ "github.com/janpfeifer/hiveGo/ai/search/ab"
+	_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
 	"github.com/janpfeifer/hiveGo/ai/tensorflow"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
 	. "github.com/janpfeifer/hiveGo/state"
@@ -115,7 +117,9 @@ func (m *Match) Encode(enc *gob.Encoder) {
 	}
 }
 
-func (m *Match) SelectRangeOfActions() (from, to int) {
+// SelectRangeOfActions returns range of actions to be used, and the amount of samples
+// to use when training.
+func (m *Match) SelectRangeOfActions() (from, to int, samplesPerAction []int) {
 	from = 0
 	to = len(m.Actions)
 	if *flag_lastActions > 0 && *flag_lastActions < len(m.Actions) {
@@ -124,11 +128,33 @@ func (m *Match) SelectRangeOfActions() (from, to int) {
 	if *flag_startActions >= 0 {
 		from = *flag_startActions
 		if from > len(m.Actions) {
-			return -1, -1
+			return -1, -1, nil
 		}
 		if *flag_lastActions > 0 && from+*flag_lastActions < to {
 			to = from + *flag_lastActions
 		}
+	}
+
+	// Sampling strategy:
+	count := to - from
+	samplesPerAction = make([]int, count)
+	multiplier := 1
+	if count > 50 {
+		multiplier = 2
+	}
+	for idx := from; idx < to; idx++ {
+		actionsToEnd := len(m.Actions) - idx - 1
+		samples := 1
+		if actionsToEnd < 10 {
+			samples += multiplier
+		}
+		if actionsToEnd < 6 {
+			samples += multiplier
+		}
+		if actionsToEnd < 3 {
+			samples += multiplier
+		}
+		samplesPerAction[idx-from] = samples
 	}
 	return
 }
@@ -144,20 +170,28 @@ func (le *LabeledExamples) Len() int {
 }
 
 // AppendLabeledExamples will add examples for learning _for Player 0 only_.
-func (m *Match) AppendLabeledExamples(le *LabeledExamples) {
-	from, to := m.SelectRangeOfActions()
+func (m *Match) AppendLabeledExamplesForPlayers(le *LabeledExamples, includedPlayers [2]bool) {
+	from, to, samples := m.SelectRangeOfActions()
 	if to == -1 {
 		// No actions selected.
 		return
 	}
-	glog.V(2).Infof("Making LabeledExample, version=%d", players[0].Scorer.Version())
+	glog.V(2).Infof("Making LabeledExample, version=%d, included players %v",
+		players[0].Scorer.Version(), includedPlayers)
 	for ii := from; ii < to; ii++ {
-		if !m.Boards[ii].IsFinished() && m.Boards[ii].NumActions() > 1 {
-			le.boardExamples = append(le.boardExamples, m.Boards[ii])
-			le.boardLabels = append(le.boardLabels, m.Scores[ii])
-			le.actionsLabels = append(le.actionsLabels, m.ActionsLabels[ii])
+		if includedPlayers[m.Boards[ii].NextPlayer] && !m.Boards[ii].IsFinished() &&
+			m.Boards[ii].NumActions() > 1 {
+			for jj := 0; jj < samples[ii-from]; jj++ {
+				le.boardExamples = append(le.boardExamples, m.Boards[ii])
+				le.boardLabels = append(le.boardLabels, m.Scores[ii])
+				le.actionsLabels = append(le.actionsLabels, m.ActionsLabels[ii])
+			}
 		}
 	}
+}
+
+func (m *Match) AppendLabeledExamples(le *LabeledExamples) {
+	m.AppendLabeledExamplesForPlayers(le, [2]bool{true, true})
 }
 
 // playActions fills the boards by playing one action at a time. The
@@ -216,7 +250,8 @@ var (
 )
 
 func runMatch(matchNum int) *Match {
-	swapped := (matchNum%2 == 1)
+	swapped := (matchNum%2 != 0)
+	matchName := fmt.Sprintf("%d (swap=%v)", matchNum, swapped)
 	board := NewBoard()
 	board.MaxMoves = *flag_maxMoves
 	match := &Match{MatchNum: matchNum, Swapped: swapped, Boards: []*Board{board}}
@@ -246,7 +281,8 @@ func runMatch(matchNum int) *Match {
 				log.Panicf("No moves to either side!?\n\n%v\n", board)
 			}
 		} else {
-			action, board, score, actionLabels = reorderedPlayers[board.NextPlayer].Play(board)
+			action, board, score, actionLabels = reorderedPlayers[board.NextPlayer].Play(board,
+				matchName)
 			if lastWasSkip {
 				// Use inverse of this score for previous "NOOP" move.
 				match.Scores[len(match.Scores)-1] = -score
