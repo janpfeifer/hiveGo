@@ -2,23 +2,28 @@
 package players
 
 import (
-	"log"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
 	"github.com/janpfeifer/hiveGo/ai/search"
 	. "github.com/janpfeifer/hiveGo/state"
+	"log"
+	"strconv"
+	"strings"
 )
 
 var _ = log.Printf
 
+type ModuleType int
+
+const (
+	ScorerType ModuleType = iota
+	SearcherType
+)
+
 // Player is anything that is able to play the game.
 type Player interface {
 	// Play returns the action chosen, the next board position and the associated score predicted.
-	Play(b *Board) (action Action, board *Board, score float32, actionsLabels []float32)
+	Play(b *Board, matchName string) (action Action, board *Board, score float32, actionsLabels []float32)
 }
 
 // SearcherScorerPlayer is a standard set up for an AI: a searcher and
@@ -32,9 +37,11 @@ type SearcherScorerPlayer struct {
 }
 
 // Play implements the Player interface: it chooses an action given a Board.
-func (p *SearcherScorerPlayer) Play(b *Board) (action Action, board *Board, score float32, actionsLabels []float32) {
+func (p *SearcherScorerPlayer) Play(b *Board, matchName string) (
+	action Action, board *Board, score float32, actionsLabels []float32) {
 	action, board, score, actionsLabels = p.Searcher.Search(b)
-	glog.V(1).Infof("Move #%d (%s): AI playing %v, score=%.3f", board.MoveNumber-1, p.ModelFile, action, score)
+	glog.V(1).Infof("Match %s, Move #%d (%s): AI playing %v, score=%.3f",
+		matchName, b.MoveNumber, p.ModelFile, action, score)
 	return
 }
 
@@ -51,9 +58,10 @@ type externalModuleRegistration struct {
 
 var (
 	// Registered external modules.
-	externalModulesInitFns     = make(map[string]PlayerModuleInitFn)
-	externalModulesFinalizeFns = make(map[string]PlayerModuleFinalizeFn)
-	keywordToModule            = make(map[string]externalModuleRegistration)
+	externalModulesInitFns             = make(map[string]PlayerModuleInitFn)
+	externalModulesScorerFinalizeFns   = make(map[string]PlayerModuleFinalizeFn)
+	externalModulesSearcherFinalizeFns = make(map[string]PlayerModuleFinalizeFn)
+	keywordToModules                   = make(map[string][]externalModuleRegistration)
 )
 
 // Register function to process given parameter for given module. This allows
@@ -62,11 +70,34 @@ var (
 // Then paramFn is called or each key/value pair (value may be empty).
 // Finally finalFn is called, where the external module can change the resulting
 // player object.
-func RegisterPlayerParameter(module, key string, initFn PlayerModuleInitFn, paramFn PlayerParameterFn,
-	finalFn PlayerModuleFinalizeFn) {
+func RegisterPlayerParameter(
+	module, key string, initFn PlayerModuleInitFn, paramFn PlayerParameterFn,
+	finalFn PlayerModuleFinalizeFn, mType ModuleType) {
 	externalModulesInitFns[module] = initFn
-	externalModulesFinalizeFns[module] = finalFn
-	keywordToModule[key] = externalModuleRegistration{module, paramFn}
+	if mType == ScorerType {
+		externalModulesScorerFinalizeFns[module] = finalFn
+	} else {
+		externalModulesSearcherFinalizeFns[module] = finalFn
+	}
+	keywordToModules[key] = append(keywordToModules[key],
+		externalModuleRegistration{module, paramFn})
+}
+
+// MustFloat32 converts string to float32 or panic.
+func MustFloat32(s, paramName string) float32 {
+	v64, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		log.Panicf("Invalid %s value '%s': %s", paramName, s, err)
+	}
+	return float32(v64)
+}
+
+func MustInt(s, paramName string) int {
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		log.Panicf("Invalid value for parameter %s=%s: %v", paramName, s, err)
+	}
+	return v
 }
 
 // NewAIPlayer creates a new AI player given the configuration string.
@@ -82,6 +113,10 @@ func RegisterPlayerParameter(module, key string, initFn PlayerModuleInitFn, para
 //         hence more exploration.
 //
 func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
+	if config == "" {
+		// Default AI.
+		config = "ab,max_depth=2"
+	}
 	// Initialize external modules data.
 	moduleToData := make(map[string]interface{})
 	for module, initFn := range externalModulesInitFns {
@@ -107,24 +142,28 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 	// External modules parsing.
 	paramsLeft := make(map[string]string)
 	for key, value := range params {
-		if registration, ok := keywordToModule[key]; ok {
-			data := moduleToData[registration.module]
-			registration.fn(data, key, value)
+		if registrations, ok := keywordToModules[key]; ok {
+			for _, registration := range registrations {
+				data := moduleToData[registration.module]
+				registration.fn(data, key, value)
+			}
 		} else {
 			paramsLeft[key] = value
 		}
 	}
-	params = paramsLeft
+	// Check that all parameters were processed.
+	if len(paramsLeft) > 0 {
+		for key, value := range paramsLeft {
+			log.Printf("Unknown parameter setting '%s=%s'", key, value)
+		}
+		panic("Cannot continue")
+	}
 
 	// Shared parameters.
 	player := &SearcherScorerPlayer{Parallelized: parallelized}
-	if value, ok := params["model"]; ok {
-		player.ModelFile = value
-		delete(params, "model")
-	}
 
 	// External modules make their modifications to the player object.
-	for module, finalFn := range externalModulesFinalizeFns {
+	for module, finalFn := range externalModulesScorerFinalizeFns {
 		data := moduleToData[module]
 		finalFn(data, player)
 	}
@@ -135,100 +174,15 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 		player.Scorer = player.Learner
 	}
 
-	// Configure searcher.
-	var searcher search.Searcher
-	var err error
-
-	// Shared search algorithm parameters
-	maxDepth := -1
-	var maxTime time.Duration
-	maxTraverses := 200
-	maxScore := float32(10.0)
-	randomness := 0.0
-	cPuct := float32(3.0) // Specialized for Alpha0-MCTS.
-
-	if value, ok := params["max_depth"]; ok {
-		delete(params, "max_depth")
-		maxDepth, err = strconv.Atoi(value)
-		if err != nil {
-			log.Panicf("Invalid AI value '%s' for max_depth: %s", value, err)
-		}
-	}
-	if value, ok := params["randomness"]; ok {
-		delete(params, "randomness")
-		randomness, err = strconv.ParseFloat(value, 64)
-		if err != nil || randomness < 0.0 {
-			log.Panicf("Invalid AI value '%s' for randomness: %s", value, err)
-		}
-	}
-	if value, ok := params["max_time"]; ok {
-		delete(params, "max_time")
-		secs, err := strconv.ParseFloat(value, 64)
-		if err != nil {
-			log.Panicf("Invalid AI value '%s' for max_time: %s", value, err)
-		}
-		maxTime = time.Microsecond * time.Duration(1e6*secs)
-	}
-	if value, ok := params["max_traverses"]; ok {
-		delete(params, "max_traverses")
-		maxTraverses, err = strconv.Atoi(value)
-		if err != nil {
-			log.Panicf("Invalid AI value '%s' for max_traverse: %s", value, err)
-		}
-	}
-	if value, ok := params["max_score"]; ok {
-		delete(params, "max_score")
-		v64, err := strconv.ParseFloat(value, 64)
-		if err != nil || v64 <= 0.0 {
-			log.Panicf("Invalid max_score value '%s': %s", value, err)
-		}
-		maxScore = float32(v64)
-	}
-	if value, ok := params["c_puct"]; ok {
-		delete(params, "c_puct")
-		v64, err := strconv.ParseFloat(value, 64)
-		if err != nil || v64 <= 0.0 {
-			log.Panicf("Invalid c_puct value '%s': %s", value, err)
-		}
-		cPuct = float32(v64)
+	// External modules make their modifications to the player object.
+	for module, finalFn := range externalModulesSearcherFinalizeFns {
+		data := moduleToData[module]
+		finalFn(data, player)
 	}
 
-	if _, ok := params["mcts"]; ok {
-		delete(params, "mcts")
-		if maxDepth < 0 {
-			maxDepth = 8
-		}
-		if maxTime == 0 {
-			maxTime = 5 * time.Second
-		}
-		searcher = search.NewMonteCarloTreeSearcher(
-			player.Scorer, maxDepth, maxTime, maxTraverses, maxScore,
-			cPuct, randomness, player.Parallelized)
+	if player.Searcher == nil {
+		log.Panicf("Searcher not specified.")
 	}
-	if _, ok := params["ab"]; ok {
-		delete(params, "ab")
-		// Since it is default, no need to do anything.
-		searcher = nil
-	}
-	if searcher == nil {
-		if maxDepth < 0 {
-			maxDepth = 3
-		}
-
-		searcher = search.NewAlphaBetaSearcher(maxDepth, player.Parallelized, player.Scorer, float32(randomness))
-		// Alternative Randomized searcher.
-		//searcher = search.NewAlphaBetaSearcher(maxDepth, false, player.Scorer)
-		//searcher = search.NewRandomizedSearcher(searcher, player.Scorer, randomness)
-	}
-
-	// Check that all parameters were processed.
-	if len(params) > 0 {
-		for key, value := range params {
-			log.Printf("Unknown parameter setting '%s=%s'", key, value)
-		}
-		panic("Cannot continue")
-	}
-	player.Searcher = searcher
 
 	return player
 }

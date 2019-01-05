@@ -48,7 +48,6 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
-	"github.com/janpfeifer/hiveGo/ai/players"
 	. "github.com/janpfeifer/hiveGo/state"
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
@@ -60,35 +59,37 @@ var (
 	// These are default values for tensorflow models' tensors (if they are
 	// set as placeholders). They can be overwritten using the flag --tf_params.
 	DefaultModelParams = map[string]float32{
-		"learning_rate": 1e-5,
+		"learning_rate":      1e-5,
 		"actions_loss_ratio": 0.005,
 		"l2_regularization":  1e-5,
+		"self_supervision":   0.0,
 	}
 )
 
 const (
-	INTER_OP_PARALLELISM       = 4
-	INTRA_OP_PARALLELISM       = 4
-	GPU_MEMORY_FRACTION_TO_USE = 0.3
+	INTER_OP_PARALLELISM = 4
+	INTRA_OP_PARALLELISM = 4
 )
 
 var (
 	Flag_learnBatchSize = flag.Int("tf_batch_size", 0,
-	"Batch size when learning: this is the number of boards, not actions. There is usually 100/1 ratio of "+
-		"actions per board. Examples are shuffled before being batched. 0 means no batching.")
+		"Batch size when learning: this is the number of boards, not actions. There is usually 100/1 ratio of "+
+			"actions per board. Examples are shuffled before being batched. 0 means no batching.")
 	flag_tfParams = flag.String("tf_params", "",
-	"Comma separated list of `key=value` pairs where `key` is a string (name of a tensor), and "+
-		"`value` is a float32 value. These are assumed to be model's placeholders "+
-		"that will be set with the given value on all inference/train session runs. If "+
-		"tensor named `key` does not exist in model, it is reported but ignored.")
+		"Comma separated list of `key=value` pairs where `key` is a string (name of a tensor), and "+
+			"`value` is a float32 value. These are assumed to be model's placeholders "+
+			"that will be set with the given value on all inference/train session runs. If "+
+			"tensor named `key` does not exist in model, it is reported but ignored.")
 	flag_tfParamsFile = flag.String("tf_params_file", "",
 		"Similar to tf_params, but instead read `key=values` pairs from given file. "+
-		"The file is re-read before each call to learn(), so parameters can be changed "+
-		"dynamically during long training periods.")
+			"The file is re-read before each call to learn(), so parameters can be changed "+
+			"dynamically during long training periods.")
+	flag_tfGpuMemoryFraction = flag.Float64("tf_gpu_mem", 0.3,
+		"Fraction of the available GPU memory to use.")
 )
 
-type tfOutputTensor struct{
-	key tf.Output
+type tfOutputTensor struct {
+	key   tf.Output
 	value *tf.Tensor
 }
 
@@ -114,63 +115,16 @@ type Scorer struct {
 	ActionsPieces, ActionsLabels             tf.Output
 	ActionsPredictions, ActionsLosses        tf.Output
 
-	IsTraining, CheckpointFile 				 tf.Output
-	GlobalStep, TotalLoss                    tf.Output
-	SelfSupervision                          tf.Output
-	InitOp, TrainOp, SaveOp, RestoreOp       *tf.Operation
+	IsTraining, CheckpointFile         tf.Output
+	GlobalStep, TotalLoss              tf.Output
+	InitOp, TrainOp, SaveOp, RestoreOp *tf.Operation
 
 	// Params set by flag --tf_params.
-	Params   map[string]*tfOutputTensor
+	Params                     map[string]*tfOutputTensor
 	paramsFileLastModifiedTime time.Time
 
 	version int
 	// Uses the number of input features used.
-}
-
-
-
-// Data used for parsing of player options.
-type ParsingData struct {
-	UseTensorFlow, ForceCPU bool
-	SessionPoolSize         int
-}
-
-func NewParsingData() (data interface{}) {
-	return &ParsingData{SessionPoolSize: 1}
-}
-
-func FinalizeParsing(data interface{}, player *players.SearcherScorerPlayer) {
-	d := data.(*ParsingData)
-	if d.UseTensorFlow {
-		player.Learner = New(player.ModelFile, d.SessionPoolSize, d.ForceCPU)
-		player.Scorer = player.Learner
-	}
-}
-
-func ParseParam(data interface{}, key, value string) {
-	d := data.(*ParsingData)
-	if key == "tf" {
-		d.UseTensorFlow = true
-	} else if key == "tf_cpu" {
-		d.ForceCPU = true
-	} else if key == "tf_session_pool_size" {
-		var err error
-		d.SessionPoolSize, err = strconv.Atoi(value)
-		if err != nil {
-			log.Panicf("Invalid parameter tf_session_pool_size=%s: %v", value, err)
-		}
-		if d.SessionPoolSize < 1 {
-			log.Panicf("Invalid parameter tf_session_pool_size=%s, it must be > 0", value)
-		}
-	} else {
-		log.Panicf("Unknown parameter '%s=%s' passed to tensorflow module.", key, value)
-	}
-}
-
-func init() {
-	players.RegisterPlayerParameter("tf", "tf", NewParsingData, ParseParam, FinalizeParsing)
-	players.RegisterPlayerParameter("tf", "tf_cpu", NewParsingData, ParseParam, FinalizeParsing)
-	players.RegisterPlayerParameter("tf", "tf_session_pool_size", NewParsingData, ParseParam, FinalizeParsing)
 }
 
 var dataTypeMap = map[tf.DataType]string{
@@ -258,11 +212,10 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 		ActionsLosses:      t0opt("actions_losses"),
 
 		// Global parameters.
-		IsTraining:      t0opt("is_training"),
-		SelfSupervision: t0opt("self_supervision"),
-		CheckpointFile:  t0("save/Const"),
-		TotalLoss:       t0("mean_loss"),
-		GlobalStep:      t0("global_step"),
+		IsTraining:     t0opt("is_training"),
+		CheckpointFile: t0("save/Const"),
+		TotalLoss:      t0("mean_loss"),
+		GlobalStep:     t0("global_step"),
 
 		// Ops.
 		InitOp:    op("init"),
@@ -432,7 +385,7 @@ func (s *Scorer) ReadGlobalStep() int64 {
 }
 
 func createSessionPool(graph *tf.Graph, size int, forceCPU bool) (sessions []*tf.Session) {
-	gpuMemFractionLeft := GPU_MEMORY_FRACTION_TO_USE
+	gpuMemFractionLeft := *flag_tfGpuMemoryFraction
 	for ii := 0; ii < size; ii++ {
 		sessionOptions := &tf.SessionOptions{}
 		var config tfconfig.ConfigProto

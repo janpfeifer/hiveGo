@@ -55,8 +55,8 @@ function scores_scatter_plot() {
 
 	cat "${LOGS_FILE}" \
     | egrep -i 'Move #' | cut -d']' -f2 | grep -v 'left)' \
-    | perl -ne '/Move #(\d+) \((.*?)\).*score=(.*)$/ && print $1." ".$3." ".$2."\n";' \
-    | perl -ne 's/a0_v2/0/g; s/conv_v\d+/1/g; print;' \
+    | perl -ne '/Move #(\d+) \((.*?)\).*score=(.*)$/ && print $1." ".$3." >".$2."\n";' \
+    | perl -ne 's/>models.*$/1/g; s/>/0/g; print;' \
     | tail -n 5000 \
     >> ${SCORES_DATA}
 
@@ -69,7 +69,7 @@ function scores_scatter_plot() {
 		set palette rgb 3,11
 		plot("${SCORES_DATA}") with points palette
 EOF
-    # rm "${SCORES_DATA}"
+    rm "${SCORES_DATA}"
 }
 
 wins_plot

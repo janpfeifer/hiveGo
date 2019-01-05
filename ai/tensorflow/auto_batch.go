@@ -152,10 +152,9 @@ func (s *Scorer) autoBatchScoreAndDeliver(ab *AutoBatch) {
 	if s.IsTraining.Op != nil {
 		feeds[s.IsTraining] = mustTensor(false)
 	}
-	if s.SelfSupervision.Op != nil {
-		feeds[s.SelfSupervision] = mustTensor(float32(0))
+	for _, pair := range s.Params {
+		feeds[pair.key] = pair.value
 	}
-
 	fetches := []tf.Output{s.BoardPredictions}
 	if s.IsActionsClassifier() && ab.LenActions() > 0 {
 		fetches = append(fetches, s.ActionsPredictions)

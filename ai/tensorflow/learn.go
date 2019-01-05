@@ -103,9 +103,6 @@ func (s *Scorer) buildFeedsForLearning(batch *flatFeaturesCollection, scoreActio
 	if s.IsTraining.Op != nil {
 		feeds[s.IsTraining] = mustTensor(true)
 	}
-	if s.SelfSupervision.Op != nil {
-		feeds[s.SelfSupervision] = mustTensor(float32(0))
-	}
 	return
 }
 

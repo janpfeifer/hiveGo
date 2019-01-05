@@ -1,9 +1,10 @@
-package search
+package mcts
 
 // Monte Carlo Tree Search implementation for Alpha-Zero algorith. A very good description
 // in a post from Surag Nair, in https://web.stanford.edu/~surag/posts/alphazero.html
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"math"
@@ -31,12 +32,18 @@ const (
 	EPSILON                   = float64(1e-8)
 )
 
+var (
+	flag_mctsUseLinearScore = flag.Bool("mcts_use_linear_score",
+		false, "If set, it will use a linear model for scoring (but "+
+			"not for the action probabilities)")
+)
+
 type mctsSearcher struct {
-	maxDepth     int
-	maxTime      time.Duration
-	maxTraverses int
-	maxAbsScore  float32 // Max absolute score, value above that interrupt the search.
-	cPuct        float32 // Degree of exploration of alpha-zero.
+	maxDepth                   int
+	maxTime                    time.Duration
+	maxTraverses, minTraverses int
+	maxAbsScore                float32 // Max absolute score, value above that interrupt the search.
+	cPuct                      float32 // Degree of exploration of alpha-zero.
 
 	// Useful so that it doesn't play exactly the same match every time. Applied
 	// only on the first level of the MCTS traversal.
@@ -47,33 +54,14 @@ type mctsSearcher struct {
 
 	// Scorer to use during search.
 	scorer ai.BatchScorer
+
+	// Player parameter that indicates that MCTS was selected.
+	useMCTS bool
 }
 
 type matchStats struct {
 	// Number of candidate nodes generated during search: used for performance measures.
 	numCacheNodes int
-}
-
-// NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPrunning.
-func NewMonteCarloTreeSearcher(
-	scorer ai.BatchScorer,
-	maxDepth int, maxTime time.Duration, maxTraverses int, maxAbsScore float32,
-	cPuct float32, randomness float64, parallelized bool) Searcher {
-	if parallelized {
-		glog.Error("MCTS does not yet support parallelized run.")
-		parallelized = false
-	}
-	return &mctsSearcher{
-		maxDepth:     maxDepth,
-		maxTime:      maxTime,
-		maxTraverses: maxTraverses,
-		maxAbsScore:  maxAbsScore,
-		cPuct:        cPuct,
-		randomness:   float32(randomness),
-
-		scorer:       scorer,
-		parallelized: parallelized,
-	}
 }
 
 func (mcts *mctsSearcher) Clone() *mctsSearcher {
@@ -139,6 +127,10 @@ func newCacheNode(mcts *mctsSearcher, stats *matchStats, b *Board, root bool) *c
 		stats.numCacheNodes++
 	}
 	cn.score, cn.actionsProbs = mcts.scorer.Score(b, true)
+	if *flag_mctsUseLinearScore {
+		newScore, _ := ai.TrainedBest.Score(b, false)
+		cn.score = newScore
+	}
 	if root && mcts.randomness > 0 {
 		for ii := range cn.actionsProbs {
 			cn.actionsProbs[ii] += float32(rand.NormFloat64()) * mcts.randomness
@@ -453,7 +445,7 @@ func (pa *sortableProbsActions) Less(i, j int) bool {
 }
 
 func logTopActionProbs(labelProbs []float32, actions []Action, prevProbs, scores []float32) {
-	if len(scores) == 0 {
+	if len(scores) <= 1 || len(actions) <= 1 {
 		return
 	}
 	sorted := sortableProbsActions{

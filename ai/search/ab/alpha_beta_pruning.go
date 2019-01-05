@@ -1,8 +1,9 @@
-package search
+package ab
 
 import (
 	"flag"
 	"fmt"
+	"github.com/janpfeifer/hiveGo/ai/search"
 	"log"
 	"math"
 	"math/rand"
@@ -24,15 +25,26 @@ var flag_useActionProb = flag.Bool("ab_use_actions", false,
 var flag_maxMoveRandomness = flag.Int("ab_max_move_randomness", 10+3,
 	"After this move randomness is dropped and the game follows on without it.")
 
-func printBoard(b *Board) {
-	ui := ascii_ui.NewUI(true, false)
-	ui.PrintBoard(b)
+type alphaBetaSearcher struct {
+	maxDepth     int
+	parallelized bool
+	randomness   float32
+
+	scorer ai.BatchScorer
+
+	// Player parameter that indicates that Alpha-Beta-Pruning was selected.
+	useAB bool
 }
 
 type abStats struct {
 	nodes, evals, leafEvals int
 	leafEvalsConsidered     int
 	prunes                  int
+}
+
+func printBoard(b *Board) {
+	ui := ascii_ui.NewUI(true, false)
+	ui.PrintBoard(b)
 }
 
 // Alpha Beta Pruning algorithm
@@ -57,9 +69,11 @@ func AlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int, parallelize bo
 	beta := float32(-math.MaxFloat32)
 	if parallelize {
 		// TODO: move to a parallelized version. Careful with stats, likely will need a mutex.
-		bestAction, bestBoard, bestScore = alphaBetaRecursive(board, scorer, maxDepth, alpha, beta, randomness, stats)
+		bestAction, bestBoard, bestScore = alphaBetaRecursive(
+			board, scorer, maxDepth, alpha, beta, randomness, stats)
 	} else {
-		bestAction, bestBoard, bestScore = alphaBetaRecursive(board, scorer, maxDepth, alpha, beta, randomness, stats)
+		bestAction, bestBoard, bestScore = alphaBetaRecursive(
+			board, scorer, maxDepth, alpha, beta, randomness, stats)
 	}
 	return
 }
@@ -124,7 +138,8 @@ func TimedAlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int, paralleli
 	return
 }
 
-func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha, beta float32, randomness float32, stats *abStats) (
+func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha, beta float32,
+	randomness float32, stats *abStats) (
 	bestAction Action, bestBoard *Board, bestScore float32) {
 	stats.nodes++
 
@@ -133,7 +148,7 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 	var newBoards []*Board
 	var scores []float32
 	if maxDepth > 1 || !*flag_useActionProb {
-		actions, newBoards, scores = ExecuteAndScoreActions(board, scorer)
+		actions, newBoards, scores = search.ExecuteAndScoreActions(board, scorer)
 		stats.evals += len(actions)
 		if maxDepth == 1 {
 			stats.leafEvals += len(actions)
@@ -153,16 +168,16 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 			scores[ii] += (rand.Float32()*2 - 1) * randomness
 		}
 	}
-	SortActionsBoardsScores(actions, newBoards, scores)
+	search.SortActionsBoardsScores(actions, newBoards, scores)
 
 	// The score to beat is the current "alpha" (best live score for current player)
 	bestScore = alpha
 	bestBoard = nil
 	bestAction = Action{}
 	for ii := range actions {
-		if IdleChan != nil {
+		if search.IdleChan != nil {
 			// Wait for an "idle" signal before each search.
-			<-IdleChan
+			<-search.IdleChan
 		}
 		if maxDepth > 1 && !newBoards[ii].IsFinished() {
 			// Runs alphaBeta for opponent player, so the alpha/beta are reversed.
@@ -191,14 +206,6 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 	return
 }
 
-type alphaBetaSearcher struct {
-	maxDepth     int
-	parallelized bool
-	randomness   float32
-
-	scorer ai.BatchScorer
-}
-
 // Search implements the Searcher interface.
 func (ab *alphaBetaSearcher) Search(b *Board) (action Action, board *Board, score float32, actionsLabels []float32) {
 	action, board, score = TimedAlphaBeta(b, ab.scorer, ab.maxDepth, ab.parallelized, ab.randomness)
@@ -207,11 +214,6 @@ func (ab *alphaBetaSearcher) Search(b *Board) (action Action, board *Board, scor
 		actionsLabels[b.FindAction(action)] = 1
 	}
 	return
-}
-
-// NewAlphaBetaSearcher returns a Searcher that implements AlphaBetaPruning.
-func NewAlphaBetaSearcher(maxDepth int, parallelized bool, scorer ai.BatchScorer, randomness float32) Searcher {
-	return &alphaBetaSearcher{maxDepth: maxDepth, parallelized: parallelized, scorer: scorer, randomness: randomness}
 }
 
 // ScoreMatch will score the board at each board position, starting from the current one,

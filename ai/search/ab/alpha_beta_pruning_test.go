@@ -1,4 +1,4 @@
-package search_test
+package ab_test
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/janpfeifer/hiveGo/ai"
-	. "github.com/janpfeifer/hiveGo/ai/search"
+	. "github.com/janpfeifer/hiveGo/ai/search/ab"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
 	. "github.com/janpfeifer/hiveGo/state"
 )
