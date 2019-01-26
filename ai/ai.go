@@ -4,6 +4,10 @@ import (
 	. "github.com/janpfeifer/hiveGo/state"
 )
 
+// Score for the winning side. For the loosing side it
+// will be - END_GAME_SCORE.
+const END_GAME_SCORE = float32(10)
+
 // Scorer returns two scores:
 //   value: how likely the current player is to win, in the form of
 //     a score from +10 and -10.
@@ -77,10 +81,10 @@ func EndGameScore(b *Board) (isEnd bool, score float32) {
 	}
 	if b.Derived.Wins[b.NextPlayer] {
 		// Current player wins.
-		return true, 10.0
+		return true, END_GAME_SCORE
 	}
 	// Opponent player wins.
-	return true, -10.0
+	return true, -END_GAME_SCORE
 }
 
 // Returns a slice of float32 with one element set to 1, and all others to 0.

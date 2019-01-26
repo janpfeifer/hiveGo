@@ -243,7 +243,8 @@ def hexagonal_layer(hexagonal_map, activation, out_channels=None, initializer=No
         if out_channels is None:
             out_channels = in_channels
         if initializer is None:
-            initializer = tf.initializers.truncated_normal(0.0, 1. / (7. * in_channels.value))
+            # initializer = tf.initializers.truncated_normal(0.0, 1. / (7. * in_channels.value))
+            initializer = tf.initializers.zeros
         # Output channels == input channels (the depth)
         hexagonal_output = hexagonal_conv2d(hexagonal_map, out_channels, filter_initializer=initializer)
         hexagonal_output = activation(hexagonal_output)

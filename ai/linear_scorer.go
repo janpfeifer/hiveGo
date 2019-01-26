@@ -55,7 +55,7 @@ func SigmoidTo10(x float32) float32 {
 	const reduction = float32(4) // Makes it converge slower to 10.0
 	sig := (abs - MAX_LINEAR_SCORE) / reduction
 	sig = float32(1.0 / (1.0 + math.Exp(-float64(sig))))
-	sig = (sig - 0.5) * 2 * (10 - MAX_LINEAR_SCORE)
+	sig = (sig - 0.5) * 2 * (END_GAME_SCORE - MAX_LINEAR_SCORE)
 	abs = 9.8 + sig
 	return sign * abs
 }

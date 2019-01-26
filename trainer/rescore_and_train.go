@@ -174,13 +174,31 @@ func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchA
 func continuousLearning(learnInput <-chan LabeledExamples) {
 	var averageLoss, averageBoardLoss, averageActionsLoss float32
 	count := 0
-	for params := range learnInput {
+	for le := range learnInput {
 		glog.V(3).Infof("Learn: count=%d", count)
+
+		// First learn with 0 steps: only evaluation without dropout.
 		loss, boardLoss, actionsLoss := players[0].Learner.Learn(
-			params.boardExamples, params.boardLabels,
-			params.actionsLabels, float32(*flag_learningRate),
+			le.boardExamples, le.boardLabels,
+			le.actionsLabels, float32(*flag_learningRate),
+			0, nil)
+		glog.V(1).Infof("Evaluation loss: total=%g board=%g actions=%g",
+			loss, boardLoss, actionsLoss)
+
+		// Actually train.
+		_, _, _ = players[0].Learner.Learn(
+			le.boardExamples, le.boardLabels,
+			le.actionsLabels, float32(*flag_learningRate),
 			*flag_trainLoops, nil)
-		glog.V(2).Infof("Losses: total=%g board=%g actions=%g", loss, boardLoss, actionsLoss)
+
+		// Evaluate (learn with 0 steps)on training data.
+		loss, boardLoss, actionsLoss = players[0].Learner.Learn(
+			le.boardExamples, le.boardLabels,
+			le.actionsLabels, float32(*flag_learningRate),
+			0, nil)
+		glog.V(1).Infof("Training loss: total=%g board=%g actions=%g",
+			loss, boardLoss, actionsLoss)
+
 		decay := 1 - 1/float32(1+count)
 		if decay > maxAverageLossDecay {
 			decay = maxAverageLossDecay
@@ -196,7 +214,7 @@ func continuousLearning(learnInput <-chan LabeledExamples) {
 	}
 }
 
-const maxAverageLossDecay = float32(0.99)
+const maxAverageLossDecay = float32(0.95)
 
 func decayAverageLoss(average, newValue, decay float32) float32 {
 	return average*decay + (1-decay)*newValue

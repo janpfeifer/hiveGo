@@ -13,6 +13,9 @@ import (
 
 var _ = fmt.Printf
 
+// Maximum number of times a board may be repeated before a draw is issued.
+const MAX_BOARD_REPEATS = 3
+
 // Derived holds information that is generated from the Board state.
 type Derived struct {
 	// Number of times this exact same board has been seen earlier in the Match.
@@ -44,6 +47,10 @@ type Derived struct {
 
 	// Actions of the next player to move (shortcut to PlayersActions[NextPlayer]).
 	Actions []Action
+
+	// Player moves to end of match. Information is only available after the end of the
+	// match, and needs to be back-filled. It is used for learning only.
+	PlayerMovesToEnd int8
 }
 
 // Action describe a placement or a move. If `piece` is given, `posSource` can be
@@ -393,11 +400,12 @@ func (b *Board) NumActions() int {
 }
 
 func (b *Board) IsFinished() bool {
-	return b.Derived.Repeats >= 2 || b.Derived.Wins[0] || b.Derived.Wins[1]
+	return b.Derived.Repeats >= MAX_BOARD_REPEATS || b.Derived.Wins[0] || b.Derived.Wins[1]
 }
 
 func (b *Board) Draw() bool {
-	return b.IsFinished() && (b.Derived.Repeats >= 2 || b.Derived.Wins[0] == b.Derived.Wins[1])
+	return b.IsFinished() && (b.Derived.Repeats >= MAX_BOARD_REPEATS  ||
+		b.Derived.Wins[0] == b.Derived.Wins[1])
 }
 
 func (b *Board) Winner() uint8 {

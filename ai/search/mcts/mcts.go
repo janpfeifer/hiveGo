@@ -9,7 +9,6 @@ import (
 	"log"
 	"math"
 	"math/rand"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -98,12 +97,13 @@ type cacheNode struct {
 	// This is also renormalized to be between -1 (loosing) and 1 (winning)
 	Q []float32
 
-	// Sum of all Q(s, a): for actions not yet traversed it is assumed a mean of all
-	// the Qs visited. It's certainly optimistic, but it works as an upper-bound approximation.
-	TotalQ float32
-
 	// Lock for updates.
 	mu sync.Mutex
+}
+
+// modelScoreToQ converts "score" scale (from -10 to 10) to "Q" scale (-1 to 1).
+func modelScoreToQ(score float32) float32 {
+	return score / 10.0
 }
 
 // root cache node indicates if this is the root of the MCTS. This is used
@@ -127,6 +127,31 @@ func newCacheNode(mcts *mctsSearcher, stats *matchStats, b *Board, root bool) *c
 		stats.numCacheNodes++
 	}
 	cn.score, cn.actionsProbs = mcts.scorer.Score(b, true)
+
+	// Sanity check:
+	var sumProbs float32
+	for ii, prob := range cn.actionsProbs {
+		if prob < -1e-3 {
+			ui := ascii_ui.NewUI(true, false)
+			fmt.Println()
+			ui.PrintBoard(cn.board)
+			fmt.Printf("Available actions: %v", cn.board.Derived.Actions)
+			fmt.Printf("Probabilities: %v", cn.actionsProbs)
+			log.Panicf("Negative probability for action %v, prob=%g",
+				cn.actions[ii], prob)
+		}
+		sumProbs += prob
+	}
+	if len(cn.actions) > 1 && abs32(sumProbs - 1.0) > 1e-3 {
+		ui := ascii_ui.NewUI(true, false)
+		fmt.Println()
+		ui.PrintBoard(cn.board)
+		fmt.Printf("Available actions: %v", cn.board.Derived.Actions)
+		fmt.Printf("Probabilities: %v", cn.actionsProbs)
+		log.Panicf("Sum of probabilities=%g != 1.0", sumProbs)
+	}
+
+
 	if *flag_mctsUseLinearScore {
 		newScore, _ := ai.TrainedBest.Score(b, false)
 		cn.score = newScore
@@ -135,6 +160,9 @@ func newCacheNode(mcts *mctsSearcher, stats *matchStats, b *Board, root bool) *c
 		for ii := range cn.actionsProbs {
 			cn.actionsProbs[ii] += float32(rand.NormFloat64()) * mcts.randomness
 		}
+	}
+	for ii := range cn.Q {
+		cn.Q[ii] = modelScoreToQ(cn.score)
 	}
 	return cn
 }
@@ -198,35 +226,52 @@ func (cn *cacheNode) Sample(mcts *mctsSearcher) int {
 		return 0
 	}
 	best := -1
-	bestActionScore := float32(-1e6)
+	bestActionAdjustedQ := float32(-1e6)
 	globalFactor := mcts.cPuct * float32(math.Sqrt(float64(cn.totalCount)+EPSILON))
-	meanQ := float32(0)
-	if cn.totalCount != 0 {
-		meanQ = cn.TotalQ / float32(cn.totalCount)
-	}
+	hasLosses := false
+
 	for ii := range cn.actions {
-		actionScore := globalFactor * cn.actionsProbs[ii] / (1 + float32(cn.count[ii]))
-		if cn.count[ii] > 0 {
-			actionScore += cn.Q[ii]
-		} else {
-			actionScore += meanQ // We could replace this with cn.score, but that doesnt' work during early training stages
+		actionCN := cn.cacheNodes[ii]
+		actionAdjustedQ := cn.Q[ii] + globalFactor * cn.actionsProbs[ii] / (1 + float32(cn.count[ii]))
+		if  actionCN != nil {
+			if actionCN.board.IsFinished() {
+				if actionCN.score > 0 {
+					// Opponent wins (since actionCN is the board with the opponent turn),
+					// so no need to sample this one. Odd, since the player would
+					// cause their own loss.
+					hasLosses = true
+					continue
+				} else if actionCN.score > 0 {
+					// Player wins, so it would simply greedly take this action.
+					best = ii
+					bestActionAdjustedQ = actionAdjustedQ
+					break
+				}
+			}
 		}
-		glog.V(4).Infof("Sampling: score=%g, Q=%g, probs=%.2g", actionScore, cn.Q[ii], cn.actionsProbs[ii])
-		if actionScore > bestActionScore {
+		glog.V(4).Infof("Sampling: adjustedQ=%g, Q=%g, probs=%.2g", actionAdjustedQ,
+			cn.Q[ii], cn.actionsProbs[ii])
+		if actionAdjustedQ > bestActionAdjustedQ  {
 			best = ii
-			bestActionScore = actionScore
+			bestActionAdjustedQ  = actionAdjustedQ
 		}
 	}
 	if best == -1 {
+		if hasLosses {
+			glog.V(1).Infof("Sampling: all actions lead to loss, taking the first.")
+			return 0
+		}
 		log.Panicf("Not able to sample a move, likely probabilities are NaN.")
 	}
 	if cn.parent == nil {
-		glog.V(3).Infof("Sampled %s: score=%g, Q=%g, probs=%.2g%%", cn.actions[best], bestActionScore, cn.Q[best], 100.0*cn.actionsProbs[best])
+		glog.V(3).Infof("Sampled %s: adjustedQ=%g, Q=%g, probs=%.2g%%",
+			cn.actions[best], bestActionAdjustedQ, cn.Q[best], 100.0*cn.actionsProbs[best])
 	}
 	return best
 }
 
-func (cn *cacheNode) FindBestScore(mcts *mctsSearcher) (bestIdx int, bestScore float32, actionsLabels []float32) {
+func (cn *cacheNode) FindBestScore(mcts *mctsSearcher) (
+	bestIdx int, bestScore float32, actionsLabels []float32) {
 	if len(cn.actions) <= 1 {
 		// There is either one or none actions. Index will be set to 0 (first action)
 		// or -1 (represents a SKIP_ACTION) respectively, and the score should be the
@@ -358,10 +403,8 @@ func (cn *cacheNode) Traverse(mcts *mctsSearcher, stats *matchStats, depthLeft i
 	cn.totalCount++
 	cn.count[actionIdx]++
 	cn.sumMCScores[actionIdx] += score
-	// Scores of Q are normalized from +1 to -1
-	cn.TotalQ -= cn.Q[actionIdx]
-	cn.Q[actionIdx] = cn.sumMCScores[actionIdx] / (10 * float32(cn.count[actionIdx]))
-	cn.TotalQ += cn.Q[actionIdx]
+	meanScore := cn.sumMCScores[actionIdx] / float32(cn.count[actionIdx])
+	cn.Q[actionIdx] = modelScoreToQ(meanScore)
 	cn.mu.Unlock()
 	if depthLeft == mcts.maxDepth {
 		glog.V(3).Infof("Traverse[%s]: score=%.2f, Q=%.2f", cn.actions[actionIdx], score, cn.Q[actionIdx])
@@ -377,31 +420,16 @@ func (mcts *mctsSearcher) runOnCN(stats *matchStats, cn *cacheNode) {
 		count := 0
 
 		// Handle parallelism.
-		maxParallel := runtime.GOMAXPROCS(0)
 		// TODO: parallelized forced to false for now (see NewMCSTSearcher). Still need to implement
 		//   locks such that no traverse share paths. Also the algorithm should change since it changes the
 		//   counts
-		if !mcts.parallelized {
-			maxParallel = 1
-		}
-		var wg sync.WaitGroup
-		semaphore := make(chan bool, maxParallel)
-		glog.V(3).Infof("MCTS: parallelization=%d", maxParallel)
 
 		// Loop over traverses.
-		for time.Since(start) < mcts.maxTime && count < mcts.maxTraverses {
-			wg.Add(1)
-			semaphore <- true
-			go func() {
-				glog.V(3).Infof("MCTS: starting traverse")
-				cn.Traverse(mcts, stats, mcts.maxDepth)
-				glog.V(3).Infof("MCTS: done traverse")
-				<-semaphore
-				wg.Done()
-			}()
+		for (time.Since(start) < mcts.maxTime || count < mcts.minTraverses) &&
+			count < mcts.maxTraverses {
+			cn.Traverse(mcts, stats, mcts.maxDepth)
 			count++
 		}
-		wg.Wait()
 		glog.V(1).Infof("MCTS traverses done: %d", count)
 	}
 }
@@ -448,6 +476,21 @@ func logTopActionProbs(labelProbs []float32, actions []Action, prevProbs, scores
 	if len(scores) <= 1 || len(actions) <= 1 {
 		return
 	}
+	var sumProbs float32
+	for _, prob := range prevProbs {
+		sumProbs += prob
+	}
+	glog.Infof("  Model previous probabilities: [%v], sum(+rand)=%.3g", prevProbs, sumProbs)
+	max, min := prevProbs[0], prevProbs[0]
+	for _, prob := range prevProbs {
+		if prob > max {
+			max = prob
+		} else if prob < min {
+			min = prob
+		}
+	}
+	glog.Infof("Difference max(prob)-min(prob)=%.4g%%",
+		100.0 * (max - min))
 	sorted := sortableProbsActions{
 		indices: make([]int, len(labelProbs)),
 		probs:   labelProbs,
@@ -461,8 +504,10 @@ func logTopActionProbs(labelProbs []float32, actions []Action, prevProbs, scores
 		if labelProbs[idx] < 0.02 {
 			break
 		}
-		glog.Infof("  Action %s: new probability %.2f%%, prev probability %.2f%%, score=%.2f", actions[idx], 100*labelProbs[idx], 100*prevProbs[idx], scores[idx])
+		glog.Infof("  Action %s: new probability %.2f%%, prev probability %.2f%%, Q-score=%.2g",
+			actions[idx], 100*labelProbs[idx], 100*prevProbs[idx], scores[idx])
 	}
+	glog.Infof("  New probabilities: [%v]", labelProbs)
 }
 
 func (mcts *mctsSearcher) searchWithStats(stats *matchStats, b *Board) (
@@ -487,7 +532,13 @@ func (mcts *mctsSearcher) searchWithStats(stats *matchStats, b *Board) (
 			board = cn.cacheNodes[actionIdx].board
 		}
 		if glog.V(2) {
-			glog.Info("search():")
+			fmt.Println()
+			ui := ascii_ui.NewUI(true, false)
+			ui.PrintBoard(cn.board)
+			fmt.Println()
+			glog.Infof("Search Move #%d (p%d), %d actions available, baseline is %.2g%%:",
+				cn.board.MoveNumber, cn.board.NextPlayer,
+				len(cn.actions), 100.0 / float64(len(cn.actions)))
 			logTopActionProbs(actionsLabels, cn.actions, cn.actionsProbs, cn.Q)
 		}
 
@@ -551,7 +602,7 @@ func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action) (
 			playedIdx = -1
 		} else {
 			playedIdx = cn.board.FindActionDeep(action)
-			glog.V(2).Infof("Actually played: %s, prob=%.2g%%, prev_prob=%.2g%%, score=%f",
+			glog.V(2).Infof("Actually played: %s, prob=%.2g%%, prev_prob=%.2g%%, Q-score=%f",
 				cn.actions[playedIdx], boardActionsLabels[playedIdx]*100, cn.actionsProbs[playedIdx], cn.Q[playedIdx])
 		}
 		cn = cn.Step(mcts, stats, playedIdx, true)

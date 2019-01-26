@@ -63,6 +63,7 @@ var (
 		"actions_loss_ratio": 0.005,
 		"l2_regularization":  1e-5,
 		"self_supervision":   0.0,
+		"td_lambda": 		  1.0,
 	}
 )
 
@@ -107,6 +108,7 @@ type Scorer struct {
 	autoBatchChan chan *AutoBatchRequest
 
 	BoardFeatures, BoardLabels    tf.Output
+	BoardMovesToEnd 			  tf.Output
 	FullBoard                     tf.Output
 	BoardPredictions, BoardLosses tf.Output
 
@@ -194,6 +196,7 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 
 		// Board tensors.
 		BoardFeatures:    t0("board_features"),
+		BoardMovesToEnd:  t0opt("board_moves_to_end"),
 		BoardLabels:      t0("board_labels"),
 		FullBoard:        t0opt("full_board"),
 		BoardPredictions: t0("board_predictions"),
@@ -437,8 +440,14 @@ func (s *Scorer) CheckpointBase() string {
 }
 
 func (s *Scorer) CheckpointFiles() (string, string) {
-	return fmt.Sprintf("%s.checkpoint.index", s.Basename), fmt.Sprintf("%s.checkpoint.data-00000-of-00001", s.Basename)
+	return fmt.Sprintf("%s.checkpoint.index", s.Basename),
+		fmt.Sprintf("%s.checkpoint.data-00000-of-00001", s.Basename)
 
+}
+
+func (s *Scorer) CheckpointFilesForStep(step int64) (string, string) {
+	return fmt.Sprintf("%s.checkpoint.%09d.index", s.Basename, step),
+		fmt.Sprintf("%s.checkpoint.%09d.data-00000-of-00001", s.Basename, step)
 }
 
 func (s *Scorer) Restore() error {
@@ -499,6 +508,7 @@ func mustTensor(value interface{}) *tf.Tensor {
 // can also hold the labels.
 type flatFeaturesCollection struct {
 	boardFeatures     [][]float32
+	boardMovesToEnd   []float32
 	fullBoardFeatures [][][][]float32 // [batch, height, width, depth]
 	boardLabels       []float32
 
@@ -630,7 +640,8 @@ func (s *Scorer) BatchScore(boards []*Board, scoreActions bool) (scores []float3
 	if glog.V(3) {
 		glog.V(3).Infof("Feeded tensors: ")
 		for to, tensor := range feeds {
-			glog.V(3).Infof("\t%s: %v", to.Op.Name(), tensor.Shape())
+			glog.V(3).Infof("\t%s: %v = %v", to.Op.Name(), tensor.Shape(),
+				tensor.Value())
 		}
 	}
 
@@ -698,8 +709,7 @@ func (s *Scorer) Save() {
 	}
 
 	// Link files to version with global step.
-	data2 := fmt.Sprintf("%s.%09d", data, globalStep)
-	index2 := fmt.Sprintf("%s.%09d", index, globalStep)
+	index2, data2 := s.CheckpointFilesForStep(globalStep)
 	linked := false
 	if _, err1 := os.Stat(data2); os.IsNotExist(err1) {
 		if _, err2 := os.Stat(index2); os.IsNotExist(err2) {

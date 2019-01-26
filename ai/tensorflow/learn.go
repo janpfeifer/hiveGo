@@ -66,6 +66,7 @@ func (fc *flatFeaturesCollection) randomMiniBatches(batchSize int) (fcs []*flatF
 		// Append board features.
 		batchFCIdx := batchFC.Len()
 		batchFC.boardFeatures = append(batchFC.boardFeatures, fc.boardFeatures[srcIdx])
+		batchFC.boardMovesToEnd = append(batchFC.boardMovesToEnd, fc.boardMovesToEnd[srcIdx])
 		batchFC.fullBoardFeatures = append(batchFC.fullBoardFeatures, fc.fullBoardFeatures[srcIdx])
 		batchFC.boardLabels = append(batchFC.boardLabels, fc.boardLabels[srcIdx])
 
@@ -103,6 +104,9 @@ func (s *Scorer) buildFeedsForLearning(batch *flatFeaturesCollection, scoreActio
 	if s.IsTraining.Op != nil {
 		feeds[s.IsTraining] = mustTensor(true)
 	}
+	if s.BoardMovesToEnd.Op != nil {
+		feeds[s.BoardMovesToEnd] = mustTensor(batch.boardMovesToEnd)
+	}
 	return
 }
 
@@ -114,6 +118,9 @@ func (s *Scorer) learnOneMiniBatch(feeds map[tf.Output]*tf.Tensor, train, scoreA
 	if scoreActions {
 		fetches = append(fetches, s.BoardLosses)
 		fetches = append(fetches, s.ActionsLosses)
+		if glog.V(3) {
+			fetches = append(fetches, s.ActionsPredictions)
+		}
 	}
 	var ops []*tf.Operation
 	if train {
@@ -124,6 +131,15 @@ func (s *Scorer) learnOneMiniBatch(feeds map[tf.Output]*tf.Tensor, train, scoreA
 			feeds[s.IsTraining] = mustTensor(false)
 		}
 	}
+
+	if glog.V(3) {
+		glog.V(3).Infof("Feeded tensors: ")
+		for to, tensor := range feeds {
+			glog.V(3).Infof("\t%s: %v = %v", to.Op.Name(), tensor.Shape(),
+				tensor.Value())
+		}
+	}
+
 	results, err := s.sessionPool[0].Run(feeds, fetches, ops)
 	if err != nil {
 		log.Panicf("TensorFlow trainOp failed: %v", err)
@@ -132,6 +148,9 @@ func (s *Scorer) learnOneMiniBatch(feeds map[tf.Output]*tf.Tensor, train, scoreA
 	if scoreActions {
 		boardLoss = results[1].Value().(float32)
 		actionsLoss = results[2].Value().(float32)
+		if glog.V(3) {
+			glog.Infof("Actions predictions: %v", results[3].Value().([]float32))
+		}
 	} else {
 		boardLoss = 0
 		actionsLoss = 0
@@ -155,6 +174,10 @@ func (s *Scorer) Learn(
 	scoreActions := s.IsActionsClassifier() && actionsLabels != nil
 	fc := s.buildFeatures(boards, scoreActions)
 	fc.boardLabels = boardLabels
+	fc.boardMovesToEnd = make([]float32, len(boards))
+	for ii, board := range boards {
+		fc.boardMovesToEnd[ii] = float32(board.Derived.PlayerMovesToEnd)
+	}
 	if scoreActions {
 		for boardIdx, a := range actionsLabels {
 			if boards[boardIdx].NumActions() > 1 {
@@ -173,8 +196,6 @@ func (s *Scorer) Learn(
 		for epoch := 0; epoch < epochs || epoch == 0; epoch++ {
 			feeds := s.buildFeedsForLearning(fc, scoreActions)
 			loss, boardLoss, actionsLoss = s.learnOneMiniBatch(feeds, epochs > 0, scoreActions)
-			boardLoss /= float32(len(boards))
-			actionsLoss /= float32(len(boards))
 			if epochs > 0 && perStepCallback != nil {
 				perStepCallback()
 			}
@@ -224,9 +245,7 @@ func (s *Scorer) Learn(
 			averageBoardLoss /= float32(countExamples)
 			averageActionsLoss /= float32(countExamples)
 			glog.V(1).Infof("Loss after epoch %d: total=%g, board=%g, actions=%g",
-				countEpoch, averageLoss,
-				averageBoardLoss/float32(*Flag_learnBatchSize),
-				averageActionsLoss/float32(*Flag_learnBatchSize))
+				countEpoch, averageLoss, averageBoardLoss, averageActionsLoss)
 			countEpoch++
 			countExamples = 0
 			if epochs > 0 && perStepCallback != nil {
@@ -244,5 +263,5 @@ func (s *Scorer) Learn(
 		averageActionsLoss += actionsLoss
 		countExamples++
 	}
-	return averageLoss, averageBoardLoss / float32(*Flag_learnBatchSize), averageActionsLoss / float32(*Flag_learnBatchSize)
+	return averageLoss, averageBoardLoss, averageActionsLoss
 }

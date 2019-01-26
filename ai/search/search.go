@@ -40,13 +40,19 @@ type Searcher interface {
 // where actions were taken and with the score for current b.NextPlayer -- not the
 // next action's NextPlayer. It wil return early if any of the actions lead to
 // b.NextPlayer winning.
-func ExecuteAndScoreActions(b *Board, scorer ai.BatchScorer) ([]Action, []*Board, []float32) {
-	actions := b.Derived.Actions
-	if len(actions) == 0 {
-		actions = append(actions, Action{Piece: NO_PIECE})
+//
+// Actions returned is a deep copy and can be changed.
+func ExecuteAndScoreActions(b *Board, scorer ai.BatchScorer) (
+	actions []Action, newBoards []*Board, scores []float32) {
+	if len(b.Derived.Actions) == 0 {
+		actions = []Action{Action{Piece: NO_PIECE}}
+	} else {
+		// Make deep copy of the actions
+		actions = make([]Action, len(b.Derived.Actions))
+		copy(actions, b.Derived.Actions)
 	}
-	scores := make([]float32, len(actions))
-	newBoards := make([]*Board, len(actions))
+	scores = make([]float32, len(actions))
+	newBoards = make([]*Board, len(actions))
 
 	// Pre-score actions that lead to end-game.
 	boardsToScore := make([]*Board, 0, len(actions))
@@ -65,35 +71,44 @@ func ExecuteAndScoreActions(b *Board, scorer ai.BatchScorer) ([]Action, []*Board
 		}
 	}
 
-	// Player wins, return only the winning actions.
+	// Player wins, no need to score the other plays.
 	if hasWinning > 0 {
-		revisedActions := make([]Action, 0, hasWinning)
-		revisedBoards := make([]*Board, 0, hasWinning)
-		revisedScores := make([]float32, 0, hasWinning)
-		for ii, action := range actions {
-			if newBoards[ii].IsFinished() && scores[ii] > 0 {
-				revisedActions = append(revisedActions, action)
-				revisedBoards = append(revisedBoards, newBoards[ii])
-				revisedScores = append(revisedScores, scores[ii])
-			}
-		}
-		return revisedActions, revisedBoards, revisedScores
+		// Actually we could just trim return only the winning action(s). But
+		// for ML training, it's useful to return all and let it learn from it.
+		// But in any cases there is no need to rescore the other
+		// actions.
+		return
+
+		// To trim the non-winning actions:
+		//revisedActions := make([]Action, 0, hasWinning)
+		//revisedBoards := make([]*Board, 0, hasWinning)
+		//revisedScores := make([]float32, 0, hasWinning)
+		//for ii, action := range actions {
+		//	if newBoards[ii].IsFinished() && scores[ii] > 0 {
+		//		revisedActions = append(revisedActions, action)
+		//		revisedBoards = append(revisedBoards, newBoards[ii])
+		//		revisedScores = append(revisedScores, scores[ii])
+		//	}
+		//}
+		//return revisedActions, revisedBoards, revisedScores
 	}
 
 	if len(boardsToScore) > 0 {
-		// Score other boards.
+		// Score non-game ending boards.
 		// TODO: Use "Principal Variation" to estimate the score.
 		scored, _ := scorer.BatchScore(boardsToScore, false)
 		scoredIdx := 0
 		for ii := range scores {
 			if !newBoards[ii].IsFinished() {
-				scores[ii] = -scored[scoredIdx] // Score for b.NextPlayer, not newBoards[ii].NextPlayer
+				// Score for b.NextPlayer, not newBoards[ii].NextPlayer, hence
+				// we take the inverse here.
+				scores[ii] = -scored[scoredIdx]
 				scoredIdx++
 			}
 		}
 	}
 
-	return actions, newBoards, scores
+	return
 }
 
 func SortActionsBoardsScores(actions []Action, boards []*Board, scores []float32) {

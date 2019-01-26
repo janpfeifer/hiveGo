@@ -117,14 +117,12 @@ func playAndTrain() {
 	}
 
 	// Batch matches.
-	batchChan := make(chan []*Match, 5)
+	batchChan := make(chan []*Match, 2)
 	go batchMatches(matchChan, batchChan)
 
 	// Convert matches to labeled examples.
 	labeledExamplesChan := make(chan LabeledExamples, 5)
-	for i := 0; i < parallelism; i++ {
-		go continuousMatchesToLabeledExamples(batchChan, labeledExamplesChan)
-	}
+	go continuousMatchesToLabeledExamples(batchChan, labeledExamplesChan)
 
 	// Continuously learn.
 	go continuousLearning(labeledExamplesChan)
@@ -222,11 +220,35 @@ func batchMatches(matchChan <-chan *Match, batchChan chan<- []*Match) {
 	}
 }
 
+
+// continuousMatchesToLabeledExamples takes batches, and send labeled examples for training.
+// It generate labeled examples from the latest 2 batches.
 func continuousMatchesToLabeledExamples(batchChan <-chan []*Match, labeledExamplesChan chan<- LabeledExamples) {
+	batchSize := *flag_continuosPlayAndTrainBatchMatches
+	var previousBatch []*Match
 	for batch := range batchChan {
-		glog.V(1).Infof("Batch received: generating labeled examples.")
+		glog.V(1).Infof("Batch received.")
+
+		// Merge new batch into previous batch.
+		if previousBatch == nil {
+			glog.V(1).Infof("Storing batch until 2 are available.")
+			previousBatch = batch
+			continue
+		}
+
+		if len(previousBatch) > batchSize {
+			tmpBatch := make([]*Match, 0, 2*batchSize)
+			tmpBatch = append(tmpBatch,
+				previousBatch[len(previousBatch)-batchSize:]...)
+			tmpBatch = append(tmpBatch, batch...)
+			previousBatch = tmpBatch
+		} else {
+			previousBatch = append(previousBatch, batch...)
+		}
+		glog.V(1).Infof("Batch aggregated: generating labeled examples.")
+
 		n := 0
-		for _, match := range batch {
+		for _, match := range previousBatch {
 			n += len(match.Actions) + 42
 		}
 		if !isSamePlayer && !*flag_distill && !*flag_rescore {
@@ -237,9 +259,12 @@ func continuousMatchesToLabeledExamples(batchChan <-chan []*Match, labeledExampl
 			boardLabels:   make([]float32, 0, n),
 			actionsLabels: make([][]float32, 0, n),
 		}
-		for _, match := range batch {
-			if isSamePlayer || *flag_distill || *flag_rescore {
+		for _, match := range previousBatch {
+			if isSamePlayer || *flag_distill || *flag_rescore || *flag_learnWithEndScore {
 				// Include both players data.
+				if *flag_learnWithEndScore {
+					labelWithEndScore(match)
+				}
 				match.AppendLabeledExamples(&le)
 			} else {
 				// Only include data from player training.

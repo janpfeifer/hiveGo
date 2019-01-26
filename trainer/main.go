@@ -60,6 +60,8 @@ var (
 	flag_rescore         = flag.Bool("rescore", false, "If to rescore matches.")
 	flag_distill         = flag.Bool("distill", false,
 		"If set it will simply distill from --ai1 to --ai0, without serching for best moves.")
+	flag_learnWithEndScore = flag.Bool("learn_with_end_score",
+		true, "If true will use the final score to learn.")
 
 	flag_parallelism = flag.Int("parallelism", 0, "If > 0 ignore GOMAXPROCS and play "+
 		"these many matches simultaneously.")
@@ -181,7 +183,16 @@ func (m *Match) AppendLabeledExamplesForPlayers(le *LabeledExamples, includedPla
 	for ii := from; ii < to; ii++ {
 		if includedPlayers[m.Boards[ii].NextPlayer] && !m.Boards[ii].IsFinished() &&
 			m.Boards[ii].NumActions() > 1 {
+
+			if glog.V(3) {
+				fmt.Println("")
+				stepUI.PrintBoard(m.Boards[ii])
+				score, actionsPred := players[0].Scorer.Score(m.Boards[ii], true)
+				fmt.Printf("Score: %g, ActionsPred: %v\n\n", score, actionsPred)
+			}
+
 			for jj := 0; jj < samples[ii-from]; jj++ {
+				glog.V(2).Infof("Learning board scores: %v", m.Scores[ii])
 				le.boardExamples = append(le.boardExamples, m.Boards[ii])
 				le.boardLabels = append(le.boardLabels, m.Scores[ii])
 				le.actionsLabels = append(le.actionsLabels, m.ActionsLabels[ii])
@@ -255,10 +266,6 @@ func runMatch(matchNum int) *Match {
 	board := NewBoard()
 	board.MaxMoves = *flag_maxMoves
 	match := &Match{MatchNum: matchNum, Swapped: swapped, Boards: []*Board{board}}
-	reorderedPlayers := players
-	if swapped {
-		reorderedPlayers[0], reorderedPlayers[1] = players[1], players[0]
-	}
 
 	// Run match.
 	lastWasSkip := false
@@ -267,7 +274,8 @@ func runMatch(matchNum int) *Match {
 		if swapped {
 			player = 1 - player
 		}
-		glog.V(1).Infof("\n\nMatch %d: player %d at turn %d (#actions=%d)\n\n",
+		glog.V(1).Infof(
+			"\n\nMatch %d: player %d at turn %d (#valid actions=%d)\n\n",
 			matchNum, player, board.MoveNumber, len(board.Derived.Actions))
 		var action Action
 		score := float32(0)
@@ -281,7 +289,7 @@ func runMatch(matchNum int) *Match {
 				log.Panicf("No moves to either side!?\n\n%v\n", board)
 			}
 		} else {
-			action, board, score, actionLabels = reorderedPlayers[board.NextPlayer].Play(board,
+			action, board, score, actionLabels = players[player].Play(board,
 				matchName)
 			if lastWasSkip {
 				// Use inverse of this score for previous "NOOP" move.
@@ -296,19 +304,29 @@ func runMatch(matchNum int) *Match {
 
 		if *flag_printSteps {
 			muStepUI.Lock()
-			fmt.Printf("Match %d action take: %s\n", match.MatchFileIdx, action)
+			fmt.Printf("Match %d action taken: %s\n", match.MatchFileIdx, action)
 			stepUI.PrintBoard(board)
 			fmt.Println("")
 			muStepUI.Unlock()
 		}
 	}
 
+	finalBoard := match.FinalBoard()
+	if !finalBoard.IsFinished() {
+		log.Panic("Match %d stopped before being finished!?", matchNum)
+	}
+
 	if glog.V(1) {
 		var msg string
-		if match.FinalBoard().Draw() {
-			msg = "match was a draw!"
+		if finalBoard.Draw() {
+			if finalBoard.MoveNumber > finalBoard.MaxMoves {
+				msg = "match was a draw (MaxMoves reached)!"
+			} else {
+				msg = fmt.Sprintf("match was a draw (%d repeats)!",
+					finalBoard.Derived.Repeats)
+			}
 		} else {
-			player := match.FinalBoard().Winner()
+			player := finalBoard.Winner()
 			if swapped {
 				player = 1 - player
 			}
@@ -319,7 +337,7 @@ func runMatch(matchNum int) *Match {
 			started = 1
 		}
 		glog.V(1).Infof("\n\nMatch %d: finished at turn %d, %s (Player %d started)\n\n",
-			matchNum, match.FinalBoard().MoveNumber, msg, started)
+			matchNum, finalBoard.MoveNumber, msg, started)
 	}
 
 	return match
@@ -590,9 +608,6 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	if *flag_rescore && !*flag_train && *flag_saveMatches == "" {
-		log.Fatal("Flag --rescore set, but not --train and not --save_matches. Not sure what to do.")
-	}
 	if *flag_maxMoves <= 0 {
 		log.Fatalf("Invalid --max_moves=%d", *flag_maxMoves)
 	}

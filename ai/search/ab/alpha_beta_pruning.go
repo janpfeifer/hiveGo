@@ -63,18 +63,14 @@ func printBoard(b *Board) {
 //    bestAction: that it suggests taking.
 //    bestBoard: Board after taking bestAction.
 //    bestScore: score of taking betAction
+//
+// TODO: Add support to a parallelized version. Careful with stats, likely will need a mutex.
 func AlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int, parallelize bool, randomness float32, stats *abStats) (
 	bestAction Action, bestBoard *Board, bestScore float32) {
 	alpha := float32(-math.MaxFloat32)
 	beta := float32(-math.MaxFloat32)
-	if parallelize {
-		// TODO: move to a parallelized version. Careful with stats, likely will need a mutex.
-		bestAction, bestBoard, bestScore = alphaBetaRecursive(
-			board, scorer, maxDepth, alpha, beta, randomness, stats)
-	} else {
-		bestAction, bestBoard, bestScore = alphaBetaRecursive(
-			board, scorer, maxDepth, alpha, beta, randomness, stats)
-	}
+	bestAction, bestBoard, bestScore = alphaBetaRecursive(
+		board, scorer, maxDepth, alpha, beta, randomness, stats)
 	return
 }
 
@@ -147,16 +143,16 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 	var actions []Action
 	var newBoards []*Board
 	var scores []float32
-	if maxDepth > 1 || !*flag_useActionProb {
+	if maxDepth <= 1 && *flag_useActionProb {
+		// TODO: Instead of expanding the board and using V(s_{t+1}), take Q(s_t, a_t) instead, since it's cheaper.
+		actions = board.Derived.Actions
+		log.Panic("Q(s,a) learning not implemented yet.")
+	} else {
 		actions, newBoards, scores = search.ExecuteAndScoreActions(board, scorer)
 		stats.evals += len(actions)
 		if maxDepth == 1 {
 			stats.leafEvals += len(actions)
 		}
-	} else {
-		// TODO: Instead of expanding the board and using V(s_{t+1}), take Q(s_t, a_t) instead, since it's cheaper.
-		actions = board.Derived.Actions
-		log.Panic("Q(s,a) learning not implemented yet.")
 	}
 
 	// If there are no valid actions, create the "pass" action
@@ -164,8 +160,11 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 		return actions[0], newBoards[0], scores[0]
 	}
 	if maxDepth <= 1 && randomness > 0 && board.MoveNumber <= *flag_maxMoveRandomness {
+		// Randomize only non end-of-game action.s
 		for ii := range scores {
-			scores[ii] += (rand.Float32()*2 - 1) * randomness
+			if !newBoards[ii].IsFinished() {
+				scores[ii] += (rand.Float32()*2 - 1) * randomness
+			}
 		}
 	}
 	search.SortActionsBoardsScores(actions, newBoards, scores)
@@ -196,9 +195,15 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 		}
 
 		// Prune.
-		if bestScore >= -beta {
+		if -bestScore <= beta {
 			// The opponent will never take this path, so we can prune it.
 			stats.prunes++
+			return
+		}
+
+		// If bestScore is a win, it can stop early.
+		if bestBoard != nil && bestBoard.IsFinished() && bestScore > 0 {
+			// This is a winner move, no need to look further.
 			return
 		}
 	}

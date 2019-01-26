@@ -20,7 +20,7 @@ func NewParsingData() (data interface{}) {
 		maxDepth:     10,
 		maxTime:      30 * time.Second,
 		maxTraverses: 300,
-		minTraverses: 100,
+		minTraverses: 0,
 		maxAbsScore:  9.0,
 		cPuct:        1.1,
 		randomness:   0.0,

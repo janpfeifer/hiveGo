@@ -9,6 +9,25 @@ import (
 	"github.com/janpfeifer/hiveGo/ai"
 )
 
+// Label matches with scores that reflect the final result.
+// Also adds to the boards information of how many actions for
+// the player till the end of the match, which is used to
+// calculate the weighting based on TD-lambe constant.
+func labelWithEndScore(match *Match) {
+	_, endScore := ai.EndGameScore(match.FinalBoard())
+	var scores [2]float32
+	if match.FinalBoard().NextPlayer == 0 {
+		scores = [2]float32{endScore, -endScore}
+	} else {
+		scores = [2]float32{-endScore, endScore}
+	}
+	numActions := len(match.Actions)
+	for ii := range match.Scores {
+		match.Boards[ii].Derived.PlayerMovesToEnd = int8((numActions-ii+1)/2 - 1)
+		match.Scores[ii] = scores[match.Boards[ii].NextPlayer]
+	}
+}
+
 // Rescore the matches according to player 0 -- during rescoring we are only trying to
 // improve the one AI.
 // Input and output are asynchronous: matches are started as they arrive, and are
@@ -91,6 +110,9 @@ func trainFromMatches(matches []*Match) {
 		leValidation = &LabeledExamples{}
 	)
 	for _, match := range matches {
+		if *flag_learnWithEndScore {
+			labelWithEndScore(match)
+		}
 		hashNum := match.FinalBoard().Derived.Hash
 		if int(hashNum%100) >= *flag_trainValidation {
 			match.AppendLabeledExamples(leTrain)
