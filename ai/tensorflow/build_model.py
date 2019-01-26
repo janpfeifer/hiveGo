@@ -11,7 +11,8 @@ MODEL_DTYPE = tf.float32
 
 
 tf.app.flags.DEFINE_string("output", "", "Where to save the graph definition.")
-tf.app.flags.DEFINE_bool("actions", "", "Whether to support actions.")
+tf.app.flags.DEFINE_bool("actions", True, "Whether to support actions.")
+tf.app.flags.DEFINE_bool("conv", True, "Whether to convolution over board map.")
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -33,7 +34,7 @@ NEIGHBOURHOOD_NUM_FEATURES = (
     (1 + POSITIONS_PER_SECTION * NUM_SECTIONS) * FEATURES_PER_POSITION + ACTION_FEATURES_DIM)
 
 # Neural Network parameters for board embedding and value prediction.
-BOARD_NUM_HIDDEN_LAYERS = 2
+BOARD_NUM_HIDDEN_LAYERS = 4
 BOARD_NODES_PER_LAYER = 128 - BOARD_FEATURES_DIM
 BOARD_EMBEDDING_DIM = 64 - BOARD_FEATURES_DIM
 
@@ -246,10 +247,14 @@ def main(argv=None):  # pylint: disable=unused-argument
         tf.float32, shape=[None, BOARD_FEATURES_DIM], name='board_features')
     board_moves_to_end = tf.placeholder(
         tf.float32, shape=[None], name='board_moves_to_end')
-    full_board = tf.placeholder(
-        tf.float32, shape=[None, None, None, FEATURES_PER_POSITION],
-        name="full_board",
-    )
+    if FLAGS.conv:
+        full_board = tf.placeholder(
+            tf.float32, shape=[None, None, None, FEATURES_PER_POSITION],
+            name="full_board",
+        )
+    else:
+        full_board = None
+
     board_labels = tf.placeholder(
         tf.float32, shape=[None], name='board_labels')
     board_loss_ratio = tf.placeholder(
@@ -285,16 +290,22 @@ def main(argv=None):  # pylint: disable=unused-argument
 
     # Build board logits and model.
     board_features = tf.cast(board_features, MODEL_DTYPE)
-    full_board = tf.cast(full_board, MODEL_DTYPE)
-    full_board_embeddings, full_board_pooled_embeddings = BuildFullBoardConvolutions(
-        full_board, dropout_keep_probability)
+    if FLAGS.conv:
+        full_board = tf.cast(full_board, MODEL_DTYPE)
+        full_board_embeddings, full_board_pooled_embeddings = BuildFullBoardConvolutions(
+            full_board, dropout_keep_probability)
+
     # unsupervised_board_loss = UnsupervisedBoardLoss(full_board_pooled_embeddings, board_features,
     #                                                 initializer, l2_regularizer)
 
     board_embeddings = BuildBoardEmbeddings(
         board_features, initializer, l2_regularizer, dropout_keep_probability)
-    all_board_embeddings = tf.concat(
-        [full_board_pooled_embeddings, board_embeddings], axis=1)
+    if FLAGS.conv:
+        all_board_embeddings = tf.concat(
+            [full_board_pooled_embeddings, board_embeddings], axis=1)
+    else:
+        all_board_embeddings = board_embeddings
+
     board_predictions, board_losses =  BuildBoardModel(
         all_board_embeddings, board_labels, board_moves_to_end,
         initializer, td_lambda, l2_regularizer,
@@ -317,47 +328,48 @@ def main(argv=None):  # pylint: disable=unused-argument
         board_predictions, mean_board_loss
     ])
 
-    # Build per action inputs.
-    # All inputs are sparse, since the number of actions is variable.
-    # The input `actions_board_indices` list for each of the other
-    # actions_* tensors what is the corresponding board -- so the indices
-    # are from 0 to len(board_features)-1.
-    actions_board_indices = tf.placeholder(
-        tf.int64, shape=[None], name='actions_board_indices')
-    actions_is_move = tf.placeholder(
-        tf.bool, shape=[None], name='actions_is_move')
-    actions_src_positions = tf.placeholder(
-        tf.int64, shape=[None, 2], name='actions_src_positions')
-    actions_tgt_positions = tf.placeholder(
-        tf.int64, shape=[None, 2], name='actions_tgt_positions')
-    actions_pieces = tf.placeholder(
-        tf.float32, shape=[None, NUM_PIECE_TYPES], name='actions_pieces')
-    actions_labels = tf.placeholder(
-        tf.float32, shape=[None], name='actions_labels')
-    actions_loss_ratio = tf.placeholder(
-        tf.float32, shape=(), name='actions_loss_ratio')
+    if FLAGS.actions and FLAGS.conv:
+        # Build per action inputs.
+        # All inputs are sparse, since the number of actions is variable.
+        # The input `actions_board_indices` list for each of the other
+        # actions_* tensors what is the corresponding board -- so the indices
+        # are from 0 to len(board_features)-1.
+        actions_board_indices = tf.placeholder(
+            tf.int64, shape=[None], name='actions_board_indices')
+        actions_is_move = tf.placeholder(
+            tf.bool, shape=[None], name='actions_is_move')
+        actions_src_positions = tf.placeholder(
+            tf.int64, shape=[None, 2], name='actions_src_positions')
+        actions_tgt_positions = tf.placeholder(
+            tf.int64, shape=[None, 2], name='actions_tgt_positions')
+        actions_pieces = tf.placeholder(
+            tf.float32, shape=[None, NUM_PIECE_TYPES], name='actions_pieces')
+        actions_labels = tf.placeholder(
+            tf.float32, shape=[None], name='actions_labels')
+        actions_loss_ratio = tf.placeholder(
+            tf.float32, shape=(), name='actions_loss_ratio')
 
-    hive_lib.report_tensors('Actions inputs:', [
-        actions_board_indices, actions_is_move, actions_src_positions,
-        actions_tgt_positions, actions_pieces, actions_labels,
-        actions_loss_ratio
-    ])
+        hive_lib.report_tensors('Actions inputs:', [
+            actions_board_indices, actions_is_move, actions_src_positions,
+            actions_tgt_positions, actions_pieces, actions_labels,
+            actions_loss_ratio
+        ])
 
-    # Build actions model.
-    actions_predictions, actions_losses = BuildActionsModel(
-        full_board_embeddings, all_board_embeddings,
-        actions_board_indices,
-        actions_is_move, actions_src_positions, actions_tgt_positions, actions_pieces,
-        actions_labels, initializer, l2_regularizer, dropout_keep_probability)
-    x = tf.placeholder(tf.float32, shape=[10, 10], name='x')
+        # Build actions model.
+        actions_predictions, actions_losses = BuildActionsModel(
+            full_board_embeddings, all_board_embeddings,
+            actions_board_indices,
+            actions_is_move, actions_src_positions, actions_tgt_positions, actions_pieces,
+            actions_labels, initializer, l2_regularizer, dropout_keep_probability)
+        x = tf.placeholder(tf.float32, shape=[10, 10], name='x')
 
-    actions_predictions = tf.identity(
-        tf.cast(tf.reshape(actions_predictions, [-1]), tf.float32), name='actions_predictions')
-    total_losses += actions_losses * actions_loss_ratio
-    mean_actions_losses = tf.identity(actions_losses / batch_size, name='actions_losses')
-    hive_lib.report_tensors('Actions outputs:', [
-        actions_predictions, mean_actions_losses
-    ])
+        actions_predictions = tf.identity(
+            tf.cast(tf.reshape(actions_predictions, [-1]), tf.float32), name='actions_predictions')
+        total_losses += actions_losses * actions_loss_ratio
+        mean_actions_losses = tf.identity(actions_losses / batch_size, name='actions_losses')
+        hive_lib.report_tensors('Actions outputs:', [
+            actions_predictions, mean_actions_losses
+        ])
 
     # Build optimizer and train opt.
     global_step = tf.train.create_global_step()

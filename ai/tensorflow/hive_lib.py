@@ -11,6 +11,8 @@ def report_tensors(title, tensors):
     """Print out tensor names with shape and tepe."""
     print(title)
     for t in tensors:
+        if t is None:
+            continue
         print('\t{}, dtype={}, shape={}'.format(t.name, t.dtype, t.shape))
     print()
 
