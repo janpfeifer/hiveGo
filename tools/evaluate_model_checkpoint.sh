@@ -56,7 +56,7 @@ go install github.com/janpfeifer/hiveGo/trainer || (
 # Train and measure times.
 time trainer \
 	--parallelism=50 --num_matches=${NUM_MATCHES} \
-	--ai0="ab,max_depth=${DEPTH},${TEST_SPECS}" \
+	--ai0="ab,max_depth=${DEPTH}${TEST_SPECS}" \
 	--ai1="ab,max_depth=${DEPTH},randomness=${RANDOMNESS}${BASELINE_SPECS}" \
 	--save_matches=${MATCH} \
 	--v=${VLOG_LEVEL} --vmodule="${VMODULE}" --logtostderr \
