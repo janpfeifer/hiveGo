@@ -6,9 +6,12 @@ BASELINE="linear"
 BASELINE_SPECS=""
 NUM_MATCHES=100
 DEPTH=2   # Same for both players.
-# Applied to both players. Notice that this may not be fair, as
-# the range of values used can be different ... Best if this were
-# normalized by the mean score. But this is not implemented yet.
+
+# Randomness is applied only to the baseline player: since 
+# the range of scores on the test player is chaning, it's hard
+# to have a value that would be the same and comparable ... So
+# baseline has a disadvanatage, but this is not an issue since 
+# we care more about how test is changing over time.
 RANDOMNESS=0.1
 
 VLOG_LEVEL=0
@@ -53,8 +56,8 @@ go install github.com/janpfeifer/hiveGo/trainer || (
 # Train and measure times.
 time trainer \
 	--parallelism=50 --num_matches=${NUM_MATCHES} \
+	--ai0="ab,max_depth=${DEPTH},${TEST_SPECS}" \
 	--ai1="ab,max_depth=${DEPTH},randomness=${RANDOMNESS}${BASELINE_SPECS}" \
-	--ai0="ab,max_depth=${DEPTH},randomness=${RANDOMNESS}${TEST_SPECS}" \
 	--save_matches=${MATCH} \
 	--v=${VLOG_LEVEL} --vmodule="${VMODULE}" --logtostderr \
 	--tf_gpu_mem=0.1 --tf_params_file="${TEST_PARAMS}" \

@@ -23,13 +23,12 @@ ls "${BASEDIR}/match_${BASELINE}_vs_"*".txt" \
 	echo
 done >> "${DATA}"
 
-echo "${DATA}"
 gnuplot <<EOF
 	set term png giant size 2048,1024 font '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 	set output '${OUTPUT}'
 	plot "${DATA}" using 1:(\$2+\$3+\$4) title columnhead(2) with filledcurves x1, \
-		 "${DATA}" using 1:(\$3+\$4) title columnhead(3) with filledcurves x1, \
-		 "${DATA}" using 1:(\$4) title columnhead(4) with filledcurves x1
+		 "${DATA}" using 1:(\$4+\$3) title columnhead(4) with filledcurves x1, \
+		 "${DATA}" using 1:(\$3) title columnhead(3) with filledcurves x1
 EOF
 
 rm -r "${DATA}"
