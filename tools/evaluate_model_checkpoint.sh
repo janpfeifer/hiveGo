@@ -11,8 +11,8 @@ DEPTH=2   # Same for both players.
 # normalized by the mean score. But this is not implemented yet.
 RANDOMNESS=0.1
 
-VLOG_LEVEL=1
-VMODULE='mcts=2,alpha*=2'
+VLOG_LEVEL=0
+VMODULE=''
 
 # Program arguments
 MODEL="$1" ; shift
@@ -33,7 +33,7 @@ TEST_SPECS=",tf,model=${TEST_BASE}"
 TEST_PARAMS="${BASEDIR}/tf_params.txt"
 
 MATCH_BASE="match_${BASELINE}_vs_${CHECKPOINT}"
-OUTPUT="${BASEDIR}/${OUTPUT_BASE}.txt"
+OUTPUT="${BASEDIR}/${MATCH_BASE}.txt"
 MATCH_DIR="matches/${MODEL}"
 mkdir -p "${MATCH_DIR}"
 MATCH="${MATCH_DIR}/${MATCH_BASE}.bin"
@@ -41,7 +41,7 @@ MATCH="${MATCH_DIR}/${MATCH_BASE}.bin"
 # Copy checkpoint file to test 
 cp "${PB}" "${TEST_PB}"
 for ii in "${CHECKPOINT_FILES[@]}" ; do
-	echo cp "${BASE}.checkpoint.${CHECKPOINT}.${ii}" "${TEST_BASE}.checkpoint.${ii}"
+	ln -f "${BASE}.checkpoint.${CHECKPOINT}.${ii}" "${TEST_BASE}.checkpoint.${ii}"
 done
 
 # Rebuild trainer fresh.
@@ -52,10 +52,17 @@ go install github.com/janpfeifer/hiveGo/trainer || (
 
 # Train and measure times.
 time trainer \
-	--parallelism=50 --num_matches=${NUM_MATCHES} 
+	--parallelism=50 --num_matches=${NUM_MATCHES} \
 	--ai1="ab,max_depth=${DEPTH},randomness=${RANDOMNESS}${BASELINE_SPECS}" \
 	--ai0="ab,max_depth=${DEPTH},randomness=${RANDOMNESS}${TEST_SPECS}" \
 	--save_matches=${MATCH} \
-	--v=${VLOG_LEVEL} --vmodule="${VMODLULE}" --logtostderr \
+	--v=${VLOG_LEVEL} --vmodule="${VMODULE}" --logtostderr \
 	--tf_gpu_mem=0.1 --tf_params_file="${TEST_PARAMS}" \
-	2>&1 | tee ${OUTPUT}
+	2>&1 \
+	| tee ${OUTPUT} \
+	| egrep --line-buffered '(finished at|Win|Draw)'
+
+rm -f ${TEST_PB} 
+for ii in "${CHECKPOINT_FILES[@]}" ; do
+	rm -f "${TEST_BASE}.checkpoint.${ii}"
+done
