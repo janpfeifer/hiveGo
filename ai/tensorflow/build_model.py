@@ -1,8 +1,12 @@
 #!/usr/bin/python3
 # This will build an empty base model, with training ops that can be executed from Go.
-import hive_lib
+
 import tensorflow as tf
+import hive_lib
+import hive_lattice
 import sys
+
+print(tf.__version__)
 
 # Model internal type: tf.float16 presumably is faster in the RX2080 Ti GPU,
 # and not slower in others. Losses are still kept as float32 though.
@@ -13,6 +17,7 @@ MODEL_DTYPE = tf.float32
 tf.app.flags.DEFINE_string("output", "", "Where to save the graph definition.")
 tf.app.flags.DEFINE_bool("actions", True, "Whether to support actions.")
 tf.app.flags.DEFINE_bool("conv", True, "Whether to convolution over board map.")
+tf.app.flags.DEFINE_bool("lattice", True, "Set this to use lattices models.")
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -23,6 +28,20 @@ MAX_MOVES = 100
 
 # Dimension of the input features.
 BOARD_FEATURES_DIM = 41  # Should match ai.AllFeaturesDim
+
+# These should match the same in policy_features.go
+ACTION_FEATURES_DIM = 1  # Static/context features.
+NUM_SECTIONS = 6  # Sections of neighbourhood.
+POSITIONS_PER_SECTION = 3  # Num of board positions per section.
+FEATURES_PER_POSITION = 16  # Num of features per position.
+# NEIGHBOURHOOD_NUM_FEATURES = 305
+
+# These should match the same in policy_features.go
+ACTION_FEATURES_DIM = 1  # Static/context features.
+NUM_SECTIONS = 6  # Sections of neighbourhood.
+POSITIONS_PER_SECTION = 3  # Num of board positions per section.
+FEATURES_PER_POSITION = 16  # Num of features per position.
+# NEIGHBOURHOOD_NUM_FEATURES = 305
 
 # These should match the same in policy_features.go
 ACTION_FEATURES_DIM = 1  # Static/context features.
@@ -93,30 +112,30 @@ def BuildBoardModel(board_embeddings, board_labels, board_moves_to_end,
     with tf.name_scope("BuildBoardModel"):
         with tf.variable_scope("board_output"):
             board_embeddings = tf.nn.dropout(board_embeddings, dropout_keep_probability)
-            board_values = tf.layers.dense(
+            board_raw_predictions = tf.layers.dense(
                 board_embeddings, 1, activation=None,
                 name="linear_layer", kernel_initializer=initializer,
                 kernel_regularizer=l2_regularizer)
         # Adjust prediction.
-        board_predictions = hive_lib.sigmoid_to_max(board_values)
+        board_predictions = hive_lib.sigmoid_to_max(board_raw_predictions)
         board_labels = tf.cast(board_labels, MODEL_DTYPE)
-        reshaped_values = tf.reshape(board_values, [-1])
+        reshaped_raw_predictions = tf.reshape(board_raw_predictions, [-1])
 
         def td_lambda_weighted_loss():
             weights = tf.math.pow(td_lambda, board_moves_to_end)
             return tf.losses.absolute_difference(
-                board_labels, reshaped_values, weights=weights,
-                reduction=tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS)
+                board_labels, reshaped_raw_predictions, weights=weights,
+                reduction=tf.losses.Reduction.MEAN_BY_NONZERO_WEIGHTS)
 
         board_losses = tf.cond(
             tf.equal(td_lambda, 1.0),
             true_fn=lambda: tf.losses.absolute_difference(
-                board_labels, reshaped_values,
-                reduction=tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS),
+                board_labels, reshaped_raw_predictions,
+                reduction=tf.losses.Reduction.MEAN_BY_NONZERO_WEIGHTS),
             false_fn=td_lambda_weighted_loss)
 
         pred_reg_losses = prediction_l2_regularization * \
-            tf.cast(tf.reduce_sum(tf.math.square(board_values)), tf.float32)
+            tf.cast(tf.reduce_sum(tf.math.square(board_raw_predictions)), tf.float32)
         board_losses += pred_reg_losses
         return board_predictions, board_losses
 
@@ -182,6 +201,12 @@ def BuildActionsModel(
             tf.reshape(actions_logits, [-1]), actions_board_indices)
         actions_predictions = tf.exp(log_soft_max)
         actions_loss = hive_lib.sparse_cross_entropy_loss(log_soft_max, actions_labels)
+        actions_loss = tf.reduce_sum(actions_loss)
+
+        # Since we use the mean for loses, we need to normalize it by batch size.
+        batch_size = tf.shape(all_board_embeddings)[0]
+        actions_loss = actions_loss / batch_size
+
         # with tf.control_dependencies(
         #         [tf.print("actions_logits:", actions_logits, summarize=-1),
         #          tf.print("log_soft_max:", log_soft_max, summarize=-1),
@@ -189,7 +214,6 @@ def BuildActionsModel(
         #          tf.print("actions_labels:", actions_labels, summarize=-1),
         #          tf.print("actions_loss:", actions_loss, summarize=-1),
         # ]):
-        actions_loss = tf.reduce_sum(actions_loss)
         return (actions_predictions, actions_loss)
 
 
@@ -241,6 +265,7 @@ def main(argv=None):  # pylint: disable=unused-argument
         tf.float32, shape=(), name='clip_global_norm')
     td_lambda = tf.placeholder(
         tf.float32, shape=(), name='td_lambda')
+    total_losses = tf.constant(0.0, dtype=tf.float32)
 
     # Board data.
     board_features = tf.placeholder(
@@ -290,6 +315,12 @@ def main(argv=None):  # pylint: disable=unused-argument
 
     # Build board logits and model.
     board_features = tf.cast(board_features, MODEL_DTYPE)
+    if FLAGS.lattice:
+        board_features, calibration_reg_losses = hive_lattice.BuildBoardFeaturesCalibrator(board_features)
+        calibration_regularization = tf.placeholder(
+            tf.float32, shape=(), name='calibration_regularization')
+        total_losses += calibration_reg_losses
+
     if FLAGS.conv:
         full_board = tf.cast(full_board, MODEL_DTYPE)
         full_board_embeddings, full_board_pooled_embeddings = BuildFullBoardConvolutions(
@@ -312,20 +343,13 @@ def main(argv=None):  # pylint: disable=unused-argument
         prediction_l2_regularization, dropout_keep_probability)
 
     # total_losses = board_losses + unsupervised_loss_ratio * unsupervised_board_loss
-    total_losses = board_losses * board_loss_ratio
+    board_losses = tf.identity(board_losses, name='board_losses')
+    total_losses += board_losses * board_loss_ratio
     board_predictions = tf.identity(
         tf.cast(tf.reshape(board_predictions, [-1]), tf.float32), name='board_predictions')
 
-    # Return mean board losses
-    batch_size = tf.cast(tf.shape(board_features)[0], tf.float32)
-    weights_sum = tf.cond(
-        tf.equal(td_lambda, 1.0),
-        true_fn=lambda: batch_size,
-        false_fn=lambda: tf.reduce_sum(tf.math.pow(td_lambda, board_moves_to_end))
-    )
-    mean_board_loss = tf.identity(board_losses / weights_sum, name='board_losses')
     hive_lib.report_tensors('Board outputs:', [
-        board_predictions, mean_board_loss
+        board_predictions, board_losses
     ])
 
     if FLAGS.actions and FLAGS.conv:
@@ -366,10 +390,8 @@ def main(argv=None):  # pylint: disable=unused-argument
         actions_predictions = tf.identity(
             tf.cast(tf.reshape(actions_predictions, [-1]), tf.float32), name='actions_predictions')
         total_losses += actions_losses * actions_loss_ratio
-        mean_actions_losses = tf.identity(actions_losses / batch_size, name='actions_losses')
-        hive_lib.report_tensors('Actions outputs:', [
-            actions_predictions, mean_actions_losses
-        ])
+        actions_losses = tf.identity(actions_losses, name='actions_losses')
+        hive_lib.report_tensors('Actions outputs:', [actions_predictions, actions_losses])
 
     # Build optimizer and train opt.
     global_step = tf.train.create_global_step()
@@ -401,10 +423,8 @@ def main(argv=None):  # pylint: disable=unused-argument
     print('\tGlobal step:\t', global_step.name,
           global_step.dtype, global_step.shape)
 
-    # Mean loss: more stable across batches of different sizes.
-    mean_loss = total_losses / \
-        tf.cast(tf.shape(board_features)[0], dtype=tf.float32)
-    mean_loss = tf.identity(tf.cast(mean_loss, tf.float32), name='mean_loss')
+    # We already use mean to aggregate total_losses across batch. 
+    mean_loss = tf.identity(tf.cast(total_losses, tf.float32), name='mean_loss')
     print('\tMean total loss:\t', mean_loss.name)
 
     # Create saver nodes.

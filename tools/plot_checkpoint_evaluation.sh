@@ -63,6 +63,44 @@ done
 
 if [[ -e "${LOSSES_DATA}" ]] ; then
 
+# Losses data from distill files.
+rm -f "${LOSSES_DATA}"
+ls "${BASEDIR}/distil"*".txt" | while read file_name ; do
+	cat "${file_name}" \
+	| egrep '(checkpointing|Validation|Loss after epoch)' \
+	| perl -e '
+		$v=0.0; 
+		$l=-1.0; 
+		while (<>) { 
+			if ( $l < 0.0 && /total=(.*?),/ ) { 
+				$l = $1; 
+			} elsif ( /Validation losses: (.*?),/ ) { 
+				$v=$1; 
+			} elsif ( /global_step=(\d+)/ ) { 
+				print "$1 $v $l\n"; 
+				$l=-1; 
+			} 
+		}' \
+	>> "${LOSSES_DATA}"
+done
+
+if [[ -e "${LOSSES_DATA}" ]] ; then
+
+gnuplot <<EOF
+	set term png giant size 2048,1024 font '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+	set output "${OUTPUT}"
+	set xlabel "Checkpoint"
+	set ylabel "Experiment Wins / Draws / Baseline Wins"
+	set y2label "Loss"
+	set y2tics 0.05
+	plot "${DATA}" using 1:(\$2+\$3+\$4) title columnhead(2) with filledcurves x1, \
+		 "${DATA}" using 1:(\$4+\$3) title columnhead(4) with filledcurves x1, \
+		 "${DATA}" using 1:(\$3) title columnhead(3) with filledcurves x1, \
+		 "${LOSSES_DATA}" using 1:2 title "Validation Losses" with lines lw 3 axis x1y2, \
+		 "${LOSSES_DATA}" using 1:3 title "Training Losses" with lines lw 3 axis x1y2
+EOF
+
+else
 gnuplot <<EOF
 	set term png giant size 2048,1024 font '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
 	set output "${OUTPUT}"

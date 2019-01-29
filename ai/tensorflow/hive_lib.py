@@ -1,4 +1,3 @@
-#!/usr/bin/python3
 import tensorflow as tf
 
 # Predictions should be limited to MAX_Q_VALUE. Values above MAX_Q_LINEAR_VALUE are passed by a sigmoid
