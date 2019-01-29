@@ -59,11 +59,12 @@ var (
 	// These are default values for tensorflow models' tensors (if they are
 	// set as placeholders). They can be overwritten using the flag --tf_params.
 	DefaultModelParams = map[string]float32{
-		"learning_rate":      1e-5,
-		"actions_loss_ratio": 0.005,
-		"l2_regularization":  1e-5,
-		"self_supervision":   0.0,
-		"td_lambda": 		  1.0,
+		"learning_rate":              1e-5,
+		"actions_loss_ratio":         0.005,
+		"l2_regularization":          1e-5,
+		"self_supervision":           0.0,
+		"td_lambda":                  1.0,
+		"calibration_regularization": 0.0,
 	}
 )
 
@@ -108,7 +109,7 @@ type Scorer struct {
 	autoBatchChan chan *AutoBatchRequest
 
 	BoardFeatures, BoardLabels    tf.Output
-	BoardMovesToEnd 			  tf.Output
+	BoardMovesToEnd               tf.Output
 	FullBoard                     tf.Output
 	BoardPredictions, BoardLosses tf.Output
 
