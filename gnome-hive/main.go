@@ -13,6 +13,8 @@ import (
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/janpfeifer/hiveGo/ai/players"
+	_ "github.com/janpfeifer/hiveGo/ai/search/ab"
+	_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
 	"github.com/janpfeifer/hiveGo/ai/tensorflow"
 	. "github.com/janpfeifer/hiveGo/state"
 )
