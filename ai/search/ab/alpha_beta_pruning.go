@@ -3,13 +3,14 @@ package ab
 import (
 	"flag"
 	"fmt"
-	"github.com/janpfeifer/hiveGo/ai/search"
 	"log"
 	"math"
 	"math/rand"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/janpfeifer/hiveGo/ai/search"
 
 	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
@@ -22,7 +23,7 @@ var _ = fmt.Printf
 
 var flag_useActionProb = flag.Bool("ab_use_actions", false,
 	"Use action probabilities to sort actions. Requires TensorFlow model.")
-var flag_maxMoveRandomness = flag.Int("ab_max_move_randomness", 10+3,
+var flag_maxMoveRandomness = flag.Int("ab_max_move_randomness", 100,
 	"After this move randomness is dropped and the game follows on without it.")
 
 type alphaBetaSearcher struct {
@@ -163,7 +164,9 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 		// Randomize only non end-of-game action.s
 		for ii := range scores {
 			if !newBoards[ii].IsFinished() {
-				scores[ii] += (rand.Float32()*2 - 1) * randomness
+				if randomness > 0 {
+					scores[ii] = ai.SigmoidTo10(scores[ii] + float32(rand.NormFloat64())*randomness)
+				}
 			}
 		}
 	}
