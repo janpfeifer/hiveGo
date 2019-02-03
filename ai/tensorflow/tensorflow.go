@@ -65,6 +65,7 @@ var (
 		"self_supervision":           0.0,
 		"td_lambda":                  1.0,
 		"calibration_regularization": 0.0,
+		"dropout_keep_probability":   1.0,
 	}
 )
 
