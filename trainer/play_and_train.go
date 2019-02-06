@@ -15,7 +15,8 @@ import (
 var (
 	flag_continuosPlayAndTrain = flag.Bool("play_and_train",
 		false, "If set, continuously play and train matches.")
-	flag_continuosPlayAndTrainBatchMatches = flag.Int("play_and_train_batch_matches",
+	flag_continuosPlayAndTrainBatchMatches = flag.Int(
+		"play_and_train_batch_matches",
 		10, "Number of matches to batch before learning.")
 )
 
