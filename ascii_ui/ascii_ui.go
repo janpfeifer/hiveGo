@@ -49,32 +49,48 @@ func NewUI(color bool, clearScreen bool) *UI {
 	}
 }
 
+func (ui *UI) CheckNoAvailableAction(board *Board) (*Board, bool) {
+	if len(board.Derived.Actions) > 0 {
+		return board, false
+	}
+
+	// Nothing to play, skip (by playing SKIP_ACTION)
+	fmt.Println()
+	ui.PrintPlayer(board)
+	fmt.Println(" has no available actions, skipping.")
+	fmt.Println()
+	board = board.Act(SKIP_ACTION)
+	return board, true
+}
+
+func (ui *UI) RunNextMove(board *Board) (*Board, error) {
+	for true {
+		ui.Print(board)
+		action, err := ui.ReadCommand(board)
+		if err != nil && err.Error() == parsingErrorMsg {
+			continue
+		}
+		if err != nil {
+			log.Printf("Run() failed: %s", err)
+			return board, err
+		}
+		board = board.Act(action)
+		break
+	}
+	return board, nil
+}
+
 func (ui *UI) Run(board *Board) (*Board, error) {
 	for true {
-		if len(board.Derived.Actions) == 0 {
-			// Nothing to play, skip (by playing SKIP_ACTION)
-			fmt.Println()
-			ui.PrintPlayer(board)
-			fmt.Println(" has no available actions, skipping.")
-			fmt.Println()
-			board = board.Act(SKIP_ACTION)
-		}
+		board, _ = ui.CheckNoAvailableAction(board)
 		if board.IsFinished() {
 			ui.PrintWinner(board)
 			return board, nil
 		}
-		for true {
-			ui.Print(board)
-			action, err := ui.ReadCommand(board)
-			if err != nil && err.Error() == parsingErrorMsg {
-				continue
-			}
-			if err != nil {
-				log.Printf("Run() failed: %s", err)
-				return board, err
-			}
-			board = board.Act(action)
-			break
+		var err error
+		board, err = ui.RunNextMove(board)
+		if err != nil {
+			return board, err
 		}
 	}
 	return board, nil
