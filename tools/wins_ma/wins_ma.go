@@ -9,7 +9,7 @@ import "sort"
 
 // The moving average will carry at most that much weight from
 // past examples.
-const MAX_MOVING_AVERGAGE_WEIGHT = 0.99
+const MAX_MOVING_AVERGAGE_WEIGHT = 0.999
 
 type Result int
 
