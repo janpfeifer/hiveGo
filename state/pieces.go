@@ -5,7 +5,7 @@ import "fmt"
 var _ = fmt.Printf
 
 // EmptyAndConnectedNeighbours returns neighbouring positions that are empty but
-// still connected to the graph.
+// still connected to the graph of insects.
 //
 // It also checks that piece is not "squeezing" through two other pieces, or that
 // it moves loosing touch to pieces -- that is, the intersection of neighboring
@@ -137,6 +137,7 @@ func (b *Board) antMoves(srcPos Pos) (poss []Pos) {
 			poss = append(poss, pos)
 		}
 	}
+	PosSort(poss)
 	return
 }
 

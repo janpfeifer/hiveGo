@@ -240,7 +240,7 @@ func (ui *UI) PrintAvailable(board *Board) {
 }
 
 func (ui *UI) PrintBoard(board *Board) {
-	min_x, max_x, min_y, max_y := board.UsedLimits()
+	min_x, max_x, min_y, max_y := board.DisplayUsedLimits()
 	min_x--
 	max_x++
 	min_y--
@@ -264,7 +264,8 @@ func (ui *UI) printBoardLine(board *Board, y, line, min_x, max_x int8) {
 				adj_y -= 1
 			}
 		}
-		pos := Pos{x, adj_y}
+		displayPos := Pos{x, adj_y}
+		pos := displayPos.FromDisplayPos()
 		player, piece, stacked := board.PieceAt(pos)
 		lastX := (x == max_x+1)
 		ui.printStrip(board, pos, player, piece, stacked, adj_line, lastX)

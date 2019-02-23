@@ -72,11 +72,8 @@ func convertTextToBoard(txt string) (b *Board, removable map[Pos]bool, start Pos
 			if code == '.' {
 				continue
 			}
-			y := len(lines) - row
-			if col%2 == 1 {
-				y--
-			}
-			y /= 2
+			x := col
+			y := row >> 1 - x >> 1
 			pos := Pos{int8(col), int8(y)}
 			start = pos
 
@@ -96,6 +93,11 @@ func convertTextToBoard(txt string) (b *Board, removable map[Pos]bool, start Pos
 func testRemovableAlternatives(t *testing.T, useOld bool) {
 	for _, txt := range testBoards {
 		board, want, start := convertTextToBoard(txt)
+		fmt.Println()
+		fmt.Println(txt)
+		fmt.Println()
+		printBoard(board)
+		fmt.Println()
 		var removable map[Pos]bool
 		if useOld {
 			removable = board.TestOldRemovable()
@@ -104,7 +106,6 @@ func testRemovableAlternatives(t *testing.T, useOld bool) {
 		}
 		if !reflect.DeepEqual(removable, want) {
 			t.Errorf("Removable(%v): wanted=%v, got=%v", useOld, want, removable)
-			printBoard(board)
 		}
 	}
 }

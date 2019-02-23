@@ -1,5 +1,5 @@
 # Tools to build lattice model.
-import tensorflow_lattice as tfl
+# import tensorflow_lattice as tfl
 import tensorflow as tf
 
 _NUM_PIECE_TYPES=5

@@ -86,7 +86,28 @@ func (pos Pos) String() string {
 	return fmt.Sprintf("(%d, %d)", pos[0], pos[1])
 }
 
+func (pos Pos) DisplayPos() Pos {
+	deltaY := pos[0] >> 1
+	return Pos{pos[0], pos[1] + deltaY}
+}
+
+func (pos Pos) FromDisplayPos() Pos {
+	deltaY := pos[0] >> 1
+	return Pos{pos[0], pos[1] - deltaY}
+}
+
 type PosSlice []Pos
+
+func (p PosSlice) DisplayPos() {
+	for ii := range p {
+		p[ii] = p[ii].DisplayPos()
+	}
+}
+func (p PosSlice) FromDisplayPos() {
+	for ii := range p {
+		p[ii] = p[ii].FromDisplayPos()
+	}
+}
 
 func (p PosSlice) Len() int { return len(p) }
 func (p PosSlice) Less(i, j int) bool {
@@ -305,6 +326,30 @@ func (b *Board) UsedLimits() (min_x, max_x, min_y, max_y int8) {
 	return
 }
 
+// DisplayUsedLimits returns the max/min of x/y of the display.
+func (b *Board) DisplayUsedLimits() (min_x, max_x, min_y, max_y int8) {
+	first := true
+	for pos, _ := range b.board {
+		pos = pos.DisplayPos()
+		x, y := pos.X(), pos.Y()
+		if first || x > max_x {
+			max_x = x
+		}
+		if first || x < min_x {
+			min_x = x
+		}
+		if first || y > max_y {
+			max_y = y
+		}
+		if first || y < min_y {
+			min_y = y
+		}
+		first = false
+	}
+	return
+}
+
+
 // OccupiedPositions returns all the positions used.
 func (b *Board) OccupiedPositions() (poss []Pos) {
 	poss = make([]Pos, 0, len(b.board))
@@ -323,15 +368,20 @@ func (b *Board) OccupiedPositions() (poss []Pos) {
 // Also the neighbours are listed in a clockwise manner.
 func (pos Pos) Neighbours() []Pos {
 	x, y := pos[0], pos[1]
-	if x%2 == 0 {
-		return []Pos{
-			{x, y - 1}, {x + 1, y - 1}, {x + 1, y},
-			{x, y + 1}, {x - 1, y}, {x - 1, y - 1}}
-	} else {
-		return []Pos{
-			{x, y - 1}, {x + 1, y}, {x + 1, y + 1},
-			{x, y + 1}, {x - 1, y + 1}, {x - 1, y}}
-	}
+	return []Pos{
+		{x, y-1}, {x+1, y-1}, {x+1,y},
+		{x, y + 1}, {x - 1, y + 1}, {x - 1, y}}
+
+	// Version with on display X,Y axis.
+	// if x%2 == 0 {
+	// 	return []Pos{
+	// 		{x, y - 1}, {x + 1, y - 1}, {x + 1, y},
+	// 		{x, y + 1}, {x - 1, y}, {x - 1, y - 1}}
+	// } else {
+	// 	return []Pos{
+	// 		{x, y - 1}, {x + 1, y}, {x + 1, y + 1},
+	// 		{x, y + 1}, {x - 1, y + 1}, {x - 1, y}}
+	// }
 }
 
 // FilterPositions filters the given positions according to the given filter.

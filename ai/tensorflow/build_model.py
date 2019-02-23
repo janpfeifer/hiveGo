@@ -2,11 +2,13 @@
 # This will build an empty base model, with training ops that can be executed from Go.
 
 import tensorflow as tf
+print(tf.__version__)
+
 import hive_lib
 import hive_lattice
+
 import sys
 
-print(tf.__version__)
 
 # Model internal type: tf.float16 presumably is faster in the RX2080 Ti GPU,
 # and not slower in others. Losses are still kept as float32 though.

@@ -64,10 +64,6 @@ func (b *Board) normalizedPosStackSlice() (poss PosStackSlice) {
 //
 // It requires b.Derived to exist, and in particular
 // b.Derived.NormalizedPosStackSlice to be filled.
-//
-// TODO: Normalize accross odd/even X positions: it wil require shifting
-// 	the Y position of every other column I think, to keep the simetry of
-//  hexagons.
 func (b *Board) normalizedHash() uint64 {
 	hasher := fnv.New64a()
 	if len(b.Derived.NormalizedPosStackSlice) == 0 {
