@@ -15,4 +15,9 @@ a0_v*.*
 *.pyc
 conv_v?*
 conv_test*
+
+hiveGo.sublime*
+
+lib/
 models/
+venv/
