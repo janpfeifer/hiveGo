@@ -77,11 +77,13 @@ func newDrawingParams(da *gtk.DrawingArea) (dp *drawingParams) {
 }
 
 func (dp *drawingParams) posToXY(pos Pos, stackCount int) (x, y float64) {
+	//x = dp.xc + float64(pos.X())*dp.hexWidth
+	//y = dp.yc + float64(pos.Y())*dp.hexHeight
+	//if pos.X()%2 != 0 {
+	//	y += hexTriangleHeight(dp.face)
+	//}
 	x = dp.xc + float64(pos.X())*dp.hexWidth
-	y = dp.yc + float64(pos.Y())*dp.hexHeight
-	if pos.X()%2 != 0 {
-		y += hexTriangleHeight(dp.face)
-	}
+	y = dp.yc + (float64(pos.Y())+float64(pos.X())/2.0)*dp.hexHeight
 	x += float64(stackCount) * 3.0 * zoomFactor
 	y -= float64(stackCount) * 3.0 * zoomFactor
 	return
@@ -91,10 +93,11 @@ func (dp *drawingParams) XYToPos(x, y float64) Pos {
 	x -= dp.xc
 	y -= dp.yc
 	posX := int8(math.Round(x / dp.hexWidth))
-	if posX%2 != 0 {
-		y -= hexTriangleHeight(dp.face)
-	}
-	posY := int8(math.Round(y / dp.hexHeight))
+	//if posX%2 != 0 {
+	//	y -= hexTriangleHeight(dp.face)
+	//}
+	//posY := int8(math.Round(y / dp.hexHeight))
+	posY := int8(math.Round(y / dp.hexHeight - float64(posX) / 2.0))
 	return Pos{posX, posY}
 }
 

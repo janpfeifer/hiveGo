@@ -16,6 +16,7 @@ import (
 	_ "github.com/janpfeifer/hiveGo/ai/search/ab"
 	_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
 	"github.com/janpfeifer/hiveGo/ai/tensorflow"
+	_ "github.com/janpfeifer/hiveGo/ai/tfddqn"
 	. "github.com/janpfeifer/hiveGo/state"
 )
 
