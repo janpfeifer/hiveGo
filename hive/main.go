@@ -6,8 +6,9 @@ import (
 	"log"
 
 	// TensorFlow is included so it shows up as an option for scorers.
+	_ "github.com/janpfeifer/hiveGo/ai"
 	"github.com/janpfeifer/hiveGo/ai/players"
-	_ "github.com/janpfeifer/hiveGo/ai/tensorflow"
+	//_ "github.com/janpfeifer/hiveGo/ai/tensorflow"
 	_ "github.com/janpfeifer/hiveGo/ai/search/ab"
 	_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
@@ -22,11 +23,9 @@ var (
 		flag.String("p1", "hotseat", "First player: hotseat, ai"),
 	}
 	flag_aiConfig = flag.String("ai", "", "Configuration of AI.")
-	flag_aiUI = flag.Bool("ai_ui", false, "Shows UI even for ai vs ai game.")
+	flag_aiUI     = flag.Bool("ai_ui", false, "Shows UI even for ai vs ai game.")
 	flag_maxMoves = flag.Int(
 		"max_moves", 200, "Max moves before game is assumed to be a draw.")
-
-
 
 	aiPlayers = [2]players.Player{nil, nil}
 )

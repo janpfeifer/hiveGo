@@ -15,8 +15,9 @@ import (
 	"github.com/janpfeifer/hiveGo/ai/players"
 	_ "github.com/janpfeifer/hiveGo/ai/search/ab"
 	_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
-	"github.com/janpfeifer/hiveGo/ai/tensorflow"
-	_ "github.com/janpfeifer/hiveGo/ai/tfddqn"
+	//"github.com/janpfeifer/hiveGo/ai/tensorflow"
+	_ "github.com/janpfeifer/hiveGo/ai"
+	//_ "github.com/janpfeifer/hiveGo/ai/tfddqn"
 	. "github.com/janpfeifer/hiveGo/state"
 )
 
@@ -43,7 +44,7 @@ var (
 )
 
 func init() {
-	flag.BoolVar(&tensorflow.CpuOnly, "cpu", false, "Force to use CPU, even if GPU is available")
+	//flag.BoolVar(&tensorflow.CpuOnly, "cpu", false, "Force to use CPU, even if GPU is available")
 }
 
 const APP_ID = "com.github.janpfeifer.hiveGo.gnome-hive"
