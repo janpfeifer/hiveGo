@@ -12,7 +12,7 @@ import (
 	. "github.com/janpfeifer/hiveGo/state"
 )
 
-func printBoard(b *Board, action Action) {
+func printBoardAction(b *Board, action Action) {
 	ui := ascii_ui.NewUI(true, false)
 	ui.PrintBoard(b)
 	fmt.Printf("Action: %s\n", action)
@@ -63,7 +63,7 @@ func TestPolicyFeatures(t *testing.T) {
 	b.StackPiece(Pos{-1, -1}, 0, GRASSHOPPER)
 	b.BuildDerived()
 	action := Action{true, GRASSHOPPER, Pos{-1, -1}, Pos{1, 0}}
-	printBoard(b, action)
+	printBoardAction(b, action)
 
 	actionFeatures := ai.NewActionFeatures(b, action, 0)
 

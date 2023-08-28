@@ -16,6 +16,11 @@ def report_tensors(title, tensors):
     print()
 
 
+def swish1_loss(x):
+    """Implements the Swish-1 loss, see https://arxiv.org/pdf/1710.05941.pdf"""
+    return x * tf.math.sigmoid(x)
+
+
 def sigmoid_to_max(x, absolute_max=MAX_Q_VALUE, linear_threshold=MAX_Q_LINEAR_VALUE, smoothness=4.0):
     """Make a sigmoid curve on values > MAX_LINEAR_VALUE or < -MAX_LINEAR_VALUE."""
     abs_x = tf.abs(x)
@@ -83,24 +88,28 @@ def build_skip_ffnn(input, num_hidden_layers, num_hidden_layers_nodes,
     with tf.name_scope("buildSkipFFNN"):
         logits = input
         if num_hidden_layers > 0:
-            for ii in range(num_hidden_layers - 1):
-                if dropout_keep_probability is not None:
-                    logits = tf.nn.dropout(logits, dropout_keep_probability)
+            for ii in range(num_hidden_layers):
                 with tf.variable_scope("hidden_{}".format(ii), reuse=tf.AUTO_REUSE):
                     logits = tf.layers.dense(
-                        logits, num_hidden_layers_nodes, activation,
+                        logits, num_hidden_layers_nodes, None,
                         kernel_initializer=initializer, kernel_regularizer=l2_regularizer,
                         name="layer", reuse=tf.AUTO_REUSE)
+                    if activation is not None:
+                        logits = activation(logits)
+                    if dropout_keep_probability is not None:
+                        logits = tf.nn.dropout(logits, dropout_keep_probability)
                 logits = tf.concat([logits, input], 1)
-            # Last hidden layer can be of different size, and the skip connection is optional.
-            with tf.variable_scope("embedding_layer", reuse=tf.AUTO_REUSE):
-                if dropout_keep_probability is not None:
-                    logits = tf.nn.dropout(logits, dropout_keep_probability)
-                logits = tf.layers.dense(logits, output_embedding_dim, activation,
-                                         kernel_initializer=initializer, kernel_regularizer=l2_regularizer,
-                                         name="linear", reuse=tf.AUTO_REUSE)
-            if skip_also_output:
-                logits = tf.concat([logits, input], 1)
+        # Last hidden layer can be of different size, and the skip connection is optional.
+        with tf.variable_scope("embedding_layer", reuse=tf.AUTO_REUSE):
+            logits = tf.layers.dense(logits, output_embedding_dim, None,
+                                     kernel_initializer=initializer, kernel_regularizer=l2_regularizer,
+                                     name="linear", reuse=tf.AUTO_REUSE)
+            if activation is not None:
+                logits = activation(logits)
+            if dropout_keep_probability is not None:
+                logits = tf.nn.dropout(logits, dropout_keep_probability)
+        if skip_also_output:
+            logits = tf.concat([logits, input], 1)
     return logits
 
 def build_ffnn(input, num_hidden_layers, num_hidden_layers_nodes, output_embedding_dim,

@@ -66,6 +66,11 @@ type Board struct {
 	Derived *Derived
 }
 
+func AbsInt8(x int8) int8 {
+	y := x >> 7
+	return (x ^ y) - y
+}
+
 func (p Piece) String() string {
 	return PieceNames[p]
 }
@@ -76,6 +81,11 @@ func (pos Pos) X() int8 {
 
 func (pos Pos) Y() int8 {
 	return pos[1]
+}
+
+// Distance returns the manhattan distance of two positions.
+func (pos Pos) Distance(pos2 Pos) int {
+	return int(AbsInt8(pos[0] - pos2[0])) + int(AbsInt8(pos[1] - pos2[1]))
 }
 
 func (pos Pos) Equal(pos2 Pos) bool {
@@ -187,7 +197,7 @@ func (stack EncodedStack) StackPiece(player uint8, piece Piece) EncodedStack {
 	return (stack << 8) | EncodedStack(piece&0x7F) | EncodedStack((player&1)<<7)
 }
 
-// PopPiece removes piece from top of the stak and returns the udpated stack
+// PopPiece removes piece from top of the stak and returns the updated stack
 // and the player/piece popped.
 func (stack EncodedStack) PopPiece() (newStack EncodedStack, player uint8, piece Piece) {
 	player, piece = stack.Top()
@@ -237,7 +247,7 @@ func (b *Board) OpponentPlayer() uint8 {
 	return 1 - b.NextPlayer
 }
 
-// Available returns how many pieces of the given type are avaiable for the given player.
+// Available returns how many pieces of the given type are available for the given player.
 func (b *Board) Available(player uint8, piece Piece) uint8 {
 	return b.available[player][piece-1]
 }

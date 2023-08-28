@@ -53,14 +53,19 @@ func WinsMovingAverage(matchResults <-chan MatchResult, statsChan chan<- Stats) 
 	next := 0
 	var stats Stats
 	pending := make(map[int]Result)
+	count := 0
 	for mr := range matchResults {
 		//fmt.Printf("mr=%v\n", mr)
 		// Starting if starting a new sequence.
 		if mr.Index < next {
 			// Reset moving average
-			flushPending(stats, pending, next, statsChan)
+			count = flushPending(count, stats, pending, statsChan)
 			next = 0
-			stats = [3]float32{0, 0, 0}
+			// Optionally it could reset the stats, since a new
+			// training session started. But, if the training session has the
+			// same parameters, it makes more sense to continue with the
+			// moving average.
+			// ? Maybe add a flag for stats = [3]float32{0, 0, 0}
 			pending = make(map[int]Result)
 			if mr.Index < 0 {
 				continue
@@ -74,7 +79,8 @@ func WinsMovingAverage(matchResults <-chan MatchResult, statsChan chan<- Stats) 
 		} else {
 			// Result in order, combine it.
 			next++
-			stats.CombineResult(mr.Result, next)
+			count++
+			stats.CombineResult(mr.Result, count)
 			statsChan <- stats
 			//fmt.Printf("Next: %d\n", next)
 
@@ -86,17 +92,18 @@ func WinsMovingAverage(matchResults <-chan MatchResult, statsChan chan<- Stats) 
 				}
 				delete(pending, next)
 				next++
-				stats.CombineResult(r, next)
+				count++
+				stats.CombineResult(r, count)
 				statsChan <- stats
 				//fmt.Printf("Next: %d\n", next)
 			}
 		}
 	}
-	flushPending(stats, pending, next, statsChan)
+	count = flushPending(count, stats, pending, statsChan)
 	close(statsChan)
 }
 
-func flushPending(stats Stats, pending map[int]Result, next int, statsChan chan<- Stats) {
+func flushPending(count int, stats Stats, pending map[int]Result, statsChan chan<- Stats) int {
 	keys := make([]int, 0, len(pending))
 	for key := range pending {
 		keys = append(keys, key)
@@ -104,8 +111,9 @@ func flushPending(stats Stats, pending map[int]Result, next int, statsChan chan<
 	sort.Ints(keys)
 	for _, key := range keys {
 		r := pending[key]
-		next++
-		stats.CombineResult(r, next)
+		count ++
+		stats.CombineResult(r, count)
 		statsChan <- stats
 	}
+	return count
 }

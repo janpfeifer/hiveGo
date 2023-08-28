@@ -37,6 +37,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -150,6 +151,9 @@ func dataType(t tf.Output) string {
 
 // New creates a new Scorer by reading model's graph `basename`.pb,
 // and checkpoints from `basename`.checkpoint
+//
+// sessionPoolSize defines the size for a pool of Sessions to use.
+// forceCPU for forcing all the TensorFlow ops into the CPU.
 func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 	// Load graph definition (as bytes) and import into current graph.
 	graphDefFilename := fmt.Sprintf("%s.pb", basename)
@@ -448,8 +452,10 @@ func (s *Scorer) CheckpointFiles() (string, string) {
 }
 
 func (s *Scorer) CheckpointFilesForStep(step int64) (string, string) {
-	return fmt.Sprintf("%s.checkpoint.%09d.index", s.Basename, step),
-		fmt.Sprintf("%s.checkpoint.%09d.data-00000-of-00001", s.Basename, step)
+	dir := path.Dir(s.Basename)
+
+	return fmt.Sprintf("%s/checkpoints/%09d.index", dir, step),
+		fmt.Sprintf("%s/checkpoints/%09d.data-00000-of-00001", dir, step)
 }
 
 func (s *Scorer) Restore() error {

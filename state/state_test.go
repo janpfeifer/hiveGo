@@ -463,6 +463,35 @@ func TestRepeats(t *testing.T) {
 	checkDraw(t, b, false)
 }
 
+func TestInvalidMove(t *testing.T) {
+	b := NewBoard()
+	actions := []Action{
+		Action{Move: false, Piece: BEETLE, TargetPos: Pos{0, 0}},
+		Action{Move: false, Piece: QUEEN, TargetPos: Pos{0, 1}},
+
+		Action{Move: false, Piece: BEETLE, TargetPos: Pos{-1, 0}},
+		Action{Move: false, Piece: ANT, TargetPos: Pos{0, 2}},
+
+		Action{Move: false, Piece: QUEEN, TargetPos: Pos{1, -1}},
+		Action{Move: true, Piece: ANT, SourcePos: Pos{0,2}, TargetPos: Pos{1, -1}},
+
+		Action{Move: false, Piece: ANT, TargetPos: Pos{-2, 1}},
+		Action{Move: false, Piece: BEETLE, TargetPos: Pos{3, -1}},
+
+		Action{Move: true, Piece: ANT, SourcePos: Pos{-2,1}, TargetPos: Pos{1, 1}},
+		Action{Move: true, Piece: BEETLE, SourcePos: Pos{3,-1}, TargetPos: Pos{2, 0}},
+
+		Action{Move: true, Piece: QUEEN, SourcePos: Pos{1,-1}, TargetPos: Pos{2, -2}},
+	}
+	for ii, act := range actions {
+		b = b.Act(act)
+		fmt.Printf("Move %d (ii=%d), %s, Player %d, Repeats: %d, Hash: %x\n",
+			b.MoveNumber, ii, act, b.NextPlayer, b.Derived.Repeats, b.Derived.Hash)
+	}
+	printBoard(b)
+	t.Error("Hmm")
+}
+
 func BenchmarkCalcDerived(b *testing.B) {
 	layout := []PieceLayout{
 		{Pos{-2, -1}, 1, ANT},

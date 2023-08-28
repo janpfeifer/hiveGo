@@ -15,6 +15,8 @@ import (
 var (
 	flag_continuosPlayAndTrain = flag.Bool("play_and_train",
 		false, "If set, continuously play and train matches.")
+	flag_continuosPlayAndTrainKeepPreviousBatch = flag.Bool("play_and_train_keep_previous_batch",
+		false, "If set, keep batch of matches for two learning cycles.")
 	flag_continuosPlayAndTrainBatchMatches = flag.Int(
 		"play_and_train_batch_matches",
 		10, "Number of matches to batch before learning.")
@@ -41,7 +43,7 @@ type MatchStats struct {
 	Draws       int
 }
 
-const NumMatchesToKeepForStats = 100
+const NumMatchesToKeepForStats = 200
 
 func NewMatchStats() *MatchStats {
 	return &MatchStats{
@@ -230,23 +232,27 @@ func continuousMatchesToLabeledExamples(batchChan <-chan []*Match, labeledExampl
 	for batch := range batchChan {
 		glog.V(1).Infof("Batch received.")
 
-		// Merge new batch into previous batch.
-		if previousBatch == nil {
-			glog.V(1).Infof("Storing batch until 2 are available.")
-			previousBatch = batch
-			continue
-		}
+		if *flag_continuosPlayAndTrainKeepPreviousBatch {
+			// Merge new batch into previous batch.
+			if previousBatch == nil {
+				glog.V(1).Infof("Storing batch until 2 are available.")
+				previousBatch = batch
+				continue
+			}
 
-		if len(previousBatch) > batchSize {
-			tmpBatch := make([]*Match, 0, 2*batchSize)
-			tmpBatch = append(tmpBatch,
-				previousBatch[len(previousBatch)-batchSize:]...)
-			tmpBatch = append(tmpBatch, batch...)
-			previousBatch = tmpBatch
+			if len(previousBatch) > batchSize {
+				tmpBatch := make([]*Match, 0, 2*batchSize)
+				tmpBatch = append(tmpBatch,
+					previousBatch[len(previousBatch)-batchSize:]...)
+				tmpBatch = append(tmpBatch, batch...)
+				previousBatch = tmpBatch
+			} else {
+				previousBatch = append(previousBatch, batch...)
+			}
+			glog.V(1).Infof("Batch aggregated: generating labeled examples.")
 		} else {
-			previousBatch = append(previousBatch, batch...)
+			previousBatch = batch
 		}
-		glog.V(1).Infof("Batch aggregated: generating labeled examples.")
 
 		n := 0
 		for _, match := range previousBatch {
@@ -261,7 +267,7 @@ func continuousMatchesToLabeledExamples(batchChan <-chan []*Match, labeledExampl
 			actionsLabels: make([][]float32, 0, n),
 		}
 		for _, match := range previousBatch {
-			if isSamePlayer || *flag_distill || *flag_rescore || *flag_learnWithEndScore {
+			if isSamePlayer || *flag_distill || *flag_rescore {
 				// Include both players data.
 				if *flag_learnWithEndScore {
 					labelWithEndScore(match)

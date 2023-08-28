@@ -19,6 +19,7 @@ import (
 	_ "github.com/janpfeifer/hiveGo/ai/search/ab"
 	_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
 	"github.com/janpfeifer/hiveGo/ai/tensorflow"
+	_ "github.com/janpfeifer/hiveGo/ai/tfddqn"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
 	. "github.com/janpfeifer/hiveGo/state"
 )
@@ -59,7 +60,7 @@ var (
 	flag_learningRate    = flag.Float64("learning_rate", 1e-5, "Learning rate when learning")
 	flag_rescore         = flag.Bool("rescore", false, "If to rescore matches.")
 	flag_distill         = flag.Bool("distill", false,
-		"If set it will simply distill from --ai1 to --ai0, without serching for best moves.")
+		"If set it will simply distill from --ai1 to --ai0, without searching for best moves.")
 	flag_learnWithEndScore = flag.Bool("learn_with_end_score",
 		true, "If true will use the final score to learn.")
 

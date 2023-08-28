@@ -29,7 +29,7 @@ NUM_PIECE_TYPES = 5
 MAX_MOVES = 100
 
 # Dimension of the input features.
-BOARD_FEATURES_DIM = 41  # Should match ai.AllFeaturesDim
+BOARD_FEATURES_DIM = 51  # Should match ai.AllFeaturesDim
 
 # These should match the same in policy_features.go
 ACTION_FEATURES_DIM = 1  # Static/context features.
@@ -56,8 +56,8 @@ NEIGHBOURHOOD_NUM_FEATURES = (
 
 # Neural Network parameters for board embedding and value prediction.
 BOARD_NUM_HIDDEN_LAYERS = 4
-BOARD_NODES_PER_LAYER = 128 - BOARD_FEATURES_DIM
-BOARD_EMBEDDING_DIM = 64 - BOARD_FEATURES_DIM
+BOARD_NODES_PER_LAYER = 256 - BOARD_FEATURES_DIM
+BOARD_EMBEDDING_DIM = 256 - BOARD_FEATURES_DIM
 
 # FFNN parameters for actions classifier.
 ACTIONS_NUM_HIDDEN_LAYERS = 4
@@ -72,11 +72,11 @@ FULL_BOARD_CONV_DEPTH = 256
 FULL_BOARD_CONV_LAYERS = 4
 
 # ACTIVATION=tf.nn.selu
-ACTIVATION = tf.nn.leaky_relu
+# ACTIVATION = tf.nn.leaky_relu
+ACTIVATION = hive_lib.swish1_loss
 
-NORMALIZATION = None
-# NORMALIZATION = tf.layers.batch_normalization
-
+# NORMALIZATION = None
+NORMALIZATION = True
 
 def BuildBoardEmbeddings(board_features, initializer, l2_regularizer,
                          dropout_keep_probability):
@@ -127,13 +127,13 @@ def BuildBoardModel(board_embeddings, board_labels, board_moves_to_end,
             weights = tf.math.pow(td_lambda, board_moves_to_end)
             return tf.losses.absolute_difference(
                 board_labels, reshaped_raw_predictions, weights=weights,
-                reduction=tf.losses.Reduction.MEAN_BY_NONZERO_WEIGHTS)
+                reduction=tf.losses.Reduction.MEAN)
 
         board_losses = tf.cond(
             tf.equal(td_lambda, 1.0),
             true_fn=lambda: tf.losses.absolute_difference(
                 board_labels, reshaped_raw_predictions,
-                reduction=tf.losses.Reduction.MEAN_BY_NONZERO_WEIGHTS),
+                reduction=tf.losses.Reduction.MEAN),
             false_fn=td_lambda_weighted_loss)
 
         pred_reg_losses = prediction_l2_regularization * \
@@ -252,6 +252,23 @@ def main(argv=None):  # pylint: disable=unused-argument
         factor=1.0, mode='FAN_IN')
     initializer = None
 
+    # Add Batch Normalization to the activation function.
+    global NORMALIZATION
+    if NORMALIZATION is not None:
+        global ACTIVATION
+        prev_activation = ACTIVATION
+
+        def normalized_activation(x):
+            with tf.variable_scope("batch_norm"):
+                return prev_activation(
+                    tf.layers.batch_normalization(
+                        inputs=x, training=is_training,
+                    # tf.contrib.layers.batch_norm(
+                    #     inputs=x, is_training=is_training, fused=True
+                    ))
+
+        ACTIVATION = normalized_activation
+
     # Build board inputs
     is_training = tf.placeholder(tf.bool, shape=(), name='is_training')
     learning_rate = tf.placeholder(tf.float32, shape=(), name='learning_rate')
@@ -298,22 +315,6 @@ def main(argv=None):  # pylint: disable=unused-argument
         is_training,
         lambda: tf.cast(dropout_keep_probability, dtype=MODEL_DTYPE),
         lambda: tf.constant(1, dtype=MODEL_DTYPE))
-
-    # Add Batch Normalization to the activation function.
-    global NORMALIZATION
-    if NORMALIZATION is not None:
-        global ACTIVATION
-        prev_activation = ACTIVATION
-
-        def normalized_activation(x):
-            with tf.variable_scope("batch_norm"):
-                return prev_activation(
-                    # tf.layers.batch_normalization(
-                    tf.contrib.layers.batch_norm(
-                        inputs=x, is_training=is_training, fused=True
-                    ))
-
-        ACTIVATION = normalized_activation
 
     # Build board logits and model.
     board_features = tf.cast(board_features, MODEL_DTYPE)

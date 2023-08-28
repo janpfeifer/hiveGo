@@ -51,6 +51,10 @@ const (
 	// Whether there is an opponent BEETLE on top of QUEEN.
 	F_QUEEN_COVERED
 
+	// Average manhattan distance to opposing queen for each of the piece types.
+	F_AVERAGE_DISTANCE_TO_QUEEN
+	F_OPP_AVERAGE_DISTANCE_TO_QUEEN
+
 	// Last entry.
 	F_NUM_FEATURES
 )
@@ -89,6 +93,10 @@ var (
 		{F_MOVES_TO_DRAW, "MovesToDraw", 1, 0, fNumToDraw, 0},
 		{F_NUM_SINGLE, "NumSingle", 2, 0, fNumSingle, 0},
 		{F_QUEEN_COVERED, "QueenIsCovered", 2, 0, fQueenIsCovered, 41},
+		{F_AVERAGE_DISTANCE_TO_QUEEN, "AverageDistanceToQueen",
+			int(NUM_PIECE_TYPES), 0, fAverageDistanceToQueen, 51},
+		{F_OPP_AVERAGE_DISTANCE_TO_QUEEN, "OppAverageDistanceToQueen",
+			int(NUM_PIECE_TYPES), 0, fAverageDistanceToQueen, 51},
 	}
 
 	// AllFeaturesDim is the dimension of all features concatenated, set during package
@@ -309,6 +317,39 @@ func fQueenIsCovered(b *Board, def *FeatureDef, f []float32) {
 		// Invert players selection.
 		player, opponent = opponent, player
 	}
+}
+
+// Calculates the average manhattan distance from each piece type to the opponent queen.
+// Pieces not in place will count as the furthest piece + 1.
+func fAverageDistanceToQueen(b *Board, def *FeatureDef, f []float32) {
+	idx := def.VecIndex
+	player := b.NextPlayer
+	opponent := b.OpponentPlayer()
+	if def.FId == F_OPP_AVERAGE_DISTANCE_TO_QUEEN {
+		player, opponent = opponent, player
+	}
+	queenPos := b.Derived.QueenPos[opponent]
+	var totals [NUM_PIECE_TYPES]int
+	var maxDist int
+	b.EnumeratePieces(func (pPlayer uint8, piece Piece, pos Pos, covered bool) {
+		if pPlayer != player {
+			return
+		}
+		dist := queenPos.Distance(pos)
+		if dist > maxDist {
+			maxDist = dist
+		}
+		totals[piece-1] += dist
+	})
+	maxDist++  // Distance of non-placed pieces are set to maxDist+1.
+	for _, piece := range Pieces {
+		totals[piece-1] += (maxDist * int(b.Available(player, piece)))
+	}
+	for ii := 0; ii < int(NUM_PIECE_TYPES); ii++ {
+		f[idx+ii] = float32(totals[ii])/float32(INITIAL_AVAILABILITY[ii])
+	}
+	return
+
 }
 
 // fullBoardDimensions returns the minimal dimensions

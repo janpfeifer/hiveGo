@@ -372,7 +372,7 @@ func (b *Board) IsValid(action Action) bool {
 }
 
 // endGame checks for end games and will return true for each of the players if they
-// managed to sorround the opponents queen. Returns also the number of pieces surrounding
+// managed to surround the opponents queen. Returns also the number of pieces surrounding
 // each queen.
 func (b *Board) endGame() (wins [NUM_PLAYERS]bool, surrounding [NUM_PLAYERS]uint8, queenPos [NUM_PLAYERS]Pos) {
 	if b.MoveNumber > b.MaxMoves {
@@ -432,4 +432,17 @@ func (b *Board) Width() int {
 
 func (b *Board) Height() int {
 	return int(b.Derived.MaxY - b.Derived.MinY)
+}
+
+func (b* Board) EnumeratePieces(cb func (player uint8, piece Piece, pos Pos, covered bool)) {
+	for pos, stack := range b.board {
+		covered := false
+		for stack != 0 {
+			var player uint8
+			var piece Piece
+			stack, player, piece = stack.PopPiece()
+			cb(player, piece, pos, covered)
+			covered = true
+		}
+	}
 }

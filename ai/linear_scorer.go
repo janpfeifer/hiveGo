@@ -379,6 +379,14 @@ var (
 		// QueenIsCovered -> 2
 		0, 0, // -10, 10,
 
+		// AverageDistanceToQueen
+		// Pieces order: ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER
+		0, -0.01, -0.01, 0, -0.01,
+
+		// OppAverageDistanceToQueen
+		// Pieces order: ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER
+		0, 0.001, 0.001, 0, 0.001,
+
 		// Bias -> 1
 		-0.7409,
 	}
