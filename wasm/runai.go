@@ -54,7 +54,7 @@ func AdjustBusyBoxPosition() {
 }
 
 func AIPlay() {
-	action, _, _ := aiPlayer.Play(Board)
+	action, _, _, _ := aiPlayer.Play(Board, "wasm_match")
 	ExecuteAction(action)
 }
 
