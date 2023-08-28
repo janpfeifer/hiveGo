@@ -21,14 +21,14 @@ var (
 )
 
 var (
-	// Dragging postion: values valid after button down.
+	// Dragging position: values valid after button down.
 	isDragging    = false
 	dragStartTime uint32
 	dragX, dragY  float64
 )
 
-// Amount of time below which a button press is considered a click.
-// After that it is consider a click-and-hold (or drag).
+// CLICK_MAX_TIME_MS is the amount of time below which a button press is considered a click.
+// After that, it is considered a click-and-hold (or drag).
 const CLICK_MAX_TIME_MS = 250
 
 // Creates the main window.

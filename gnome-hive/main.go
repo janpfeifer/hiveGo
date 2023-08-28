@@ -4,17 +4,15 @@ import (
 	"encoding/gob"
 	"flag"
 	"fmt"
-	"io"
-	"log"
-	"os"
-	"strings"
-
 	"github.com/golang/glog"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/janpfeifer/hiveGo/ai/players"
 	_ "github.com/janpfeifer/hiveGo/ai/search/ab"
 	_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
+	"io"
+	"log"
+	"os"
 	//"github.com/janpfeifer/hiveGo/ai/tensorflow"
 	_ "github.com/janpfeifer/hiveGo/ai"
 	//_ "github.com/janpfeifer/hiveGo/ai/tfddqn"
@@ -31,10 +29,6 @@ var (
 	flag_aiConfig = flag.String("ai", "", "Configuration string for the AI.")
 	flag_maxMoves = flag.Int(
 		"max_moves", 100, "Max moves before game is assumed to be a draw.")
-
-	// TODO: find directory automatically basaed on GOPATH.
-	flag_resources = flag.String("resources", "", "Directory with resources. "+
-		"If empty it will try to search in GOPATH for the directory.")
 
 	// Save match at end.
 	flag_saveMatch = flag.String("save", "", "File name where to save match. Matches are appendeded to given file.")
@@ -62,31 +56,6 @@ var (
 	nextIsAI  bool
 )
 
-func findResourcesDir() {
-	if *flag_resources != "" {
-		return
-	}
-	for _, p := range strings.Split(os.Getenv("GOPATH"), ":") {
-		if p == "" {
-			continue
-		}
-		p = p + "/src/github.com/janpfeifer/hiveGo/images"
-		log.Printf("Looking at %s", p)
-		s, err := os.Stat(p)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if s.IsDir() {
-			log.Printf("Found image resources in '%s'", p)
-			*flag_resources = p
-			return
-		}
-	}
-	log.Fatal("Can't find location of image resources using ${GOPATH}, please " +
-		"set it with --resources")
-	return
-}
-
 // Open file for appending.
 func openForAppending(filename string) io.WriteCloser {
 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -101,7 +70,6 @@ func main() {
 	if *flag_maxMoves <= 0 {
 		log.Fatalf("Invalid --max_moves=%d", *flag_maxMoves)
 	}
-	findResourcesDir()
 
 	// Build initial board: it is used only for drawing available pieces,
 	board = NewBoard()

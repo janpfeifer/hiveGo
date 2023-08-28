@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/janpfeifer/hiveGo/images"
 	"log"
 	"math"
 
@@ -32,23 +33,32 @@ var (
 )
 
 func loadImageResources() {
+	_, err := images.CopyToTmpDir()
+	if err != nil {
+		log.Fatalf("Failed to create files for images: %+v", err)
+	}
 	// Load each piece drawing.
 	for ii := Piece(1); ii < LAST_PIECE_TYPE; ii++ {
-		surface, err := cairo.NewSurfaceFromPNG(fmt.Sprintf("%s/%s.png",
-			*flag_resources, PieceNames[ii]))
-		if err != nil {
-			log.Fatalf("Failed to read '%s.png' from '%s': %v", PieceNames[ii], *flag_resources, err)
+		imagePath := images.NameToInfo[PieceNames[ii]].Path()
+		if imagePath == "" {
+			log.Fatalf("Cannot find image for piece %q", PieceNames[ii])
 		}
-		// log.Printf("Loaded %s.png\n", PieceNames[ii])
+		surface, err := cairo.NewSurfaceFromPNG(imagePath)
+		if err != nil {
+			log.Fatalf("Failed to read image for piece in %q: %v", imagePath, err)
+		}
 		pieceSurfaces[ii] = surface
 	}
 
 	// Load base piece surface for each player.
 	for ii := 0; ii < NUM_PLAYERS; ii++ {
-		surface, err := cairo.NewSurfaceFromPNG(fmt.Sprintf("%s/tile_player_%d.png",
-			*flag_resources, ii))
+		imagePath := images.NameToInfo[fmt.Sprintf("tile_player_%d", ii)].Path()
+		if imagePath == "" {
+			log.Fatalf("Cannot find image for tile %d", ii)
+		}
+		surface, err := cairo.NewSurfaceFromPNG(imagePath)
 		if err != nil {
-			log.Fatalf("Failed to read 'tile_player_%d.png' from '%s': %v", ii, *flag_resources, err)
+			log.Fatalf("Failed to read %q, the tile for player %d: %+v", imagePath, ii, err)
 		}
 		// log.Printf("Loaded tile_player_%d.png\n", ii)
 		pieceBaseSurfaces[ii] = surface
@@ -97,7 +107,7 @@ func (dp *drawingParams) XYToPos(x, y float64) Pos {
 	//	y -= hexTriangleHeight(dp.face)
 	//}
 	//posY := int8(math.Round(y / dp.hexHeight))
-	posY := int8(math.Round(y / dp.hexHeight - float64(posX) / 2.0))
+	posY := int8(math.Round(y/dp.hexHeight - float64(posX)/2.0))
 	return Pos{posX, posY}
 }
 
