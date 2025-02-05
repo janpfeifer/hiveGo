@@ -1,10 +1,10 @@
 # hiveGo
 
-Go Implementation of Hive game.
+[Hive game](https://en.wikipedia.org/wiki/Hive_(game)), backed by an [AlphaZero](https://en.wikipedia.org/wiki/AlphaZero) 
+based AI.
 
-Based on [earlier version in Python](https://github.com/makatony/hiveAI), which was a bit slow to generate training data for a Reinforcement Learning AI -- future planned.
-
-Just a toy project.
+Started from an [earlier version in Python](https://github.com/makatony/hiveAI), which was a bit slow to generate training 
+data for a Reinforcement Learning AI.
 
 ## Command line version
 

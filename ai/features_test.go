@@ -2,14 +2,14 @@ package ai_test
 
 import (
 	"fmt"
-	"github.com/janpfeifer/hiveGo/ascii_ui"
-	. "github.com/janpfeifer/hiveGo/state"
+	. "github.com/janpfeifer/hiveGo/internal/state"
+	"github.com/janpfeifer/hiveGo/internal/ui/cli"
 	"testing"
 )
 
 func printBoard(b *Board) {
 	fmt.Println()
-	ui := ascii_ui.NewUI(true, false)
+	ui := cli.New(true, false)
 	ui.PrintBoard(b)
 	fmt.Println()
 }
@@ -17,10 +17,10 @@ func printBoard(b *Board) {
 func TestAverageDistances(t *testing.T) {
 	b := NewBoard()
 	b.BuildDerived()
-	b = b.Act(Action{false, ANT, Pos{0,0}, Pos{}}) // Player 0
-	b = b.Act(Action{false, ANT, Pos{1,0}, Pos{}}) // Player 1
-	b = b.Act(Action{false, ANT, Pos{0,1}, Pos{}}) // Player 0
-	b = b.Act(Action{false, ANT, Pos{2,0}, Pos{}}) // Player 1
-	b = b.Act(Action{false, QUEEN, Pos{0,2}, Pos{}}) // Player 0
-	b = b.Act(Action{false, QUEEN, Pos{3,0}, Pos{}}) // Player 1
+	b = b.Act(Action{false, ANT, Pos{0, 0}, Pos{}})   // Player 0
+	b = b.Act(Action{false, ANT, Pos{1, 0}, Pos{}})   // Player 1
+	b = b.Act(Action{false, ANT, Pos{0, 1}, Pos{}})   // Player 0
+	b = b.Act(Action{false, ANT, Pos{2, 0}, Pos{}})   // Player 1
+	b = b.Act(Action{false, QUEEN, Pos{0, 2}, Pos{}}) // Player 0
+	b = b.Act(Action{false, QUEEN, Pos{3, 0}, Pos{}}) // Player 1
 }

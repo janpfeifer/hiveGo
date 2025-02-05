@@ -26,38 +26,38 @@ Showing top 40 nodes out of 120
      4.61s  3.99% 41.87%     11.84s 10.26%  runtime.mallocgc
      4.43s  3.84% 45.71%      5.12s  4.43%  runtime.mapiternext
      4.09s  3.54% 49.25%     12.74s 11.04%  runtime.memhash
-     3.44s  2.98% 52.23%     26.02s 22.54%  github.com/janpfeifer/hiveGo/state.(*Board).EmptyAndConnectedNeighbours
+     3.44s  2.98% 52.23%     26.02s 22.54%  github.com/janpfeifer/hiveGo/internal/state.(*Board).EmptyAndConnectedNeighbours
      2.86s  2.48% 54.71%     15.38s 13.32%  runtime.memhash16
      2.22s  1.92% 56.63%      4.65s  4.03%  runtime.pcvalue
-     1.82s  1.58% 58.21%     13.82s 11.97%  github.com/janpfeifer/hiveGo/state.FilterPositions
+     1.82s  1.58% 58.21%     13.82s 11.97%  github.com/janpfeifer/hiveGo/internal/state.FilterPositions
      1.79s  1.55% 59.76%      8.33s  7.22%  runtime.gentraceback
      1.79s  1.55% 61.31%      2.98s  2.58%  runtime.scanobject
      1.73s  1.50% 62.81%      1.73s  1.50%  runtime.nextFreeFast (inline)
      1.68s  1.46% 64.26%         2s  1.73%  runtime.step
      1.55s  1.34% 65.60%      1.55s  1.34%  runtime.cgocall
-     1.50s  1.30% 66.90%     17.22s 14.92%  github.com/janpfeifer/hiveGo/state.(*Board).HasPiece (inline)
+     1.50s  1.30% 66.90%     17.22s 14.92%  github.com/janpfeifer/hiveGo/internal/state.(*Board).HasPiece (inline)
      1.46s  1.26% 68.17%      1.46s  1.26%  runtime.memequal16
      1.34s  1.16% 69.33%      3.24s  2.81%  runtime.evacuate
      1.27s  1.10% 70.43%      1.75s  1.52%  runtime.heapBitsSetType
-     1.25s  1.08% 71.51%      3.72s  3.22%  github.com/janpfeifer/hiveGo/state.Pos.Neighbours
+     1.25s  1.08% 71.51%      3.72s  3.22%  github.com/janpfeifer/hiveGo/internal/state.Pos.Neighbours
      1.23s  1.07% 72.58%      1.23s  1.07%  runtime.memclrNoHeapPointers
      1.21s  1.05% 73.62%      1.21s  1.05%  runtime.memmove
      0.98s  0.85% 74.47%      1.16s  1.00%  runtime.findfunc
      0.93s  0.81% 75.28%      0.93s  0.81%  runtime.add (inline)
-     0.89s  0.77% 76.05%     41.10s 35.60%  github.com/janpfeifer/hiveGo/state.(*Board).antMoves
+     0.89s  0.77% 76.05%     41.10s 35.60%  github.com/janpfeifer/hiveGo/internal/state.(*Board).antMoves
      0.79s  0.68% 76.73%      1.10s  0.95%  runtime.(*bmap).overflow (inline)
      0.77s  0.67% 77.40%      9.13s  7.91%  runtime.newobject
      0.73s  0.63% 78.03%      1.60s  1.39%  encoding/binary.(*encoder).value
      0.70s  0.61% 78.64%      1.60s  1.39%  runtime.typedmemmove
      0.69s   0.6% 79.24%      0.69s   0.6%  runtime.aeshash
      0.62s  0.54% 79.77%      0.62s  0.54%  runtime.fastrand (partial-inline)
-     0.59s  0.51% 80.29%     17.95s 15.55%  github.com/janpfeifer/hiveGo/state.recursivelyUpdateLoopInfo
+     0.59s  0.51% 80.29%     17.95s 15.55%  github.com/janpfeifer/hiveGo/internal/state.recursivelyUpdateLoopInfo
      0.58s   0.5% 80.79%      0.58s   0.5%  runtime.bucketShift (inline)
      0.58s   0.5% 81.29%      5.09s  4.41%  runtime.mapiterinit
      0.58s   0.5% 81.79%      0.58s   0.5%  runtime.tophash (inline)
-     0.55s  0.48% 82.27%     44.81s 38.81%  github.com/janpfeifer/hiveGo/state.(*Board).addMoveActions
+     0.55s  0.48% 82.27%     44.81s 38.81%  github.com/janpfeifer/hiveGo/internal/state.(*Board).addMoveActions
      0.54s  0.47% 82.74%      1.42s  1.23%  runtime.sweepone
-     0.50s  0.43% 83.17%     15.64s 13.55%  github.com/janpfeifer/hiveGo/state.(*Board).placementPositions
+     0.50s  0.43% 83.17%     15.64s 13.55%  github.com/janpfeifer/hiveGo/internal/state.(*Board).placementPositions
 
  (pprof) top40 -cum 
 Showing nodes accounting for 69.05s, 59.81% of 115.45s total
@@ -69,38 +69,38 @@ Showing top 40 nodes out of 120
          0     0% 0.035%     95.45s 82.68%  github.com/janpfeifer/hiveGo/ai/search.(*mctsSearcher).runOnCN.func1
          0     0% 0.035%     95.43s 82.66%  github.com/janpfeifer/hiveGo/ai/search.(*cacheNode).Traverse
          0     0% 0.035%     95.40s 82.63%  github.com/janpfeifer/hiveGo/ai/search.(*cacheNode).Step
-     0.01s 0.0087% 0.043%     89.42s 77.45%  github.com/janpfeifer/hiveGo/state.(*Board).Act
-     0.09s 0.078%  0.12%     87.88s 76.12%  github.com/janpfeifer/hiveGo/state.(*Board).BuildDerived
-     0.01s 0.0087%  0.13%     45.26s 39.20%  github.com/janpfeifer/hiveGo/state.(*Board).ValidActions
-     0.55s  0.48%  0.61%     44.81s 38.81%  github.com/janpfeifer/hiveGo/state.(*Board).addMoveActions
-     0.89s  0.77%  1.38%     41.10s 35.60%  github.com/janpfeifer/hiveGo/state.(*Board).antMoves
-     3.44s  2.98%  4.36%     26.02s 22.54%  github.com/janpfeifer/hiveGo/state.(*Board).EmptyAndConnectedNeighbours
+     0.01s 0.0087% 0.043%     89.42s 77.45%  github.com/janpfeifer/hiveGo/internal/state.(*Board).Act
+     0.09s 0.078%  0.12%     87.88s 76.12%  github.com/janpfeifer/hiveGo/internal/state.(*Board).BuildDerived
+     0.01s 0.0087%  0.13%     45.26s 39.20%  github.com/janpfeifer/hiveGo/internal/state.(*Board).ValidActions
+     0.55s  0.48%  0.61%     44.81s 38.81%  github.com/janpfeifer/hiveGo/internal/state.(*Board).addMoveActions
+     0.89s  0.77%  1.38%     41.10s 35.60%  github.com/janpfeifer/hiveGo/internal/state.(*Board).antMoves
+     3.44s  2.98%  4.36%     26.02s 22.54%  github.com/janpfeifer/hiveGo/internal/state.(*Board).EmptyAndConnectedNeighbours
     10.99s  9.52% 13.88%     20.97s 18.16%  runtime.mapaccess2
-     0.02s 0.017% 13.89%     19.62s 16.99%  github.com/janpfeifer/hiveGo/state.(*Board).removable
-         0     0% 13.89%     18.42s 15.95%  github.com/janpfeifer/hiveGo/state.updateLoopInfo
-     0.01s 0.0087% 13.90%     18.40s 15.94%  github.com/janpfeifer/hiveGo/state.updateLoopInfoWithPos
-     0.59s  0.51% 14.41%     17.95s 15.55%  github.com/janpfeifer/hiveGo/state.recursivelyUpdateLoopInfo
-     1.50s  1.30% 15.71%     17.22s 14.92%  github.com/janpfeifer/hiveGo/state.(*Board).HasPiece (inline)
-     0.50s  0.43% 16.15%     15.64s 13.55%  github.com/janpfeifer/hiveGo/state.(*Board).placementPositions
+     0.02s 0.017% 13.89%     19.62s 16.99%  github.com/janpfeifer/hiveGo/internal/state.(*Board).removable
+         0     0% 13.89%     18.42s 15.95%  github.com/janpfeifer/hiveGo/internal/state.updateLoopInfo
+     0.01s 0.0087% 13.90%     18.40s 15.94%  github.com/janpfeifer/hiveGo/internal/state.updateLoopInfoWithPos
+     0.59s  0.51% 14.41%     17.95s 15.55%  github.com/janpfeifer/hiveGo/internal/state.recursivelyUpdateLoopInfo
+     1.50s  1.30% 15.71%     17.22s 14.92%  github.com/janpfeifer/hiveGo/internal/state.(*Board).HasPiece (inline)
+     0.50s  0.43% 16.15%     15.64s 13.55%  github.com/janpfeifer/hiveGo/internal/state.(*Board).placementPositions
      2.86s  2.48% 18.62%     15.38s 13.32%  runtime.memhash16
      5.72s  4.95% 23.58%     15.25s 13.21%  runtime.mapassign
      0.21s  0.18% 23.76%     14.62s 12.66%  runtime.systemstack
-     1.82s  1.58% 25.34%     13.82s 11.97%  github.com/janpfeifer/hiveGo/state.FilterPositions
+     1.82s  1.58% 25.34%     13.82s 11.97%  github.com/janpfeifer/hiveGo/internal/state.FilterPositions
     13.34s 11.55% 36.89%     13.34s 11.55%  <unknown>
          0     0% 36.89%     13.34s 11.55%  runtime._ExternalCode
      4.09s  3.54% 40.43%     12.74s 11.04%  runtime.memhash
      4.61s  3.99% 44.43%     11.84s 10.26%  runtime.mallocgc
      5.72s  4.95% 49.38%     11.18s  9.68%  runtime.mapaccess1
-     0.15s  0.13% 49.51%     10.38s  8.99%  github.com/golang/glog.V
+     0.15s  0.13% 49.51%     10.38s  8.99%  github.com/golang/klog.V
      0.77s  0.67% 50.18%      9.13s  7.91%  runtime.newobject
      0.12s   0.1% 50.28%      8.54s  7.40%  runtime.Callers
      0.13s  0.11% 50.39%      8.52s  7.38%  runtime.callers
      0.16s  0.14% 50.53%      8.39s  7.27%  runtime.callers.func1
      1.79s  1.55% 52.08%      8.33s  7.22%  runtime.gentraceback
      7.96s  6.89% 58.98%      7.96s  6.89%  runtime.aeshashbody
-     0.09s 0.078% 59.06%      7.20s  6.24%  github.com/janpfeifer/hiveGo/state.(*Board).OpponentNeighbours
-     0.13s  0.11% 59.17%      7.11s  6.16%  github.com/janpfeifer/hiveGo/state.(*Board).PlayerNeighbours
-     0.08s 0.069% 59.24%      6.53s  5.66%  github.com/janpfeifer/hiveGo/state.(*Board).OccupiedNeighbours
+     0.09s 0.078% 59.06%      7.20s  6.24%  github.com/janpfeifer/hiveGo/internal/state.(*Board).OpponentNeighbours
+     0.13s  0.11% 59.17%      7.11s  6.16%  github.com/janpfeifer/hiveGo/internal/state.(*Board).PlayerNeighbours
+     0.08s 0.069% 59.24%      6.53s  5.66%  github.com/janpfeifer/hiveGo/internal/state.(*Board).OccupiedNeighbours
          0     0% 59.24%      6.05s  5.24%  github.com/janpfeifer/hiveGo/ai/tensorflow.(*Scorer).BatchScore
-     0.37s  0.32% 59.56%      5.19s  4.50%  github.com/janpfeifer/hiveGo/state.(*Board).PlayerNeighbours.func1
-     0.29s  0.25% 59.81%      5.18s  4.49%  github.com/janpfeifer/hiveGo/state.(*Board).PieceAt (inline)
+     0.37s  0.32% 59.56%      5.19s  4.50%  github.com/janpfeifer/hiveGo/internal/state.(*Board).PlayerNeighbours.func1
+     0.29s  0.25% 59.81%      5.18s  4.49%  github.com/janpfeifer/hiveGo/internal/state.(*Board).PieceAt (inline)

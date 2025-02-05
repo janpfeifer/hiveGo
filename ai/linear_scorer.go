@@ -2,16 +2,15 @@ package ai
 
 import (
 	"fmt"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 	"io/ioutil"
+	"k8s.io/klog/v2"
 	"log"
 	"math"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/golang/glog"
-	. "github.com/janpfeifer/hiveGo/state"
 )
 
 var _ = log.Printf
@@ -66,7 +65,7 @@ func (w LinearScorer) ScoreFeatures(features []float32) float32 {
 
 func (w LinearScorer) Score(b *Board, scoreActions bool) (score float32, actionProbs []float32) {
 	if scoreActions {
-		glog.Error("LinearScorer.Score() doesn't support scoreActions.")
+		klog.Error("LinearScorer.Score() doesn't support scoreActions.")
 	}
 	features := FeatureVector(b, w.Version())
 	return SigmoidTo10(w.UnlimitedScore(features)), nil
@@ -74,7 +73,7 @@ func (w LinearScorer) Score(b *Board, scoreActions bool) (score float32, actionP
 
 func (w LinearScorer) BatchScore(boards []*Board, scoreActions bool) (scores []float32, actionProbsBatch [][]float32) {
 	if scoreActions {
-		glog.Error("LinearScorer.BatchScore() doesn't support scoreActions.")
+		klog.Error("LinearScorer.BatchScore() doesn't support scoreActions.")
 	}
 	scores = make([]float32, len(boards))
 	actionProbsBatch = nil
@@ -220,7 +219,7 @@ func NewLinearScorerFromFile(file string) (w LinearScorer) {
 	}
 
 	if cached, ok := cacheLinearScorers[file]; ok {
-		glog.Infof("Using cache for model '%s'", file)
+		klog.Infof("Using cache for model '%s'", file)
 		return cached
 	}
 	defer func() { cacheLinearScorers[file] = w }()
@@ -230,10 +229,10 @@ func NewLinearScorerFromFile(file string) (w LinearScorer) {
 		// Make fresh copy of TrainedBest
 		w = make(LinearScorer, AllFeaturesDim+1)
 		if TrainedBest.Version() != AllFeaturesDim {
-			glog.Errorf("New model with %d features initialized with current best with %d, it may not make much sense ?", w.Version(), TrainedBest.Version())
+			klog.Errorf("New model with %d features initialized with current best with %d, it may not make much sense ?", w.Version(), TrainedBest.Version())
 		}
 		copy(w, TrainedBest)
-		glog.V(1).Infof("New model has %d features", w.Version())
+		klog.V(1).Infof("New model has %d features", w.Version())
 		return
 	}
 

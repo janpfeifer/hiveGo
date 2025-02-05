@@ -1,10 +1,9 @@
 package state
 
 import (
+	"k8s.io/klog/v2"
 	"log"
 	"strings"
-
-	"github.com/golang/glog"
 )
 
 // removable returns set of removable, without breaking the hive, pieces.
@@ -26,12 +25,12 @@ func convertToRemovables(b *Board, loopInfo map[Pos]*rmNode) (removable map[Pos]
 	return
 }
 
-// Used for testing removable.
+// TestRemovable whether the position is removable.
 func (b *Board) TestRemovable(initialPos Pos) (removable map[Pos]bool) {
 	return convertToRemovables(b, updateLoopInfoWithPos(b, initialPos))
 }
 
-// Used for testing older version of removable.
+// TestOldRemovable for the older version of removable.
 func (b *Board) TestOldRemovable() (removable map[Pos]bool) {
 	removable = make(map[Pos]bool)
 	for pos, _ := range b.board {
@@ -42,14 +41,14 @@ func (b *Board) TestOldRemovable() (removable map[Pos]bool) {
 	return
 }
 
-// rmNode is the removable information: it informs about which neighbours
+// rmNode is the removable information: it informs about which neighbors
 // are connected.
 type rmNode struct {
 	// Neighbours, in order. The first one will be the parent in DFS search.
 	N []Pos
 
 	// Connections. One per neighbour in N. If C[i] != i it means that there
-	// is a connecting loop using neigbours N[i] and N[C[i]]. If a neighbour
+	// is a connecting loop using neighbors N[i] and N[C[i]]. If a neighbour
 	// is connected to more than one N, it points to the lowest i (including
 	// itself).
 	C []int8
@@ -192,7 +191,7 @@ func updateLoopInfoWithPos(b *Board, pos Pos) map[Pos]*rmNode {
 }
 
 func recursivelyUpdateLoopInfo(ri *recursiveInfo, pos, from Pos) {
-	glog.V(2).Infof("Visiting %s (from %s)", pos, from)
+	klog.V(2).Infof("Visiting %s (from %s)", pos, from)
 	node := newRmNode(ri.b, pos, from)
 	ri.loopInfo[pos] = node
 	ri.pushToStack(pos)
@@ -207,7 +206,7 @@ func recursivelyUpdateLoopInfo(ri *recursiveInfo, pos, from Pos) {
 			if !isInStack {
 				// If neighbour is not in stack, it has already been visited and
 				// accounted for (because it was reached by the other end)
-				glog.V(2).Infof("  Skipping visit to %s, already visited", neighbour)
+				klog.V(2).Infof("  Skipping visit to %s, already visited", neighbour)
 				continue
 			}
 
@@ -241,7 +240,7 @@ func recursivelyUpdateLoopInfo(ri *recursiveInfo, pos, from Pos) {
 			loopNode.ConnectN(ri.stack[stackStart+1], pos)
 
 			// Debug.
-			if glog.V(2) {
+			if klog.V(2).Enabled() {
 				var loop []Pos
 				loop = append(loop, pos)
 				for stackIdx := len(ri.stack) - 2; stackIdx > stackStart; stackIdx-- {
@@ -249,7 +248,7 @@ func recursivelyUpdateLoopInfo(ri *recursiveInfo, pos, from Pos) {
 					loop = append(loop, stackPos)
 				}
 				loop = append(loop, neighbour)
-				glog.V(2).Infof("  Loop found: %s", strings.Join(PosStrings(loop), ", "))
+				klog.V(2).Infof("  Loop found: %s", strings.Join(PosStrings(loop), ", "))
 			}
 
 		} else {
@@ -257,6 +256,6 @@ func recursivelyUpdateLoopInfo(ri *recursiveInfo, pos, from Pos) {
 		}
 	}
 
-	glog.V(2).Infof("  Popping back to %s", from)
+	klog.V(2).Infof("  Popping back to %s", from)
 	ri.popFromStack()
 }

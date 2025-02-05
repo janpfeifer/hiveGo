@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
+	state2 "github.com/janpfeifer/hiveGo/internal/state"
 
 	"github.com/gopherjs/gopherjs/js"
 	"github.com/gopherjs/jquery"
-	"github.com/janpfeifer/hiveGo/state"
 )
 
 var (
@@ -16,7 +16,7 @@ var (
 	OffBoardPiecesImages   []*js.Object
 
 	// Map of all pieces currently on board.
-	piecesOnBoard      = make(map[state.Pos][]*PieceOnScreen)
+	piecesOnBoard      = make(map[state2.Pos][]*PieceOnScreen)
 	piecesOnBoardIndex = 0
 )
 
@@ -31,7 +31,7 @@ type PieceOnScreen struct {
 	Index     int
 	Player    uint8
 	StackPos  int
-	Piece     state.Piece
+	Piece     state2.PieceType
 	Hex, Rect jquery.JQuery
 }
 
@@ -40,8 +40,8 @@ const (
 	OFFBOARD = "offboard_"
 )
 
-func PieceToPatternId(prefix string, p state.Piece) string {
-	return prefix + state.PieceNames[p]
+func PieceToPatternId(prefix string, p state2.PieceType) string {
+	return prefix + state2.PieceNames[p]
 }
 
 func init() {
@@ -52,7 +52,7 @@ func init() {
 }
 
 func createPiecesPatternsAndImages(prefix string) (patterns []*js.Object, images []*js.Object) {
-	for ii := state.ANT; ii < state.LAST_PIECE_TYPE; ii++ {
+	for ii := state2.ANT; ii < state2.LastPiece; ii++ {
 		pattern := CreateSVG("pattern", Attrs{
 			"id":           PieceToPatternId(prefix, ii),
 			"patternUnits": "objectBoundingBox",
@@ -65,7 +65,7 @@ func createPiecesPatternsAndImages(prefix string) (patterns []*js.Object, images
 		image := CreateSVG("image", Attrs{
 			"href": fmt.Sprintf(
 				"/github.com/janpfeifer/hiveGo/images/%s.png",
-				state.PieceNames[ii]),
+				state2.PieceNames[ii]),
 			"width":  1024,
 			"height": 1024,
 		})
@@ -107,7 +107,7 @@ func (pons *PieceOnScreen) moveToXYFace(xc, yc, face float64) {
 	SetAttrs(Obj(pons.Rect), attrs)
 }
 
-func (pons *PieceOnScreen) MoveTo(pos state.Pos, stackPos int) {
+func (pons *PieceOnScreen) MoveTo(pos state2.Pos, stackPos int) {
 	xc, yc := ui.PosToXY(pos, stackPos)
 	face := ui.Face()
 	pons.moveToXYFace(xc, yc, face)
@@ -115,7 +115,7 @@ func (pons *PieceOnScreen) MoveTo(pos state.Pos, stackPos int) {
 
 func (pons *PieceOnScreen) OffBoardXYFace(stackPos int) (xc, yc, face float64) {
 	face = STANDARD_FACE * ui.PixelRatio
-	xc = (float64(pons.Piece)-float64(state.GRASSHOPPER))*4*face + float64(ui.Width)/2
+	xc = (float64(pons.Piece)-float64(state2.GRASSHOPPER))*4*face + float64(ui.Width)/2
 	offBoardHeight := float64(ui.OffBoardHeight())
 	yc = offBoardHeight / 2.0
 	if pons.Player == 1 {
@@ -163,7 +163,7 @@ func PlayerBackgroundColor(player uint8) string {
 
 }
 
-func Place(player uint8, action state.Action) {
+func Place(player uint8, action state2.Action) {
 	pos := action.TargetPos
 	stack := piecesOnBoard[pos]
 	pons := &PieceOnScreen{
@@ -217,7 +217,7 @@ func Place(player uint8, action state.Action) {
 	})
 }
 
-func RemovePiece(action state.Action) {
+func RemovePiece(action state2.Action) {
 	pos := action.SourcePos
 	stack := piecesOnBoard[pos]
 	if len(stack) == 0 {
@@ -236,14 +236,14 @@ func RemovePiece(action state.Action) {
 }
 
 var (
-	piecesOffBoard [state.NUM_PLAYERS]map[state.Piece][]*PieceOnScreen
+	piecesOffBoard [state2.NumPlayers]map[state2.PieceType][]*PieceOnScreen
 )
 
-func PlaceOffBoardPieces(b *state.Board) {
+func PlaceOffBoardPieces(b *state2.Board) {
 	index := 0
-	for player := uint8(0); player < state.NUM_PLAYERS; player++ {
-		piecesOffBoard[player] = make(map[state.Piece][]*PieceOnScreen)
-		for piece := state.ANT; piece < state.LAST_PIECE_TYPE; piece++ {
+	for player := uint8(0); player < state2.NumPlayers; player++ {
+		piecesOffBoard[player] = make(map[state2.PieceType][]*PieceOnScreen)
+		for piece := state2.ANT; piece < state2.LastPiece; piece++ {
 			num_pieces := b.Available(player, piece)
 			pieces := make([]*PieceOnScreen, 0, num_pieces)
 			for stack := 0; stack < int(num_pieces); stack++ {
@@ -279,8 +279,8 @@ func PlaceOffBoardPieces(b *state.Board) {
 
 func AdjustOffBoardPieces() {
 	// Adjust pieces positions.
-	for player := uint8(0); player < state.NUM_PLAYERS; player++ {
-		for piece := state.ANT; piece < state.LAST_PIECE_TYPE; piece++ {
+	for player := uint8(0); player < state2.NumPlayers; player++ {
+		for piece := state2.ANT; piece < state2.LastPiece; piece++ {
 			pieces := piecesOffBoard[player][piece]
 			for stackPos, pons := range pieces {
 				pons.OffBoardMove(stackPos)
@@ -298,7 +298,7 @@ func AdjustOffBoardPieces() {
 	}
 }
 
-func RemoveOffBoardPiece(player uint8, action state.Action) {
+func RemoveOffBoardPiece(player uint8, action state2.Action) {
 	stackPos := len(piecesOffBoard[player][action.Piece]) - 1
 	pons := piecesOffBoard[player][action.Piece][stackPos]
 	piecesOffBoard[player][action.Piece] = piecesOffBoard[player][action.Piece][0:stackPos]

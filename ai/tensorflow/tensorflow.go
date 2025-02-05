@@ -34,6 +34,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 	"io/ioutil"
 	"log"
 	"os"
@@ -47,9 +48,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	tfconfig "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf"
 
-	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
-	. "github.com/janpfeifer/hiveGo/state"
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
@@ -242,12 +241,12 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 			s.ActionsPieces.Op != nil && s.ActionsLabels.Op != nil &&
 			s.ActionsPredictions.Op != nil && s.ActionsLosses.Op != nil
 	if !s.isActionsClassifier {
-		glog.Infof("%s can not be used for actions classification.", s)
+		klog.Infof("%s can not be used for actions classification.", s)
 	}
 
 	// Set version to the size of the input.
 	s.version = int(s.BoardFeatures.Shape().Size(1))
-	glog.V(1).Infof("TensorFlow model's version=%d", s.version)
+	klog.V(1).Infof("TensorFlow model's version=%d", s.version)
 
 	// Set generic parameters.
 	s.parseFlagParams()
@@ -256,13 +255,13 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 	// Either restore or initialize the network.
 	cpIndex, _ := s.CheckpointFiles()
 	if _, err := os.Stat(cpIndex); err == nil {
-		glog.Infof("Loading model from %s", s.CheckpointBase())
+		klog.Infof("Loading model from %s", s.CheckpointBase())
 		err = s.Restore()
 		if err != nil {
 			log.Panicf("Failed to load checkpoint from file %s: %v", s.CheckpointBase(), err)
 		}
 	} else if os.IsNotExist(err) {
-		glog.Infof("Initializing model randomly, since %s not found", s.CheckpointBase())
+		klog.Infof("Initializing model randomly, since %s not found", s.CheckpointBase())
 		err = s.Init()
 		if err != nil {
 			log.Panicf("Failed to initialize model: %v", err)
@@ -273,7 +272,7 @@ func New(basename string, sessionPoolSize int, forceCPU bool) *Scorer {
 
 	go s.autoBatchDispatcher()
 
-	glog.Infof("global_step=%d", s.ReadGlobalStep())
+	klog.Infof("global_step=%d", s.ReadGlobalStep())
 	return s
 }
 
@@ -289,14 +288,14 @@ func (s *Scorer) setParam(key string, value float32) {
 	tfOut := t0opt(key)
 	if tfOut.Op != nil {
 		if pair, found := s.Params[key]; found {
-			glog.Infof("Tensor '%s' updated to %g", key, value)
+			klog.Infof("Tensor '%s' updated to %g", key, value)
 			pair.value = mustTensor(value)
 		} else {
-			glog.Infof("Tensor '%s' set to %g", key, value)
+			klog.Infof("Tensor '%s' set to %g", key, value)
 			s.Params[key] = &tfOutputTensor{tfOut, mustTensor(value)}
 		}
 	} else {
-		glog.Errorf("Tensor '%s' not found and cannot be set", key)
+		klog.Errorf("Tensor '%s' not found and cannot be set", key)
 	}
 }
 
@@ -341,7 +340,7 @@ func (s *Scorer) parseFlagParamsFile() {
 		return
 	}
 	s.paramsFileLastModifiedTime = info.ModTime()
-	glog.Infof("Parsing TensorFlow parameters in %s for model %s", *flag_tfParamsFile, s)
+	klog.Infof("Parsing TensorFlow parameters in %s for model %s", *flag_tfParamsFile, s)
 
 	// Parse key value pairs.
 	keyValues := make(map[string]float32)
@@ -422,7 +421,7 @@ func createSessionPool(graph *tf.Graph, size int, forceCPU bool) (sessions []*tf
 		}
 		if ii == 0 {
 			devices, _ := sess.ListDevices()
-			glog.Infof("List of available devices: %v", devices)
+			klog.Infof("List of available devices: %v", devices)
 		}
 		sessions = append(sessions, sess)
 	}
@@ -525,7 +524,7 @@ type flatFeaturesCollection struct {
 	actionsIsMove       []bool
 	actionsSrcPositions [][2]int64
 	actionsTgtPositions [][2]int64
-	actionsPieces       [][NUM_PIECE_TYPES]float32
+	actionsPieces       [][NumPieceTypes]float32
 	actionsLabels       []float32
 	totalNumActions     int
 }
@@ -561,7 +560,7 @@ func (s *Scorer) buildFeatures(boards []*Board, scoreActions bool) (fc *flatFeat
 		fc.actionsIsMove = make([]bool, fc.totalNumActions)
 		fc.actionsSrcPositions = make([][2]int64, fc.totalNumActions)
 		fc.actionsTgtPositions = make([][2]int64, fc.totalNumActions)
-		fc.actionsPieces = make([][NUM_PIECE_TYPES]float32, fc.totalNumActions)
+		fc.actionsPieces = make([][NumPieceTypes]float32, fc.totalNumActions)
 	}
 
 	// Generate features in Go slices.
@@ -606,14 +605,14 @@ func (s *Scorer) buildFeeds(fc *flatFeaturesCollection, scoreActions bool) (feed
 		}
 	}
 	if s.HasFullBoard() {
-		if glog.V(2) {
+		if klog.V(2) {
 			f := fc.fullBoardFeatures
 			shape := []int{len(f), len(f[0]), len(f[0][0]), len(f[0][0][0])}
-			glog.Infof("fullBoardFeatures shape: %v", shape)
+			klog.Infof("fullBoardFeatures shape: %v", shape)
 			if scoreActions {
-				glog.Infof("ActionsBoardIndices shape: %v", []int{len(fc.actionsBoardIndices)})
-				glog.Infof("ActionsIsMove shape: %v", []int{len(fc.actionsIsMove)})
-				glog.Infof("ActionsActionsPieces shape: %v", []int{len(fc.actionsPieces), len(fc.actionsPieces[0])})
+				klog.Infof("ActionsBoardIndices shape: %v", []int{len(fc.actionsBoardIndices)})
+				klog.Infof("ActionsIsMove shape: %v", []int{len(fc.actionsIsMove)})
+				klog.Infof("ActionsActionsPieces shape: %v", []int{len(fc.actionsPieces), len(fc.actionsPieces[0])})
 			}
 		}
 		feeds[s.FullBoard] = mustTensor(fc.fullBoardFeatures)
@@ -645,10 +644,10 @@ func (s *Scorer) BatchScore(boards []*Board, scoreActions bool) (scores []float3
 	}
 
 	// Evaluate: at most one evaluation at a same time.
-	if glog.V(3) {
-		glog.V(3).Infof("Feeded tensors: ")
+	if klog.V(3) {
+		klog.V(3).Infof("Feeded tensors: ")
 		for to, tensor := range feeds {
-			glog.V(3).Infof("\t%s: %v = %v", to.Op.Name(), tensor.Shape(),
+			klog.V(3).Infof("\t%s: %v = %v", to.Op.Name(), tensor.Shape(),
 				tensor.Value())
 		}
 	}
@@ -691,7 +690,7 @@ func (s *Scorer) BatchScore(boards []*Board, scoreActions bool) (scores []float3
 
 func (s *Scorer) Save() {
 	globalStep := s.ReadGlobalStep()
-	glog.Infof("Saving %s, checkpointing at global_step=%09d", s, globalStep)
+	klog.Infof("Saving %s, checkpointing at global_step=%09d", s, globalStep)
 	if len(s.sessionPool) > 1 {
 		log.Panicf("SessionPool doesn't support saving. You probably should use sessionPoolSize=1 in this case.")
 	}
@@ -700,10 +699,10 @@ func (s *Scorer) Save() {
 	index, data := s.CheckpointFiles()
 	if _, err := os.Stat(index); err == nil {
 		if err := os.Rename(index, index+"~"); err != nil {
-			glog.Errorf("Failed to backup %s to %s~: %v", index, index, err)
+			klog.Errorf("Failed to backup %s to %s~: %v", index, index, err)
 		}
 		if err := os.Rename(data, data+"~"); err != nil {
-			glog.Errorf("Failed to backup %s to %s~: %v", data, data, err)
+			klog.Errorf("Failed to backup %s to %s~: %v", data, data, err)
 		}
 	}
 
@@ -731,6 +730,6 @@ func (s *Scorer) Save() {
 		}
 	}
 	if !linked {
-		glog.Errorf("Failed to link saved model in %s to global_step=%09d", s, globalStep)
+		klog.Errorf("Failed to link saved model in %s to global_step=%09d", s, globalStep)
 	}
 }

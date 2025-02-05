@@ -1,15 +1,14 @@
 package search
 
 import (
+	. "github.com/janpfeifer/hiveGo/internal/state"
+	"k8s.io/klog/v2"
 	"log"
 	"math"
 	"math/rand"
 	"sort"
 
-	"github.com/golang/glog"
-
 	"github.com/janpfeifer/hiveGo/ai"
-	. "github.com/janpfeifer/hiveGo/state"
 )
 
 var _ = log.Printf
@@ -45,7 +44,7 @@ type Searcher interface {
 func ExecuteAndScoreActions(b *Board, scorer ai.BatchScorer) (
 	actions []Action, newBoards []*Board, scores []float32) {
 	if len(b.Derived.Actions) == 0 {
-		actions = []Action{Action{Piece: NO_PIECE}}
+		actions = []Action{{Piece: NoPiece}}
 	} else {
 		// Make deep copy of the actions
 		actions = make([]Action, len(b.Derived.Actions))
@@ -175,7 +174,7 @@ func (rs *randomizedSearcher) Search(b *Board) (Action, *Board, float32, []float
 				maxIdx = ii
 			}
 		}
-		glog.V(1).Infof("Estimated best score: %.2f", maxScore)
+		klog.V(1).Infof("Estimated best score: %.2f", maxScore)
 		return actions[maxIdx], newBoards[maxIdx], maxScore, actionsLabels
 	}
 
@@ -184,7 +183,7 @@ func (rs *randomizedSearcher) Search(b *Board) (Action, *Board, float32, []float
 	// log.Printf("chance=%f, scores=%v, probabilities=%v", chance, scores, probabilities)
 	for ii, value := range probabilities {
 		if chance <= value {
-			glog.V(1).Infof("Score of selected action (%s): %.2f", actions[ii], scores[ii])
+			klog.V(1).Infof("Score of selected action (%s): %.2f", actions[ii], scores[ii])
 			return actions[ii], newBoards[ii], scores[ii], actionsLabels
 		}
 		chance -= value
@@ -216,10 +215,10 @@ func softmax(values []float64) (probs []float64) {
 // NewRandomizedSearcher: take an action based on score associated to that action.
 // Args:
 //
-//    searcher: Searcher to use after the first move.
-//    randomness: Set to 0 to always take the action that maximizes the expected value (no
-//      exploration). Otherwise works as divisor for the scores: larger values means more
-//      randomness (exploration), smaller values means less randomness (exploitation).
+//	searcher: Searcher to use after the first move.
+//	randomness: Set to 0 to always take the action that maximizes the expected value (no
+//	  exploration). Otherwise works as divisor for the scores: larger values means more
+//	  randomness (exploration), smaller values means less randomness (exploitation).
 func NewRandomizedSearcher(searcher Searcher, scorer ai.BatchScorer, randomness float64) Searcher {
 	return &randomizedSearcher{searcher: searcher, scorer: scorer, randomness: randomness}
 }

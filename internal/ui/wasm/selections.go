@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	state2 "github.com/janpfeifer/hiveGo/internal/state"
 
 	"github.com/gopherjs/jquery"
-	"github.com/janpfeifer/hiveGo/state"
 )
 
 var (
@@ -13,7 +13,7 @@ var (
 	SourceOnBoardPOnS, SourceOffBoardPOnS *PieceOnScreen
 	SourceOnBoardHex, SourceOffBoardHex   jquery.JQuery
 	TargetHexes                           []jquery.JQuery
-	TargetActions                         []state.Action
+	TargetActions                         []state2.Action
 )
 
 func Unselect() {
@@ -66,7 +66,7 @@ func (pons *PieceOnScreen) stackTopOnSelectOffBoard(stackPos int) {
 
 	// Collects valid target positions and checks if piece
 	// can actually be put into play.
-	validTargets := make(map[state.Pos]state.Action)
+	validTargets := make(map[state2.Pos]state2.Action)
 	for _, action := range Board.Derived.Actions {
 		if !action.Move && action.Piece == pons.Piece {
 			validTargets[action.TargetPos] = action
@@ -93,7 +93,7 @@ func (pons *PieceOnScreen) stackTopOnSelectOffBoard(stackPos int) {
 }
 
 // OnSelectOnBoard first picks the top piece of the stack selected.
-func (pons *PieceOnScreen) OnSelectOnBoard(pos state.Pos) {
+func (pons *PieceOnScreen) OnSelectOnBoard(pos state2.Pos) {
 	if !IsRunning || IsAITurn {
 		return
 	}
@@ -105,7 +105,7 @@ func (pons *PieceOnScreen) OnSelectOnBoard(pos state.Pos) {
 	pieces[stackPos].stackTopOnSelectOnBoard(pos, stackPos)
 }
 
-func (pons *PieceOnScreen) stackTopOnSelectOnBoard(pos state.Pos, stackPos int) {
+func (pons *PieceOnScreen) stackTopOnSelectOnBoard(pos state2.Pos, stackPos int) {
 	deselect := SourceOnBoardPOnS == pons
 
 	// First deselect previous selection, if any.
@@ -124,7 +124,7 @@ func (pons *PieceOnScreen) stackTopOnSelectOnBoard(pos state.Pos, stackPos int) 
 
 	// Collects valid target positions and checks if piece
 	// can actually be moved.
-	validTargets := make(map[state.Pos]state.Action)
+	validTargets := make(map[state2.Pos]state2.Action)
 	for _, action := range Board.Derived.Actions {
 		if action.Move && action.SourcePos == pos {
 			validTargets[action.TargetPos] = action
@@ -154,7 +154,7 @@ func FaceForTargetSelection() float64 {
 	return ui.Face() - HEX_STROKE_WIDTH*ui.PixelRatio
 }
 
-func MarkTargetActions(validTargets map[state.Pos]state.Action) {
+func MarkTargetActions(validTargets map[state2.Pos]state2.Action) {
 	// List valid target positions on board.
 	TargetActions = nil
 	for pos, action := range validTargets {
@@ -198,7 +198,7 @@ func SelectionsOnChangeOfUIParams() {
 	}
 }
 
-func OnTargetClick(action state.Action) {
+func OnTargetClick(action state2.Action) {
 	Unselect()
 	fmt.Printf("Selected action: %v\n", action)
 	ExecuteAction(action)

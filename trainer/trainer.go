@@ -5,7 +5,7 @@ import (
 	"math"
 	"sync"
 
-	"github.com/golang/glog"
+	"github.com/golang/klog.
 	"github.com/janpfeifer/hiveGo/ai"
 )
 
@@ -37,7 +37,7 @@ func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 	var wg sync.WaitGroup
 	parallelism := getParallelism()
 	setAutoBatchSizes(parallelism / 2)
-	glog.V(1).Infof("Rescoring: parallelization=%d", parallelism)
+	klog.V(1).Infof("Rescoring: parallelization=%d", parallelism)
 	semaphore := make(chan bool, parallelism)
 	matchNum := 0
 	for match := range matchesIn {
@@ -55,9 +55,9 @@ func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 				// No selected action for this match.
 				return
 			}
-			glog.V(2).Infof("lastActions=%d, from=%d, len(actions)=%d", *flag_lastActions, from, len(match.Actions))
-			glog.V(2).Infof("Rescoring match %d", matchNum)
-			if *flag_distill {
+			klog.V(2).Infof("lastActions=%d, from=%d, len(actions)=%d", *flagLastActions, from, len(match.Actions))
+			klog.V(2).Infof("Rescoring match %d", matchNum)
+			if *flagDistill {
 				// Distillation: score boards.
 				// TODO: For the scores just use the immediate score. Not action labels.
 				newScores := distill(players[1].Scorer, match, from, to)
@@ -68,7 +68,7 @@ func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 							maxScore = float64(v)
 						}
 					}
-					glog.V(2).Infof("maxScore=%.2f", maxScore)
+					klog.V(2).Infof("maxScore=%.2f", maxScore)
 					copy(match.Scores[from:from+len(newScores)], newScores)
 				}
 			} else {
@@ -86,7 +86,7 @@ func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 				}
 			}
 			matchesOut <- match
-			glog.V(2).Infof("Match %d (MatchFileIdx=%d) rescored.", matchNum, match.MatchFileIdx)
+			klog.V(2).Infof("Match %d (MatchFileIdx=%d) rescored.", matchNum, match.MatchFileIdx)
 		}(matchNum, match)
 		matchNum++
 	}
@@ -110,11 +110,11 @@ func trainFromMatches(matches []*Match) {
 		leValidation = &LabeledExamples{}
 	)
 	for _, match := range matches {
-		if *flag_learnWithEndScore {
+		if *flagLearnWithEndScore {
 			labelWithEndScore(match)
 		}
 		hashNum := match.FinalBoard().Derived.Hash
-		if int(hashNum%100) >= *flag_trainValidation {
+		if int(hashNum%100) >= *flagTrainValidation {
 			match.AppendLabeledExamples(leTrain)
 		} else {
 			match.AppendLabeledExamples(leValidation)
@@ -128,16 +128,16 @@ func savePlayer0() {
 		log.Printf("Saving to %s", players[0].ModelFile)
 		ai.LinearModelFileName = players[0].ModelFile // Hack for linear models. TODO: fix.
 		players[0].Learner.Save()
-		if glog.V(1) {
-			glog.V(1).Infof("Saved %s to %s", players[0].Learner, players[0].ModelFile)
+		if klog.V(1) {
+			klog.V(1).Infof("Saved %s to %s", players[0].Learner, players[0].ModelFile)
 		}
 	}
 }
 
 // trainFromExamples: only player[0] is trained.
 func trainFromExamples(leTrain, leValidation *LabeledExamples) {
-	learningRate := float32(*flag_learningRate)
-	epochs := int(*flag_trainLoops)
+	learningRate := float32(*flagLearningRate)
+	epochs := int(*flagTrainLoops)
 	perEpochCallback := func() {
 		if leValidation.Len() > 0 {
 			loss, boardLoss, actionsLoss := players[0].Learner.Learn(

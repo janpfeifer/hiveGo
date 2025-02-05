@@ -6,6 +6,7 @@ package mcts
 import (
 	"flag"
 	"fmt"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 	"log"
 	"math"
 	"math/rand"
@@ -14,10 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
-	. "github.com/janpfeifer/hiveGo/state"
 )
 
 var (
@@ -142,7 +141,7 @@ func newCacheNode(mcts *mctsSearcher, stats *matchStats, b *Board, root bool) *c
 		}
 		sumProbs += prob
 	}
-	if len(cn.actions) > 1 && abs32(sumProbs - 1.0) > 1e-3 {
+	if len(cn.actions) > 1 && abs32(sumProbs-1.0) > 1e-3 {
 		ui := ascii_ui.NewUI(true, false)
 		fmt.Println()
 		ui.PrintBoard(cn.board)
@@ -150,7 +149,6 @@ func newCacheNode(mcts *mctsSearcher, stats *matchStats, b *Board, root bool) *c
 		fmt.Printf("Probabilities: %v", cn.actionsProbs)
 		log.Panicf("Sum of probabilities=%g != 1.0", sumProbs)
 	}
-
 
 	if *flag_mctsUseLinearScore {
 		newScore, _ := ai.TrainedBest.Score(b, false)
@@ -190,7 +188,7 @@ func (cn *cacheNode) Step(mcts *mctsSearcher, stats *matchStats, index int, log 
 		newCN = newCacheNode(mcts, stats, cn.board.Act(action), false)
 		cn.cacheNodes[cnIdx] = newCN
 		if log {
-			glog.V(1).Infof("Create new cacheNode with action %s", action)
+			klog.V(1).Infof("Create new cacheNode with action %s", action)
 		}
 	}
 	return newCN
@@ -232,8 +230,8 @@ func (cn *cacheNode) Sample(mcts *mctsSearcher) int {
 
 	for ii := range cn.actions {
 		actionCN := cn.cacheNodes[ii]
-		actionAdjustedQ := cn.Q[ii] + globalFactor * cn.actionsProbs[ii] / (1 + float32(cn.count[ii]))
-		if  actionCN != nil {
+		actionAdjustedQ := cn.Q[ii] + globalFactor*cn.actionsProbs[ii]/(1+float32(cn.count[ii]))
+		if actionCN != nil {
 			if actionCN.board.IsFinished() {
 				if actionCN.score > 0 {
 					// Opponent wins (since actionCN is the board with the opponent turn),
@@ -249,22 +247,22 @@ func (cn *cacheNode) Sample(mcts *mctsSearcher) int {
 				}
 			}
 		}
-		glog.V(4).Infof("Sampling: adjustedQ=%g, Q=%g, probs=%.2g", actionAdjustedQ,
+		klog.V(4).Infof("Sampling: adjustedQ=%g, Q=%g, probs=%.2g", actionAdjustedQ,
 			cn.Q[ii], cn.actionsProbs[ii])
-		if actionAdjustedQ > bestActionAdjustedQ  {
+		if actionAdjustedQ > bestActionAdjustedQ {
 			best = ii
-			bestActionAdjustedQ  = actionAdjustedQ
+			bestActionAdjustedQ = actionAdjustedQ
 		}
 	}
 	if best == -1 {
 		if hasLosses {
-			glog.V(1).Infof("Sampling: all actions lead to loss, taking the first.")
+			klog.V(1).Infof("Sampling: all actions lead to loss, taking the first.")
 			return 0
 		}
 		log.Panicf("Not able to sample a move, likely probabilities are NaN.")
 	}
 	if cn.parent == nil {
-		glog.V(3).Infof("Sampled %s: adjustedQ=%g, Q=%g, probs=%.2g%%",
+		klog.V(3).Infof("Sampled %s: adjustedQ=%g, Q=%g, probs=%.2g%%",
 			cn.actions[best], bestActionAdjustedQ, cn.Q[best], 100.0*cn.actionsProbs[best])
 	}
 	return best
@@ -292,7 +290,7 @@ func (cn *cacheNode) FindBestScore(mcts *mctsSearcher) (
 	// and the action with largest probability.
 	actionsLabels = make([]float32, len(cn.actions))
 	if cn.totalCount == 0 {
-		glog.Errorf("MCTS.FindBestNode() called with no visits having been made.")
+		klog.Errorf("MCTS.FindBestNode() called with no visits having been made.")
 		bestScore = cn.score
 		bestIdx = 0
 		bestProb := cn.actionsProbs[0]
@@ -351,7 +349,7 @@ func (cn *cacheNode) logTraverse(score float32, stopReason string) {
 		jj := len(parts) - ii - 1
 		parts[ii], parts[jj] = parts[jj], parts[ii]
 	}
-	glog.Infof("Traverse (%s): score=%.6f, path=[%s]", stopReason, score, strings.Join(parts, "], ["))
+	klog.Infof("Traverse (%s): score=%.6f, path=[%s]", stopReason, score, strings.Join(parts, "], ["))
 }
 
 // Traverse traverses the game tree up to the given depth, and returns the
@@ -361,7 +359,7 @@ func (cn *cacheNode) Traverse(mcts *mctsSearcher, stats *matchStats, depthLeft i
 	// Checks end of game conditions.
 	if cn.board.IsFinished() {
 		_, score := ai.EndGameScore(cn.board)
-		if glog.V(3) {
+		if klog.V(3) {
 			cn.logTraverse(score, "end game")
 		}
 		return score
@@ -369,7 +367,7 @@ func (cn *cacheNode) Traverse(mcts *mctsSearcher, stats *matchStats, depthLeft i
 
 	// Checks max depth reached.
 	if depthLeft == 0 {
-		if glog.V(3) {
+		if klog.V(3) {
 			cn.logTraverse(cn.score, "max depth")
 		}
 		return cn.score
@@ -378,7 +376,7 @@ func (cn *cacheNode) Traverse(mcts *mctsSearcher, stats *matchStats, depthLeft i
 	// Checks if score threshold is reached.
 	if depthLeft < mcts.maxDepth-DEPTH_CHECK_MAX_ABS_SCORE {
 		if abs32(cn.score) >= mcts.maxAbsScore {
-			if glog.V(3) {
+			if klog.V(3) {
 				cn.logTraverse(cn.score, "max abs score")
 			}
 			return cn.score
@@ -407,7 +405,7 @@ func (cn *cacheNode) Traverse(mcts *mctsSearcher, stats *matchStats, depthLeft i
 	cn.Q[actionIdx] = modelScoreToQ(meanScore)
 	cn.mu.Unlock()
 	if depthLeft == mcts.maxDepth {
-		glog.V(3).Infof("Traverse[%s]: score=%.2f, Q=%.2f", cn.actions[actionIdx], score, cn.Q[actionIdx])
+		klog.V(3).Infof("Traverse[%s]: score=%.2f, Q=%.2f", cn.actions[actionIdx], score, cn.Q[actionIdx])
 	}
 	return score
 }
@@ -430,7 +428,7 @@ func (mcts *mctsSearcher) runOnCN(stats *matchStats, cn *cacheNode) {
 			cn.Traverse(mcts, stats, mcts.maxDepth)
 			count++
 		}
-		glog.V(1).Infof("MCTS traverses done: %d", count)
+		klog.V(1).Infof("MCTS traverses done: %d", count)
 	}
 }
 
@@ -441,13 +439,13 @@ func (mcts *mctsSearcher) measuredRunOnCN(stats *matchStats, cn *cacheNode) {
 	elapsedTime := time.Since(start)
 	searchCacheNodes := stats.numCacheNodes - beforeCacheNodes
 
-	glog.V(1).Infof("States searched in this move:    \t%d CacheNodes",
+	klog.V(1).Infof("States searched in this move:    \t%d CacheNodes",
 		searchCacheNodes)
 	cacheNodesPerSec := float64(searchCacheNodes) / float64(elapsedTime.Seconds())
-	glog.V(1).Infof("Rate of evaluations in this move:\t%.1f CacheNodes/s",
+	klog.V(1).Infof("Rate of evaluations in this move:\t%.1f CacheNodes/s",
 		cacheNodesPerSec)
 
-	glog.V(1).Infof("States searched in match so far: \t%d CacheNodes",
+	klog.V(1).Infof("States searched in match so far: \t%d CacheNodes",
 		stats.numCacheNodes)
 }
 
@@ -480,7 +478,7 @@ func logTopActionProbs(labelProbs []float32, actions []Action, prevProbs, scores
 	for _, prob := range prevProbs {
 		sumProbs += prob
 	}
-	glog.Infof("  Model previous probabilities: [%v], sum(+rand)=%.3g", prevProbs, sumProbs)
+	klog.Infof("  Model previous probabilities: [%v], sum(+rand)=%.3g", prevProbs, sumProbs)
 	max, min := prevProbs[0], prevProbs[0]
 	for _, prob := range prevProbs {
 		if prob > max {
@@ -489,8 +487,8 @@ func logTopActionProbs(labelProbs []float32, actions []Action, prevProbs, scores
 			min = prob
 		}
 	}
-	glog.Infof("Difference max(prob)-min(prob)=%.4g%%",
-		100.0 * (max - min))
+	klog.Infof("Difference max(prob)-min(prob)=%.4g%%",
+		100.0*(max-min))
 	sorted := sortableProbsActions{
 		indices: make([]int, len(labelProbs)),
 		probs:   labelProbs,
@@ -504,16 +502,16 @@ func logTopActionProbs(labelProbs []float32, actions []Action, prevProbs, scores
 		if labelProbs[idx] < 0.02 {
 			break
 		}
-		glog.Infof("  Action %s: new probability %.2f%%, prev probability %.2f%%, Q-score=%.2g",
+		klog.Infof("  Action %s: new probability %.2f%%, prev probability %.2f%%, Q-score=%.2g",
 			actions[idx], 100*labelProbs[idx], 100*prevProbs[idx], scores[idx])
 	}
-	glog.Infof("  New probabilities: [%v]", labelProbs)
+	klog.Infof("  New probabilities: [%v]", labelProbs)
 }
 
 func (mcts *mctsSearcher) searchWithStats(stats *matchStats, b *Board) (
 	action Action, board *Board, score float32, actionsLabels []float32) {
 	cn := newCacheNode(mcts, stats, b, true)
-	if glog.V(1) {
+	if klog.V(1) {
 		// Measure time and boards evaluated.
 		if stats == nil {
 			stats = &matchStats{}
@@ -531,14 +529,14 @@ func (mcts *mctsSearcher) searchWithStats(stats *matchStats, b *Board) (
 		if cn.cacheNodes[actionIdx] != nil {
 			board = cn.cacheNodes[actionIdx].board
 		}
-		if glog.V(2) {
+		if klog.V(2) {
 			fmt.Println()
 			ui := ascii_ui.NewUI(true, false)
 			ui.PrintBoard(cn.board)
 			fmt.Println()
-			glog.Infof("Search Move #%d (p%d), %d actions available, baseline is %.2g%%:",
+			klog.Infof("Search Move #%d (p%d), %d actions available, baseline is %.2g%%:",
 				cn.board.MoveNumber, cn.board.NextPlayer,
-				len(cn.actions), 100.0 / float64(len(cn.actions)))
+				len(cn.actions), 100.0/float64(len(cn.actions)))
 			logTopActionProbs(actionsLabels, cn.actions, cn.actionsProbs, cn.Q)
 		}
 
@@ -549,7 +547,7 @@ func (mcts *mctsSearcher) searchWithStats(stats *matchStats, b *Board) (
 	if board == nil {
 		board = cn.board.Act(action)
 	}
-	glog.V(1).Infof("Selected action %s, score %.2f", action, score)
+	klog.V(1).Infof("Selected action %s, score %.2f", action, score)
 	return
 }
 
@@ -568,7 +566,7 @@ func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action) (
 
 	for matchActionsIdx, action := range actions {
 		// Search current node.
-		if glog.V(1) {
+		if klog.V(1) {
 			// Measure time and boards evaluated.
 			mcts.measuredRunOnCN(stats, cn)
 		} else {
@@ -586,9 +584,9 @@ func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action) (
 			log.Panicf("Number of labels (%d) different than number of actions (%d) for board on move %d",
 				len(boardActionsLabels), cn.board.NumActions(), cn.board.MoveNumber)
 		}
-		if glog.V(2) {
+		if klog.V(2) {
 			fmt.Println()
-			glog.Infof("ScoreMatch Move #%d (%d to go), player %d has the turn:",
+			klog.Infof("ScoreMatch Move #%d (%d to go), player %d has the turn:",
 				cn.board.MoveNumber, len(actions)-matchActionsIdx, cn.board.NextPlayer)
 			ui.PrintBoard(cn.board)
 			logTopActionProbs(boardActionsLabels, cn.actions, cn.actionsProbs, cn.Q)
@@ -602,7 +600,7 @@ func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action) (
 			playedIdx = -1
 		} else {
 			playedIdx = cn.board.FindActionDeep(action)
-			glog.V(2).Infof("Actually played: %s, prob=%.2g%%, prev_prob=%.2g%%, Q-score=%f",
+			klog.V(2).Infof("Actually played: %s, prob=%.2g%%, prev_prob=%.2g%%, Q-score=%f",
 				cn.actions[playedIdx], boardActionsLabels[playedIdx]*100, cn.actionsProbs[playedIdx], cn.Q[playedIdx])
 		}
 		cn = cn.Step(mcts, stats, playedIdx, true)

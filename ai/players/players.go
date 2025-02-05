@@ -2,16 +2,14 @@
 package players
 
 import (
-	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
 	"github.com/janpfeifer/hiveGo/ai/search"
-	. "github.com/janpfeifer/hiveGo/state"
+	. "github.com/janpfeifer/hiveGo/internal/state"
+	"k8s.io/klog/v2"
 	"log"
 	"strconv"
 	"strings"
 )
-
-var _ = log.Printf
 
 type ModuleType int
 
@@ -40,15 +38,15 @@ type SearcherScorerPlayer struct {
 func (p *SearcherScorerPlayer) Play(b *Board, matchName string) (
 	action Action, board *Board, score float32, actionsLabels []float32) {
 	action, board, score, actionsLabels = p.Searcher.Search(b)
-	glog.V(1).Infof("Match %s, Move #%d (%s): AI playing %v, score=%.3f",
+	klog.V(1).Infof("Match %s, Move #%d (%s): AI playing %v, score=%.3f",
 		matchName, b.MoveNumber, p.ModelFile, action, score)
 	return
 }
 
 // External model registration functions.
-type PlayerModuleInitFn func() (data interface{})
-type PlayerParameterFn func(data interface{}, key, value string)
-type PlayerModuleFinalizeFn func(data interface{}, player *SearcherScorerPlayer)
+type PlayerModuleInitFn func() (data any)
+type PlayerParameterFn func(data any, key, value string)
+type PlayerModuleFinalizeFn func(data any, player *SearcherScorerPlayer)
 
 // Registration of an external module for a keyword.
 type externalModuleRegistration struct {
@@ -64,7 +62,7 @@ var (
 	keywordToModules                   = make(map[string][]externalModuleRegistration)
 )
 
-// Register function to process given parameter for given module. This allows
+// RegisterPlayerParameter function to process given parameters for given module. This allows
 // external modules to change the behavior of NewAIPlayer.
 // For each module, initFn will be called at the start of the parsing.
 // Then paramFn is called or each key/value pair (value may be empty).
@@ -103,22 +101,22 @@ func MustInt(s, paramName string) int {
 // NewAIPlayer creates a new AI player given the configuration string.
 //
 // Args:
-//   config: comma-separated list of parameter. The following parameter are known.
-//       * max_depth: Max depth for alpha-beta-prunning or MCST algorithms. Defaults to 3,
-//         for ab and to 8 for MCST.
-//       * ab: Selects the alpha-beta-prunning algorithm.
-//       * randomness: Adds a layer of randomness in the search: the first level choice is
-//         distributed according to a softmax of the scores of each move, divided by this value.
-//         So lower values (closer to 0) means less randomness, higher value means more randomness,
-//         hence more exploration.
 //
+//	config: comma-separated list of parameter. The following parameter are known.
+//	    * max_depth: Max depth for alpha-beta-prunning or MCST algorithms. Defaults to 3,
+//	      for ab and to 8 for MCST.
+//	    * ab: Selects the alpha-beta-prunning algorithm.
+//	    * randomness: Adds a layer of randomness in the search: the first level choice is
+//	      distributed according to a softmax of the scores of each move, divided by this value.
+//	      So lower values (closer to 0) means less randomness, higher value means more randomness,
+//	      hence more exploration.
 func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 	if config == "" {
 		// Default AI.
 		config = "ab,max_depth=2"
 	}
 	// Initialize external modules data.
-	moduleToData := make(map[string]interface{})
+	moduleToData := make(map[string]any)
 	for module, initFn := range externalModulesInitFns {
 		moduleToData[module] = initFn()
 	}

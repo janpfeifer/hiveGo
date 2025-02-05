@@ -4,11 +4,10 @@ package tensorflow
 // tensorflow models.
 
 import (
+	. "github.com/janpfeifer/hiveGo/internal/state"
 	"log"
 
-	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
-	. "github.com/janpfeifer/hiveGo/state"
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
@@ -21,7 +20,7 @@ type AutoBatchRequest struct {
 	actionsIsMove       []bool
 	actionsSrcPositions [][2]int64
 	actionsTgtPositions [][2]int64
-	actionsPieces       [][NUM_PIECE_TYPES]float32
+	actionsPieces       [][NumPieceTypes]float32
 
 	// Channel is closed when done.
 	done chan bool
@@ -44,7 +43,7 @@ func (s *Scorer) newAutoBatchRequest(b *Board, scoreActions bool) (req *AutoBatc
 		req.actionsIsMove = make([]bool, b.NumActions())
 		req.actionsSrcPositions = make([][2]int64, b.NumActions())
 		req.actionsTgtPositions = make([][2]int64, b.NumActions())
-		req.actionsPieces = make([][NUM_PIECE_TYPES]float32, b.NumActions())
+		req.actionsPieces = make([][NumPieceTypes]float32, b.NumActions())
 		for actionIdx, action := range b.Derived.Actions {
 			req.actionsIsMove[actionIdx] = action.Move
 			req.actionsSrcPositions[actionIdx] = ai.PosToFullBoardPosition(b, action.SourcePos)
@@ -60,7 +59,7 @@ func (req *AutoBatchRequest) LenActions() int { return len(req.actionsIsMove) }
 func (s *Scorer) scoreAutoBatch(b *Board, scoreActions bool) (score float32, actionsProbs []float32) {
 	// Send request and wait for it to be processed.
 	req := s.newAutoBatchRequest(b, scoreActions)
-	glog.V(3).Info("Sending request", s)
+	klog.V(3).Info("Sending request", s)
 	s.autoBatchChan <- req
 	<-req.done
 	return req.score, req.actionsProbs
@@ -89,7 +88,7 @@ type AutoBatch struct {
 	actionsIsMove       []bool
 	actionsSrcPositions [][2]int64
 	actionsTgtPositions [][2]int64
-	actionsPieces       [][NUM_PIECE_TYPES]float32
+	actionsPieces       [][NumPieceTypes]float32
 }
 
 const MAX_ACTIONS_PER_BOARD = 200
@@ -107,7 +106,7 @@ func (s *Scorer) newAutoBatch() *AutoBatch {
 		ab.actionsIsMove = make([]bool, 0, maxActions)
 		ab.actionsSrcPositions = make([][2]int64, 0, maxActions)
 		ab.actionsTgtPositions = make([][2]int64, 0, maxActions)
-		ab.actionsPieces = make([][NUM_PIECE_TYPES]float32, 0, maxActions)
+		ab.actionsPieces = make([][NumPieceTypes]float32, 0, maxActions)
 	}
 	return ab
 }
@@ -160,10 +159,10 @@ func (s *Scorer) autoBatchScoreAndDeliver(ab *AutoBatch) {
 		fetches = append(fetches, s.ActionsPredictions)
 	}
 	// Evaluate: at most one evaluation at a same time.
-	if glog.V(3) {
-		glog.V(3).Infof("Tensors fed: ")
+	if klog.V(3) {
+		klog.V(3).Infof("Tensors fed: ")
 		for to, tensor := range feeds {
-			glog.V(3).Infof("\t%s: %v", to.Op.Name(), tensor.Shape())
+			klog.V(3).Infof("\t%s: %v", to.Op.Name(), tensor.Shape())
 		}
 	}
 
@@ -203,7 +202,7 @@ func (s *Scorer) autoBatchScoreAndDeliver(ab *AutoBatch) {
 }
 
 func (s *Scorer) autoBatchDispatcher() {
-	glog.V(1).Infof("Started AutoBatch dispatcher for [%s].", s)
+	klog.V(1).Infof("Started AutoBatch dispatcher for [%s].", s)
 	var ab *AutoBatch
 	for req := range s.autoBatchChan {
 		if req != onBatchSizeUpdate {
@@ -211,9 +210,9 @@ func (s *Scorer) autoBatchDispatcher() {
 				ab = s.newAutoBatch()
 			}
 			ab.Append(req)
-			glog.V(3).Info("Received scoring request.")
+			klog.V(3).Info("Received scoring request.")
 		} else {
-			glog.V(1).Infof("[%s] batch size changed to %d", s, s.autoBatchSize)
+			klog.V(1).Infof("[%s] batch size changed to %d", s, s.autoBatchSize)
 		}
 		if ab != nil && ab.Len() >= s.autoBatchSize {
 			go s.autoBatchScoreAndDeliver(ab)

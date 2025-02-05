@@ -2,11 +2,9 @@ package ai
 
 import (
 	"fmt"
+	. "github.com/janpfeifer/hiveGo/internal/state"
+	"k8s.io/klog/v2"
 	"log"
-
-	"github.com/golang/glog"
-
-	. "github.com/janpfeifer/hiveGo/state"
 )
 
 // Enum of feature.
@@ -78,14 +76,14 @@ var (
 	// The VecIndex attribute is properly set during the package initialization.
 	// The  "Opp" prefix refers to opponent.
 	AllFeatures = [F_NUM_FEATURES]FeatureDef{
-		{F_NUM_OFFBOARD, "NumOffboard", int(NUM_PIECE_TYPES), 0, fNumOffBoard, 0},
-		{F_OPP_NUM_OFFBOARD, "OppNumOffboard", int(NUM_PIECE_TYPES), 0, fNumOffBoard, 0},
+		{F_NUM_OFFBOARD, "NumOffboard", int(NumPieceTypes), 0, fNumOffBoard, 0},
+		{F_OPP_NUM_OFFBOARD, "OppNumOffboard", int(NumPieceTypes), 0, fNumOffBoard, 0},
 
 		{F_NUM_SURROUNDING_QUEEN, "NumSurroundingQueen", 1, 0, fNumSurroundingQueen, 0},
 		{F_OPP_NUM_SURROUNDING_QUEEN, "OppNumSurroundingQueen", 1, 0, fNumSurroundingQueen, 0},
 
-		{F_NUM_CAN_MOVE, "NumCanMove", 2 * int(NUM_PIECE_TYPES), 0, fNumCanMove, 0},
-		{F_OPP_NUM_CAN_MOVE, "OppNumCanMove", 2 * int(NUM_PIECE_TYPES), 0, fNumCanMove, 0},
+		{F_NUM_CAN_MOVE, "NumCanMove", 2 * int(NumPieceTypes), 0, fNumCanMove, 0},
+		{F_OPP_NUM_CAN_MOVE, "OppNumCanMove", 2 * int(NumPieceTypes), 0, fNumCanMove, 0},
 
 		{F_NUM_THREATENING_MOVES, "NumThreateningMoves", 2, 0, fNumThreateningMoves, 0},
 		{F_OPP_NUM_THREATENING_MOVES, "OppNumThreateningMoves", 2, 0, fNumThreateningMoves, 39},
@@ -94,9 +92,9 @@ var (
 		{F_NUM_SINGLE, "NumSingle", 2, 0, fNumSingle, 0},
 		{F_QUEEN_COVERED, "QueenIsCovered", 2, 0, fQueenIsCovered, 41},
 		{F_AVERAGE_DISTANCE_TO_QUEEN, "AverageDistanceToQueen",
-			int(NUM_PIECE_TYPES), 0, fAverageDistanceToQueen, 51},
+			int(NumPieceTypes), 0, fAverageDistanceToQueen, 51},
 		{F_OPP_AVERAGE_DISTANCE_TO_QUEEN, "OppAverageDistanceToQueen",
-			int(NUM_PIECE_TYPES), 0, fAverageDistanceToQueen, 51},
+			int(NumPieceTypes), 0, fAverageDistanceToQueen, 51},
 	}
 
 	// AllFeaturesDim is the dimension of all features concatenated, set during package
@@ -208,8 +206,8 @@ func fNumCanMove(b *Board, def *FeatureDef, f []float32) {
 		queenNeighbours = b.OccupiedNeighbours(b.Derived.QueenPos[opponent])
 	}
 
-	counts := make(map[Piece]int)
-	countsNotQueenNeighbours := make(map[Piece]int)
+	counts := make(map[PieceType]int)
+	countsNotQueenNeighbours := make(map[PieceType]int)
 	posVisited := make(map[Pos]bool)
 	for _, action := range actions {
 		if action.Move && !posVisited[action.SourcePos] {
@@ -281,7 +279,7 @@ func fNumThreateningMoves(b *Board, def *FeatureDef, f []float32) {
 	if canPlaceAroundQueen {
 		// In this case any of the available pieces for placement can
 		// be put around the Queen.
-		f[idx] += float32(TOTAL_PIECES_PER_PLAYER - b.Derived.NumPiecesOnBoard[player])
+		f[idx] += float32(TotalPiecesPerPlayer - b.Derived.NumPiecesOnBoard[player])
 	}
 }
 
@@ -329,9 +327,9 @@ func fAverageDistanceToQueen(b *Board, def *FeatureDef, f []float32) {
 		player, opponent = opponent, player
 	}
 	queenPos := b.Derived.QueenPos[opponent]
-	var totals [NUM_PIECE_TYPES]int
+	var totals [NumPieceTypes]int
 	var maxDist int
-	b.EnumeratePieces(func (pPlayer uint8, piece Piece, pos Pos, covered bool) {
+	b.EnumeratePieces(func(pPlayer uint8, piece PieceType, pos Pos, covered bool) {
 		if pPlayer != player {
 			return
 		}
@@ -341,12 +339,12 @@ func fAverageDistanceToQueen(b *Board, def *FeatureDef, f []float32) {
 		}
 		totals[piece-1] += dist
 	})
-	maxDist++  // Distance of non-placed pieces are set to maxDist+1.
+	maxDist++ // Distance of non-placed pieces are set to maxDist+1.
 	for _, piece := range Pieces {
 		totals[piece-1] += (maxDist * int(b.Available(player, piece)))
 	}
-	for ii := 0; ii < int(NUM_PIECE_TYPES); ii++ {
-		f[idx+ii] = float32(totals[ii])/float32(INITIAL_AVAILABILITY[ii])
+	for ii := 0; ii < int(NumPieceTypes); ii++ {
+		f[idx+ii] = float32(totals[ii]) / float32(InitialAvailability[ii])
 	}
 	return
 
@@ -375,15 +373,16 @@ func init() {
 	}
 }
 
-// FullBoardFeatures will return features for the full board within
+// MakeFullBoardFeatures returns features for the full board within
 // an area of height/width. It will panic if the area is not able to
 // contain the current board state -- use FullBoardDimensions.
 // Empty hexagons will be filled with zeroes.
 //
 // It returns a multi-D vector of shape `[height][width][FEATURES_PER_POSITION]`
 // and the shift of X and Y from the original map:
-//   original_x + shift_x = FullBoardFeatures_x
-//   original_y + shift_y = FullBoardFeatures_y
+//
+//	original_x + shift_x = FullBoardFeatures_x
+//	original_y + shift_y = FullBoardFeatures_y
 //
 // Notice that shift_x will be even, so that the parity of the
 // hexagonal map remains constant -- the value of x%2 affects the neighbourhood
@@ -391,7 +390,7 @@ func init() {
 func MakeFullBoardFeatures(b *Board, width, height int) (features [][][]float32) {
 	minWidth, minHeight := FullBoardDimensions(b)
 	if width < minWidth || height < minHeight {
-		glog.Fatalf("FullBoardFeatures for board of size (%d, %d) not possible on reserved space (%d, %d)",
+		klog.Fatalf("FullBoardFeatures for board of size (%d, %d) not possible on reserved space (%d, %d)",
 			b.Height(), b.Width(), height, width)
 	}
 

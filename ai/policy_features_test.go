@@ -2,18 +2,19 @@ package ai_test
 
 import (
 	"fmt"
-	"github.com/golang/glog"
+	. "github.com/janpfeifer/hiveGo/internal/state"
+	"github.com/janpfeifer/hiveGo/internal/ui/cli"
+	"k8s.io/klog/v2"
 	"log"
 	"reflect"
 	"testing"
 
 	"github.com/janpfeifer/hiveGo/ai"
-	"github.com/janpfeifer/hiveGo/ascii_ui"
-	. "github.com/janpfeifer/hiveGo/state"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 )
 
 func printBoardAction(b *Board, action Action) {
-	ui := ascii_ui.NewUI(true, false)
+	ui := cli.New(true, false)
 	ui.PrintBoard(b)
 	fmt.Printf("Action: %s\n", action)
 	if false {
@@ -70,7 +71,7 @@ func TestPolicyFeatures(t *testing.T) {
 	// Completely unrelated position should be zero.
 	got := getPosition(Pos{-1, 0}, action.SourcePos, &actionFeatures.SourceFeatures)
 	if !isZero(got) {
-		glog.Errorf("Features for Pos{-1,0} should be 0, got %s instead",
+		klog.Errorf("Features for Pos{-1,0} should be 0, got %s instead",
 			ai.PositionFeaturesToString(got))
 	}
 
@@ -135,7 +136,7 @@ func TestPolicyFeatures(t *testing.T) {
 }
 
 // Print boards with rotated neighborhood.
-func debugNeighboursForPos(ui *ascii_ui.UI, base Pos) {
+func debugNeighboursForPos(ui *cli.UI, base Pos) {
 	neig := ai.X_EVEN_NEIGHBOURS
 	if base.X()%2 == 1 {
 		neig = ai.X_ODD_NEIGHBOURS
@@ -147,7 +148,7 @@ func debugNeighboursForPos(ui *ascii_ui.UI, base Pos) {
 			for idx1 := 0; idx1 < 3; idx1++ {
 				pos := Pos{base.X() + neig[idx0][idx1][0], base.Y() + neig[idx0][idx1][1]}
 				fmt.Println(pos)
-				b.StackPiece(pos, uint8(neigSlice%2), (Piece(neigSlice)%NUM_PIECE_TYPES)+ANT)
+				b.StackPiece(pos, uint8(neigSlice%2), (PieceType(neigSlice)%NumPieceTypes)+ANT)
 			}
 		}
 		b.BuildDerived()

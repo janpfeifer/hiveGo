@@ -2,13 +2,13 @@ package main
 
 import (
 	"fmt"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 	"log"
 
 	"github.com/gotk3/gotk3/cairo"
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
-	. "github.com/janpfeifer/hiveGo/state"
 )
 
 var _ = fmt.Printf
@@ -77,8 +77,8 @@ func createMainWindow() {
 			}
 			if player != board.NextPlayer || nextIsAI {
 				// Not this players turn, so nothing to select. Just in case, de-seleect.
-				if selectedOffBoardPiece != NO_PIECE {
-					selectedOffBoardPiece = NO_PIECE
+				if selectedOffBoardPiece != NoPiece {
+					selectedOffBoardPiece = NoPiece
 					mainWindow.QueueDraw() // Needs redrawing.
 				}
 				return true
@@ -87,7 +87,7 @@ func createMainWindow() {
 			// Check where was the click:
 			x, y := evB.X(), evB.Y()
 			piece := offBoardPositionToPiece(da, x, y)
-			if piece != NO_PIECE {
+			if piece != NoPiece {
 				pieceAvailable := false
 				for _, action := range board.Derived.Actions {
 					if !action.Move && action.Piece == piece {
@@ -97,8 +97,8 @@ func createMainWindow() {
 				}
 				if !pieceAvailable {
 					// If piece not available or not allowed to be placed,
-					// set it to NO_PIECE
-					piece = NO_PIECE
+					// set it to NoPiece
+					piece = NoPiece
 				}
 			}
 
@@ -271,7 +271,7 @@ func mainBoardClick(da *gtk.DrawingArea, x, y float64) {
 	}
 	dp := newDrawingParams(mainDrawing)
 	pos := dp.XYToPos(x, y)
-	if selectedOffBoardPiece != NO_PIECE {
+	if selectedOffBoardPiece != NoPiece {
 		if _, ok := placementPositions()[pos]; ok {
 			// Placement action selected, execute it.
 			for _, action := range board.Derived.Actions {
@@ -280,10 +280,10 @@ func mainBoardClick(da *gtk.DrawingArea, x, y float64) {
 					return
 				}
 			}
-			selectedOffBoardPiece = NO_PIECE
+			selectedOffBoardPiece = NoPiece
 			return
 		} else {
-			selectedOffBoardPiece = NO_PIECE
+			selectedOffBoardPiece = NoPiece
 			mainWindow.QueueDraw()
 		}
 	}

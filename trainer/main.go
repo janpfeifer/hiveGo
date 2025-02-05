@@ -4,7 +4,11 @@ import (
 	"encoding/gob"
 	"flag"
 	"fmt"
+	. "github.com/janpfeifer/hiveGo/internal/state"
+	"github.com/janpfeifer/hiveGo/internal/ui/cli"
+	"github.com/pkg/errors"
 	"io"
+	"k8s.io/klog/v2"
 	"log"
 	"os"
 	"path/filepath"
@@ -13,66 +17,62 @@ import (
 	"sync"
 
 	"github.com/janpfeifer/hiveGo/ai"
-
-	"github.com/golang/glog"
 	ai_players "github.com/janpfeifer/hiveGo/ai/players"
 	_ "github.com/janpfeifer/hiveGo/ai/search/ab"
 	_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
 	"github.com/janpfeifer/hiveGo/ai/tensorflow"
 	_ "github.com/janpfeifer/hiveGo/ai/tfddqn"
-	"github.com/janpfeifer/hiveGo/ascii_ui"
-	. "github.com/janpfeifer/hiveGo/state"
 )
 
 var _ = fmt.Printf
 
 var (
-	flag_cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
+	flagCpuProfile = flag.String("cpu_profile", "", "write cpu profile to `file`")
 
-	flag_players = [2]*string{
+	flagPlayers = [2]*string{
 		flag.String("ai0", "", "Configuration string for ai playing as the starting player."),
 		flag.String("ai1", "", "Configuration string for ai playing as the second player."),
 	}
 
-	flag_maxMoves = flag.Int(
-		"max_moves", DEFAULT_MAX_MOVES, "Max moves before game is assumed to be a draw.")
+	flagMaxMoves = flag.Int(
+		"max_moves", DefaultMaxMoves, "Max moves before game is assumed to be a draw.")
 
-	flag_numMatches = flag.Int("num_matches", 0, "Number of matches to play. If larger "+
+	flagNumMatches = flag.Int("num_matches", 0, "Number of matches to play. If larger "+
 		"than one, starting position is alternated. Value of 0 means 1 match to play, or load all file.")
-	flag_print       = flag.Bool("print", false, "Print board at the end of the match.")
-	flag_printSteps  = flag.Bool("print_steps", false, "Print board at each step.")
-	flag_saveMatches = flag.String("save_matches", "", "File name where to save matches.")
-	flag_loadMatches = flag.String("load_matches", "",
+	flagPrint       = flag.Bool("print", false, "Print board at the end of the match.")
+	flagPrintSteps  = flag.Bool("print_steps", false, "Print board at each step.")
+	flagSaveMatches = flag.String("save_matches", "", "File name where to save matches.")
+	flagLoadMatches = flag.String("load_matches", "",
 		"Instead of actually playing matches, load pre-generated ones.")
-	flag_loadOnlyMatch = flag.Int("match_idx", -1, "If set it will only load this one "+
-		"specific match, useful for debugging.")
-	flag_wins     = flag.Bool("wins", false, "Counts only matches with wins.")
-	flag_winsOnly = flag.Bool("wins_only", false, "Counts only matches with wins (like --wins) and discards draws.")
+	flagOnlyLoadMatch = flag.Int("match_idx", -1, "If set it will only load this one "+
+		"specific match -- useful for debugging.")
+	flagWins     = flag.Bool("wins", false, "Counts only matches with wins.")
+	flagWinsOnly = flag.Bool("wins_only", false, "Counts only matches with wins (like --wins) and discards draws.")
 
-	flag_lastActions  = flag.Int("last_actions", 0, "If set > 0, on the given number of last moves of each match are used for training.")
-	flag_startActions = flag.Int("start_actions", -1,
+	flagLastActions  = flag.Int("last_actions", 0, "If set > 0, on the given number of last moves of each match are used for training.")
+	flagStartActions = flag.Int("start_actions", -1,
 		"Must be used in combination with --last_actions. If set, it defines the first action to start using "+
 			"for training, and --last_actions will define how many actions to learn from.")
 
-	flag_train           = flag.Bool("train", false, "Set to true to train with match data.")
-	flag_trainLoops      = flag.Int("train_loops", 1, "After acquiring data for all matches, how many times to loop the training over it.")
-	flag_trainValidation = flag.Int("train_validation", 0, "Percentage (int value) of matches used for validation (evaluation only).")
-	flag_learningRate    = flag.Float64("learning_rate", 1e-5, "Learning rate when learning")
-	flag_rescore         = flag.Bool("rescore", false, "If to rescore matches.")
-	flag_distill         = flag.Bool("distill", false,
+	flagTrain           = flag.Bool("train", false, "Set to true to train with match data.")
+	flagTrainLoops      = flag.Int("train_loops", 1, "After acquiring data for all matches, how many times to loop the training over it.")
+	flagTrainValidation = flag.Int("train_validation", 0, "Percentage (int value) of matches used for validation (evaluation only).")
+	flagLearningRate    = flag.Float64("learning_rate", 1e-5, "Learning rate when learning")
+	flagRescore         = flag.Bool("rescore", false, "If to rescore matches.")
+	flagDistill         = flag.Bool("distill", false,
 		"If set it will simply distill from --ai1 to --ai0, without searching for best moves.")
-	flag_learnWithEndScore = flag.Bool("learn_with_end_score",
+	flagLearnWithEndScore = flag.Bool("learn_with_end_score",
 		true, "If true will use the final score to learn.")
 
-	flag_parallelism = flag.Int("parallelism", 0, "If > 0 ignore GOMAXPROCS and play "+
+	flagParallelism = flag.Int("parallelism", 0, "If > 0 ignore GOMAXPROCS and play "+
 		"these many matches simultaneously.")
-	flag_maxAutoBatch = flag.Int("max_auto_batch", 0, "If > 0 ignore at most do given value of "+
+	flagMaxAutoBatch = flag.Int("max_auto_batch", 0, "If > 0 ignore at most do given value of "+
 		"auto-batch for tensorflow evaluations.")
 
-	flag_continuosRescoreAndTrain = flag.Bool("rescore_and_train", false, "If set, continuously rescore and train matches.")
-	flag_rescoreAndTrainPoolSize  = flag.Int("rescore_and_train_pool_size", 10000,
+	flagContinuosRescoreAndTrain = flag.Bool("rescore_and_train", false, "If set, continuously rescore and train matches.")
+	flagRescoreAndTrainPoolSize  = flag.Int("rescore_and_train_pool_size", 10000,
 		"How many board positions to keep in pool (in a rotating buffer) used to train. ")
-	flag_rescoreAndTrainIssueLearn = flag.Int("rescore_and_train_issue_learn", 10,
+	flagRescoreAndTrainIssueLearn = flag.Int("rescore_and_train_issue_learn", 10,
 		"After how many rescored matches/action to issue another learning mini-batch.")
 
 	// AI for the players. If their configuration is exactly the same, they will point to the same object.
@@ -83,7 +83,7 @@ func init() {
 	flag.BoolVar(&tensorflow.CpuOnly, "cpu", false, "Force to use CPU, even if GPU is available")
 }
 
-// Results and if the players were swapped.
+// Match holds the results and whether the players were swapped.
 type Match struct {
 	mu sync.Mutex
 
@@ -105,7 +105,7 @@ type Match struct {
 	Boards []*Board
 
 	// Scores for each board position. Can either be calculated during
-	// the match, or re-genarated when re-loading a match.
+	// the match, or re-generated when re-loading a match.
 	Scores []float32
 
 	// Index of the match in the file it was loaded from.
@@ -125,16 +125,16 @@ func (m *Match) Encode(enc *gob.Encoder) {
 func (m *Match) SelectRangeOfActions() (from, to int, samplesPerAction []int) {
 	from = 0
 	to = len(m.Actions)
-	if *flag_lastActions > 0 && *flag_lastActions < len(m.Actions) {
-		from = len(m.Actions) - *flag_lastActions
+	if *flagLastActions > 0 && *flagLastActions < len(m.Actions) {
+		from = len(m.Actions) - *flagLastActions
 	}
-	if *flag_startActions >= 0 {
-		from = *flag_startActions
+	if *flagStartActions >= 0 {
+		from = *flagStartActions
 		if from > len(m.Actions) {
 			return -1, -1, nil
 		}
-		if *flag_lastActions > 0 && from+*flag_lastActions < to {
-			to = from + *flag_lastActions
+		if *flagLastActions > 0 && from+*flagLastActions < to {
+			to = from + *flagLastActions
 		}
 	}
 
@@ -172,20 +172,20 @@ func (le *LabeledExamples) Len() int {
 	return len(le.boardExamples)
 }
 
-// AppendLabeledExamples will add examples for learning _for Player 0 only_.
+// AppendLabeledExamplesForPlayers adds examples for learning for the selected player(s).
 func (m *Match) AppendLabeledExamplesForPlayers(le *LabeledExamples, includedPlayers [2]bool) {
 	from, to, samples := m.SelectRangeOfActions()
 	if to == -1 {
 		// No actions selected.
 		return
 	}
-	glog.V(2).Infof("Making LabeledExample, version=%d, included players %v",
+	klog.V(2).Infof("Making LabeledExample, version=%d, included players %v",
 		players[0].Scorer.Version(), includedPlayers)
 	for ii := from; ii < to; ii++ {
 		if includedPlayers[m.Boards[ii].NextPlayer] && !m.Boards[ii].IsFinished() &&
 			m.Boards[ii].NumActions() > 1 {
 
-			if glog.V(3) {
+			if klog.V(3).Enabled() {
 				fmt.Println("")
 				stepUI.PrintBoard(m.Boards[ii])
 				score, actionsPred := players[0].Scorer.Score(m.Boards[ii], true)
@@ -193,7 +193,7 @@ func (m *Match) AppendLabeledExamplesForPlayers(le *LabeledExamples, includedPla
 			}
 
 			for jj := 0; jj < samples[ii-from]; jj++ {
-				glog.V(2).Infof("Learning board scores: %v", m.Scores[ii])
+				klog.V(2).Infof("Learning board scores: %v", m.Scores[ii])
 				le.boardExamples = append(le.boardExamples, m.Boards[ii])
 				le.boardLabels = append(le.boardLabels, m.Scores[ii])
 				le.actionsLabels = append(le.actionsLabels, m.ActionsLabels[ii])
@@ -241,7 +241,7 @@ func (match *Match) fillActionLabelsWithActionTaken() {
 }
 
 func MatchDecode(dec *gob.Decoder, matchFileIdx int) (match *Match, err error) {
-	glog.V(2).Infof("Loading match ...")
+	klog.V(2).Infof("Loading match ...")
 	match = &Match{MatchFileIdx: matchFileIdx}
 	var initial *Board
 	initial, match.Actions, match.Scores, match.ActionsLabels, err = LoadMatch(dec)
@@ -252,12 +252,12 @@ func MatchDecode(dec *gob.Decoder, matchFileIdx int) (match *Match, err error) {
 	if match.ActionsLabels == nil {
 		match.fillActionLabelsWithActionTaken()
 	}
-	glog.V(2).Infof("Loaded match with %d actions", len(match.Actions))
+	klog.V(2).Infof("Loaded match with %d actions", len(match.Actions))
 	return
 }
 
 var (
-	stepUI   = ascii_ui.NewUI(true, false)
+	stepUI   = cli.New(true, false)
 	muStepUI sync.Mutex
 )
 
@@ -265,7 +265,7 @@ func runMatch(matchNum int) *Match {
 	swapped := (matchNum%2 != 0)
 	matchName := fmt.Sprintf("%d (swap=%v)", matchNum, swapped)
 	board := NewBoard()
-	board.MaxMoves = *flag_maxMoves
+	board.MaxMoves = *flagMaxMoves
 	match := &Match{MatchNum: matchNum, Swapped: swapped, Boards: []*Board{board}}
 
 	// Run match.
@@ -275,7 +275,7 @@ func runMatch(matchNum int) *Match {
 		if swapped {
 			player = 1 - player
 		}
-		glog.V(1).Infof(
+		klog.V(1).Infof(
 			"\n\nMatch %d: player %d at turn %d (#valid actions=%d)\n\n",
 			matchNum, player, board.MoveNumber, len(board.Derived.Actions))
 		var action Action
@@ -303,7 +303,7 @@ func runMatch(matchNum int) *Match {
 		match.Scores = append(match.Scores, score)
 		match.ActionsLabels = append(match.ActionsLabels, actionLabels)
 
-		if *flag_printSteps {
+		if *flagPrintSteps {
 			muStepUI.Lock()
 			fmt.Printf("Match %d action taken: %s\n", match.MatchFileIdx, action)
 			stepUI.PrintBoard(board)
@@ -317,7 +317,7 @@ func runMatch(matchNum int) *Match {
 		log.Panic("Match %d stopped before being finished!?", matchNum)
 	}
 
-	if glog.V(1) {
+	if klog.V(1).Enabled() {
 		var msg string
 		if finalBoard.Draw() {
 			if finalBoard.MoveNumber > finalBoard.MaxMoves {
@@ -337,7 +337,7 @@ func runMatch(matchNum int) *Match {
 		if match.Swapped {
 			started = 1
 		}
-		glog.V(1).Infof("\n\nMatch %d: finished at turn %d, %s (Player %d started)\n\n",
+		klog.V(1).Infof("\n\nMatch %d: finished at turn %d, %s (Player %d started)\n\n",
 			matchNum, finalBoard.MoveNumber, msg, started)
 	}
 
@@ -345,9 +345,9 @@ func runMatch(matchNum int) *Match {
 }
 
 func setAutoBatchSizes(batchSize int) {
-	glog.V(1).Infof("setAutoBatchSize(%d), max=%d", batchSize, *flag_maxAutoBatch)
-	if *flag_maxAutoBatch > 0 && batchSize > *flag_maxAutoBatch {
-		batchSize = *flag_maxAutoBatch
+	klog.V(1).Infof("setAutoBatchSize(%d), max=%d", batchSize, *flagMaxAutoBatch)
+	if *flagMaxAutoBatch > 0 && batchSize > *flagMaxAutoBatch {
+		batchSize = *flagMaxAutoBatch
 	}
 	for _, player := range players {
 		if tfscorer, ok := player.Scorer.(*tensorflow.Scorer); ok {
@@ -372,10 +372,10 @@ func setAutoBatchSizesForParallelism(parallelism int) {
 // runMatches run --num_matches number of matches, and write the resulting matches
 // to the given channel.
 func runMatches(results chan<- *Match) {
-	if *flag_winsOnly {
-		*flag_wins = true
+	if *flagWinsOnly {
+		*flagWins = true
 	}
-	numMatchesToPlay := *flag_numMatches
+	numMatchesToPlay := *flagNumMatches
 	if numMatchesToPlay == 0 {
 		numMatchesToPlay = 1
 	}
@@ -383,7 +383,7 @@ func runMatches(results chan<- *Match) {
 	var wg sync.WaitGroup
 	parallelism := getParallelism()
 	setAutoBatchSizesForParallelism(parallelism)
-	glog.V(1).Infof("Parallelism for running matches=%d", parallelism)
+	klog.V(1).Infof("Parallelism for running matches=%d", parallelism)
 	semaphore := make(chan bool, parallelism)
 	done := false
 	wins := 0
@@ -397,27 +397,27 @@ func runMatches(results chan<- *Match) {
 			match := runMatch(matchNum)
 			if !match.FinalBoard().Draw() {
 				wins++
-				if *flag_wins {
+				if *flagWins {
 					done = done || (wins >= numMatchesToPlay)
 					if !done {
-						glog.V(1).Infof("%d matches with wins still needed.", numMatchesToPlay-wins)
+						klog.V(1).Infof("%d matches with wins still needed.", numMatchesToPlay-wins)
 					} else {
-						glog.V(1).Infof("Got enough wins, just waiting current matches to end.")
+						klog.V(1).Infof("Got enough wins, just waiting current matches to end.")
 					}
 				}
 			}
 			doneCount++
-			glog.V(1).Infof("Match %d finished: %d matches done, %d wins (non-draws)", matchNum, doneCount, wins)
+			klog.V(1).Infof("Match %d finished: %d matches done, %d wins (non-draws)", matchNum, doneCount, wins)
 			<-semaphore
-			if *flag_winsOnly && match.FinalBoard().Draw() {
+			if *flagWinsOnly && match.FinalBoard().Draw() {
 				return
 			}
 			results <- match
 		}(matchCount)
-		if !*flag_wins {
+		if !*flagWins {
 			done = done || (matchCount+1 >= numMatchesToPlay)
 		}
-		glog.V(1).Infof("Started match %d, done=%v (wins so far=%d)", matchCount, done, wins)
+		klog.V(1).Infof("Started match %d, done=%v (wins so far=%d)", matchCount, done, wins)
 	}
 
 	// Gradually decrease the batching level.
@@ -429,7 +429,7 @@ func runMatches(results chan<- *Match) {
 	}()
 
 	wg.Wait()
-	glog.V(1).Infof("Played %d matches, with %d wins", matchCount, wins)
+	klog.V(1).Infof("Played %d matches, with %d wins", matchCount, wins)
 	close(results)
 }
 
@@ -465,41 +465,41 @@ func renameToFinal(filename string) {
 
 // Load matches, and automatically build boards.
 func loadMatches(results chan<- *Match) {
-	filenames, err := filepath.Glob(*flag_loadMatches)
+	filenames, err := filepath.Glob(*flagLoadMatches)
 	if err != nil {
-		log.Panicf("Invalid pattern '%s' for loading matches: %v", *flag_loadMatches, err)
+		log.Panicf("Invalid pattern '%s' for loading matches: %v", *flagLoadMatches, err)
 	}
 	if len(filenames) == 0 {
-		log.Panicf("Did not find any files matching '%s'", *flag_loadMatches)
+		log.Panicf("Did not find any files matching '%s'", *flagLoadMatches)
 	}
 
 	var matchesCount, matchesIdx, numWins int
 
 LoopFilenames:
 	for _, filename := range filenames {
-		glog.V(1).Infof("Scanning file %s\n", filename)
+		klog.V(1).Infof("Scanning file %s\n", filename)
 		file, err := os.Open(filename)
 		if err != nil {
 			log.Panicf("Cannot open '%s' for reading: %v", filename, err)
 		}
 		dec := gob.NewDecoder(file)
-		for *flag_numMatches == 0 || matchesCount < *flag_numMatches {
+		for *flagNumMatches == 0 || matchesCount < *flagNumMatches {
 			match, err := MatchDecode(dec, matchesIdx)
 			matchesIdx++
 			if err == io.EOF {
 				break
 			}
 			if err != nil {
-				glog.Errorf("Cannot read any more matches in %s: %v", filename, err)
+				klog.Errorf("Cannot read any more matches in %s: %v", filename, err)
 				break
 			}
-			if *flag_loadOnlyMatch >= 0 {
+			if *flagOnlyLoadMatch >= 0 {
 				// Only take teh specific match.
-				if match.MatchFileIdx != *flag_loadOnlyMatch {
-					glog.V(1).Infof("Skipping match %d\n", match.MatchFileIdx)
+				if match.MatchFileIdx != *flagOnlyLoadMatch {
+					klog.V(1).Infof("Skipping match %d\n", match.MatchFileIdx)
 					continue
 				} else {
-					glog.V(1).Infof("Found match %d\n", *flag_loadOnlyMatch)
+					klog.V(1).Infof("Found match %d\n", *flagOnlyLoadMatch)
 					matchesCount++
 					if !match.FinalBoard().Draw() {
 						numWins++
@@ -508,7 +508,7 @@ LoopFilenames:
 					break LoopFilenames
 				}
 			}
-			if *flag_winsOnly && match.FinalBoard().Draw() {
+			if *flagWinsOnly && match.FinalBoard().Draw() {
 				continue
 			}
 			matchesCount++
@@ -518,21 +518,24 @@ LoopFilenames:
 			results <- match
 		}
 	}
-	glog.Infof("%d matches loaded (%d wins), %d used", matchesIdx, numWins, matchesCount)
+	klog.Infof("%d matches loaded (%d wins), %d used", matchesIdx, numWins, matchesCount)
 	close(results)
 }
 
 // Save all given matches to location given --save_matches.
 // It creates file into a temporary file first, and move
 // to final destination once finished.
-func saveMatches(matches []*Match) {
-	file := openWriterAndBackup(*flag_saveMatches)
+func saveMatches(matches []*Match) error {
+	file := openWriterAndBackup(*flagSaveMatches)
 	enc := gob.NewEncoder(file)
 	for _, match := range matches {
 		match.Encode(enc)
 	}
-	file.Close()
-	renameToFinal(*flag_saveMatches)
+	err := file.Close()
+	if err != nil {
+		return errors.Wrapf(err, "failed to close saved matches in %q", *flagSaveMatches)
+	}
+	renameToFinal(*flagSaveMatches)
 }
 
 // Report on matches as they are being played/generated.
@@ -540,7 +543,7 @@ func reportMatches(results <-chan *Match) (matches []*Match) {
 	// Read results.
 	totalWins := [3]int{0, 0, 0}
 	totalMoves := 0
-	ui := ascii_ui.NewUI(true, false)
+	ui := cli.New(true, false)
 	for match := range results {
 		matches = append(matches, match)
 
@@ -550,7 +553,7 @@ func reportMatches(results <-chan *Match) (matches []*Match) {
 		if match.Swapped {
 			wins[0], wins[1] = wins[1], wins[0]
 		}
-		if *flag_print {
+		if *flagPrint {
 			if match.Swapped {
 				fmt.Printf("*** Players swapped positions at this match! ***\n")
 			}
@@ -589,8 +592,8 @@ func reportMatches(results <-chan *Match) (matches []*Match) {
 // getParallelism returns the parallelism.
 func getParallelism() (parallelism int) {
 	parallelism = runtime.GOMAXPROCS(0)
-	if *flag_parallelism > 0 {
-		parallelism = *flag_parallelism
+	if *flagParallelism > 0 {
+		parallelism = *flagParallelism
 	}
 	return
 }
@@ -598,32 +601,32 @@ func getParallelism() (parallelism int) {
 // main orchestrates playing, loading, rescoring, saving and training of matches.
 func main() {
 	flag.Parse()
-	if *flag_cpuprofile != "" {
-		f, err := os.Create(*flag_cpuprofile)
+	if *flagCpuProfile != "" {
+		f, err := os.Create(*flagCpuProfile)
 		if err != nil {
-			glog.Fatal("could not create CPU profile: ", err)
+			klog.Fatal("could not create CPU profile: ", err)
 		}
 		if err := pprof.StartCPUProfile(f); err != nil {
-			glog.Fatal("could not start CPU profile: ", err)
+			klog.Fatal("could not start CPU profile: ", err)
 		}
 		defer pprof.StopCPUProfile()
 	}
 
-	if *flag_maxMoves <= 0 {
-		log.Fatalf("Invalid --max_moves=%d", *flag_maxMoves)
+	if *flagMaxMoves <= 0 {
+		log.Fatalf("Invalid --max_moves=%d", *flagMaxMoves)
 	}
 
 	// Create AI players. If they are the same, reuse -- sharing same TF Session can be more
 	// efficient.
-	glog.Infof("Creating player 0 from '%s'", *flag_players[0])
-	players[0] = ai_players.NewAIPlayer(*flag_players[0], *flag_numMatches == 1)
-	if *flag_players[1] == *flag_players[0] {
+	klog.Infof("Creating player 0 from '%s'", *flagPlayers[0])
+	players[0] = ai_players.NewAIPlayer(*flagPlayers[0], *flagNumMatches == 1)
+	if *flagPlayers[1] == *flagPlayers[0] {
 		players[1] = players[0]
 		isSamePlayer = true
-		glog.Infof("Player 1 is the same as player 0, reusing AI player object.")
+		klog.Infof("Player 1 is the same as player 0, reusing AI player object.")
 	} else {
-		glog.Infof("Creating player 1 from '%s'", *flag_players[1])
-		players[1] = ai_players.NewAIPlayer(*flag_players[1], *flag_numMatches == 1)
+		klog.Infof("Creating player 1 from '%s'", *flagPlayers[1])
+		players[1] = ai_players.NewAIPlayer(*flagPlayers[1], *flagNumMatches == 1)
 	}
 
 	if *flag_continuosPlayAndTrain {
@@ -633,12 +636,12 @@ func main() {
 
 	// Run/load matches.
 	results := make(chan *Match)
-	if *flag_loadMatches != "" {
+	if *flagLoadMatches != "" {
 		go loadMatches(results)
 	} else {
 		go runMatches(results)
 	}
-	if *flag_rescore {
+	if *flagRescore {
 		rescored := make(chan *Match)
 		go rescoreMatches(results, rescored)
 		results = rescored
@@ -646,7 +649,7 @@ func main() {
 
 	// Collect resulting matches, optionally reporting on them.
 	var matches []*Match
-	if !*flag_rescore {
+	if !*flagRescore {
 		matches = reportMatches(results)
 	} else {
 		for match := range results {
@@ -654,13 +657,13 @@ func main() {
 		}
 	}
 
-	if *flag_saveMatches != "" {
+	if *flagSaveMatches != "" {
 		saveMatches(matches)
 	}
-	if *flag_train {
+	if *flagTrain {
 		trainFromMatches(matches)
 	}
-	if *flag_continuosRescoreAndTrain {
+	if *flagContinuosRescoreAndTrain {
 		rescoreAndTrain(matches)
 	}
 }

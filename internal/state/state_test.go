@@ -2,11 +2,12 @@ package state_test
 
 import (
 	"fmt"
+	. "github.com/janpfeifer/hiveGo/internal/state"
+	"github.com/janpfeifer/hiveGo/internal/ui/cli"
 	"reflect"
 	"testing"
 
-	"github.com/janpfeifer/hiveGo/ascii_ui"
-	. "github.com/janpfeifer/hiveGo/state"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 )
 
 var _ = fmt.Printf
@@ -14,7 +15,7 @@ var _ = fmt.Printf
 type PieceLayout struct {
 	pos    Pos
 	player uint8
-	piece  Piece
+	piece  PieceType
 }
 
 func PieceLayoutsFromDisplayPos(pls []PieceLayout) {
@@ -36,14 +37,14 @@ func buildBoard(layout []PieceLayout, displayPos bool) (b *Board) {
 	return
 }
 
-func listMovesForPieceDisplayPos(b *Board, piece Piece, pos Pos) (poss []Pos) {
+func listMovesForPieceDisplayPos(b *Board, piece PieceType, pos Pos) (poss []Pos) {
 	pos = pos.FromDisplayPos()
 	poss = listMovesForPiece(b, piece, pos)
 	PosSlice(poss).DisplayPos()
 	return
 }
 
-func listMovesForPiece(b *Board, piece Piece, pos Pos) (poss []Pos) {
+func listMovesForPiece(b *Board, piece PieceType, pos Pos) (poss []Pos) {
 	poss = nil
 	d := b.Derived
 	for _, a := range d.Actions {
@@ -56,13 +57,13 @@ func listMovesForPiece(b *Board, piece Piece, pos Pos) (poss []Pos) {
 }
 
 func printBoard(b *Board) {
-	ui := ascii_ui.NewUI(true, false)
+	ui := cli.New(true, false)
 	ui.PrintBoard(b)
 }
 
 func TestEqual(t *testing.T) {
-	a1 := Action{Piece: NO_PIECE}
-	a2 := Action{Piece: NO_PIECE, Move: true}
+	a1 := Action{Piece: NoPiece}
+	a2 := Action{Piece: NoPiece, Move: true}
 	if !a1.Equal(a2) {
 		t.Errorf("Expected %s and %s to be the same.", a1, a2)
 	}
@@ -103,12 +104,12 @@ func TestEqual(t *testing.T) {
 func TestDisplayPos(t *testing.T) {
 	// Convert to display positions.
 	from := []Pos{
-		Pos{0, 0}, Pos{1,0}, Pos{-1,0}, Pos{2, 0},
-		Pos{0, 5}, Pos{1,-5}, Pos{-1,7}, Pos{3, -7},
+		{0, 0}, {1, 0}, {-1, 0}, {2, 0},
+		{0, 5}, {1, -5}, {-1, 7}, {3, -7},
 	}
 	want := []Pos{
-		Pos{0, 0}, Pos{1,0}, Pos{-1,-1}, Pos{2, 1},		
-		Pos{0, 5}, Pos{1,-5}, Pos{-1,6}, Pos{3, -6},
+		{0, 0}, {1, 0}, {-1, -1}, {2, 1},
+		{0, 5}, {1, -5}, {-1, 6}, {3, -6},
 	}
 	for idx, pos := range from {
 		if got := pos.DisplayPos(); got != want[idx] {
@@ -141,7 +142,7 @@ func TestOccupiedNeighbours(t *testing.T) {
 	displayPosWant := map[Pos]bool{Pos{-1, 3}: true, Pos{1, 1}: true, Pos{2, 1}: true}
 	want := make(map[Pos]bool)
 	for displayPos := range displayPosWant {
-		want[displayPos.FromDisplayPos()] = true 
+		want[displayPos.FromDisplayPos()] = true
 	}
 
 	if !reflect.DeepEqual(want, board.Derived.RemovablePieces) {
@@ -343,7 +344,7 @@ func TestBeetleMoves(t *testing.T) {
 		t.Errorf("Wanted Beetle moves to be\n%v, got\n%v", want, beetleMoves)
 	}
 
-	// Beetle on 0,0: can move to any neighboor position, except (1, -1),
+	// Beetle on 0,0: can move to any neighbor position, except (1, -1),
 	// since it would squeeze between pieces.
 	want = []Pos{{-1, -1}, {0, -1}, {-1, 0}, {1, 0}, {0, 1}}
 	PosSort(want)
@@ -466,22 +467,22 @@ func TestRepeats(t *testing.T) {
 func TestInvalidMove(t *testing.T) {
 	b := NewBoard()
 	actions := []Action{
-		Action{Move: false, Piece: BEETLE, TargetPos: Pos{0, 0}},
-		Action{Move: false, Piece: QUEEN, TargetPos: Pos{0, 1}},
+		{Move: false, Piece: BEETLE, TargetPos: Pos{0, 0}},
+		{Move: false, Piece: QUEEN, TargetPos: Pos{0, 1}},
 
-		Action{Move: false, Piece: BEETLE, TargetPos: Pos{-1, 0}},
-		Action{Move: false, Piece: ANT, TargetPos: Pos{0, 2}},
+		{Move: false, Piece: BEETLE, TargetPos: Pos{-1, 0}},
+		{Move: false, Piece: ANT, TargetPos: Pos{0, 2}},
 
-		Action{Move: false, Piece: QUEEN, TargetPos: Pos{1, -1}},
-		Action{Move: true, Piece: ANT, SourcePos: Pos{0,2}, TargetPos: Pos{1, -1}},
+		{Move: false, Piece: QUEEN, TargetPos: Pos{1, -1}},
+		{Move: true, Piece: ANT, SourcePos: Pos{0, 2}, TargetPos: Pos{1, -1}},
 
-		Action{Move: false, Piece: ANT, TargetPos: Pos{-2, 1}},
-		Action{Move: false, Piece: BEETLE, TargetPos: Pos{3, -1}},
+		{Move: false, Piece: ANT, TargetPos: Pos{-2, 1}},
+		{Move: false, Piece: BEETLE, TargetPos: Pos{3, -1}},
 
-		Action{Move: true, Piece: ANT, SourcePos: Pos{-2,1}, TargetPos: Pos{1, 1}},
-		Action{Move: true, Piece: BEETLE, SourcePos: Pos{3,-1}, TargetPos: Pos{2, 0}},
+		{Move: true, Piece: ANT, SourcePos: Pos{-2, 1}, TargetPos: Pos{1, 1}},
+		{Move: true, Piece: BEETLE, SourcePos: Pos{3, -1}, TargetPos: Pos{2, 0}},
 
-		Action{Move: true, Piece: QUEEN, SourcePos: Pos{1,-1}, TargetPos: Pos{2, -2}},
+		{Move: true, Piece: QUEEN, SourcePos: Pos{1, -1}, TargetPos: Pos{2, -2}},
 	}
 	for ii, act := range actions {
 		b = b.Act(act)

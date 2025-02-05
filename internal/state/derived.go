@@ -13,8 +13,8 @@ import (
 
 var _ = fmt.Printf
 
-// Maximum number of times a board may be repeated before a draw is issued.
-const MAX_BOARD_REPEATS = 3
+// MaxBoardRepeats after which a draw is issued.
+const MaxBoardRepeats = 3
 
 // Derived holds information that is generated from the Board state.
 type Derived struct {
@@ -34,16 +34,16 @@ type Derived struct {
 	NormalizedPosStackSlice PosStackSlice
 
 	// Information about both players.
-	NumPiecesOnBoard    [NUM_PLAYERS]uint8
-	NumSurroundingQueen [NUM_PLAYERS]uint8
-	PlacementPositions  [NUM_PLAYERS]map[Pos]bool
-	Wins                [NUM_PLAYERS]bool  // If both players win, it is a draw.
-	QueenPos            [NUM_PLAYERS]Pos   // Only valid if queen is actually in the board.
-	Singles             [NUM_PLAYERS]uint8 // Count pieces that are at the tip (only one neighbour)
+	NumPiecesOnBoard    [NumPlayers]uint8
+	NumSurroundingQueen [NumPlayers]uint8
+	PlacementPositions  [NumPlayers]map[Pos]bool
+	Wins                [NumPlayers]bool  // If both players win, it is a draw.
+	QueenPos            [NumPlayers]Pos   // Only valid if queen is actually in the board.
+	Singles             [NumPlayers]uint8 // Count pieces that are at the tip (only one neighbour)
 
 	// Pieces that can be removed without breaking the hive.
 	RemovablePieces map[Pos]bool
-	PlayersActions  [NUM_PLAYERS][]Action
+	PlayersActions  [NumPlayers][]Action
 
 	// Actions of the next player to move (shortcut to PlayersActions[NextPlayer]).
 	Actions []Action
@@ -58,14 +58,14 @@ type Derived struct {
 type Action struct {
 	// If not Move, it's a placement action.
 	Move                 bool
-	Piece                Piece
+	Piece                PieceType
 	SourcePos, TargetPos Pos
 }
 
-var SKIP_ACTION = Action{Piece: NO_PIECE}
+var SKIP_ACTION = Action{Piece: NoPiece}
 
 func (a Action) IsSkipAction() bool {
-	return a.Piece == NO_PIECE
+	return a.Piece == NoPiece
 }
 
 func (a Action) String() string {
@@ -84,7 +84,7 @@ func (a Action) Equal(a2 Action) bool {
 	if a.Piece != a2.Piece {
 		return false
 	}
-	if a.Piece == NO_PIECE {
+	if a.Piece == NoPiece {
 		// NO-OP move.
 		return true
 	}
@@ -115,13 +115,13 @@ func (b *Board) BuildDerived() {
 	derived.Repeats = b.FindRepeats()
 
 	// Per player info.
-	for p := uint8(0); p < NUM_PLAYERS; p++ {
-		derived.NumPiecesOnBoard[p] = TOTAL_PIECES_PER_PLAYER - b.available[p].Count()
+	for p := uint8(0); p < NumPlayers; p++ {
+		derived.NumPiecesOnBoard[p] = TotalPiecesPerPlayer - b.available[p].Count()
 		derived.PlacementPositions[p] = b.placementPositions(p)
 	}
 
 	derived.RemovablePieces = b.removable()
-	for p := uint8(0); p < NUM_PLAYERS; p++ {
+	for p := uint8(0); p < NumPlayers; p++ {
 		derived.PlayersActions[p] = b.ValidActions(p)
 		shuffleActions(derived.PlayersActions[p])
 	}
@@ -339,12 +339,12 @@ func (b *Board) addMoveActions(player uint8, actions []Action) []Action {
 // It DOES NOT CHECK that the action is valid (it can be useful for testing),
 // and leaves that to the UI to handle.
 //
-// If Piece = NO_PIECE, it's assumed to be a pass-action.
+// If PieceType = NoPiece, it's assumed to be a pass-action.
 //
 // It also updates the derived information by calling `BuildDerived()`.
 func (b *Board) Act(action Action) (newB *Board) {
 	newB = b.Copy()
-	if action.Piece != NO_PIECE {
+	if action.Piece != NoPiece {
 		if !action.Move {
 			// Placement
 			newB.StackPiece(action.TargetPos, newB.NextPlayer, action.Piece)
@@ -374,13 +374,13 @@ func (b *Board) IsValid(action Action) bool {
 // endGame checks for end games and will return true for each of the players if they
 // managed to surround the opponents queen. Returns also the number of pieces surrounding
 // each queen.
-func (b *Board) endGame() (wins [NUM_PLAYERS]bool, surrounding [NUM_PLAYERS]uint8, queenPos [NUM_PLAYERS]Pos) {
+func (b *Board) endGame() (wins [NumPlayers]bool, surrounding [NumPlayers]uint8, queenPos [NumPlayers]Pos) {
 	if b.MoveNumber > b.MaxMoves {
 		// After MaxMoves is reached, the game is considered a draw.
-		wins = [NUM_PLAYERS]bool{true, true}
+		wins = [NumPlayers]bool{true, true}
 		return
 	}
-	wins = [NUM_PLAYERS]bool{false, false}
+	wins = [NumPlayers]bool{false, false}
 	for pos, stack := range b.board {
 		if isQueen, player := stack.HasQueen(); isQueen {
 			// Convert player to "NextPlayer"/"Opponent"
@@ -400,11 +400,11 @@ func (b *Board) NumActions() int {
 }
 
 func (b *Board) IsFinished() bool {
-	return b.Derived.Repeats >= MAX_BOARD_REPEATS || b.Derived.Wins[0] || b.Derived.Wins[1]
+	return b.Derived.Repeats >= MaxBoardRepeats || b.Derived.Wins[0] || b.Derived.Wins[1]
 }
 
 func (b *Board) Draw() bool {
-	return b.IsFinished() && (b.Derived.Repeats >= MAX_BOARD_REPEATS  ||
+	return b.IsFinished() && (b.Derived.Repeats >= MaxBoardRepeats ||
 		b.Derived.Wins[0] == b.Derived.Wins[1])
 }
 
@@ -434,12 +434,12 @@ func (b *Board) Height() int {
 	return int(b.Derived.MaxY - b.Derived.MinY)
 }
 
-func (b* Board) EnumeratePieces(cb func (player uint8, piece Piece, pos Pos, covered bool)) {
+func (b *Board) EnumeratePieces(cb func(player uint8, piece PieceType, pos Pos, covered bool)) {
 	for pos, stack := range b.board {
 		covered := false
 		for stack != 0 {
 			var player uint8
-			var piece Piece
+			var piece PieceType
 			stack, player, piece = stack.PopPiece()
 			cb(player, piece, pos, covered)
 			covered = true

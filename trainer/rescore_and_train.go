@@ -3,12 +3,11 @@ package main
 // This file implements continuous rescore and train of a matches database.
 
 import (
+	. "github.com/janpfeifer/hiveGo/internal/state"
 	"math/rand"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai/tensorflow"
-	. "github.com/janpfeifer/hiveGo/state"
 )
 
 // MatchAction holds indices to Match/Action to be rescored.
@@ -22,7 +21,8 @@ type MatchAction struct {
 // Several flags control this process:
 // --rescore_and_train: triggers this process.
 // --rescore_pool_size: how many board positions to keep in pool. The larger the more times a
-//   rescored board will be used for training. It must be larger than --tf_batch_size.
+//
+//	rescored board will be used for training. It must be larger than --tf_batch_size.
 func rescoreAndTrain(matches []*Match) {
 	parallelism := getParallelism()
 
@@ -46,7 +46,7 @@ func rescoreAndTrain(matches []*Match) {
 	ticker := time.NewTicker(60 * time.Second)
 	lastSaveStep := p0GlobalStep()
 	for _ = range ticker.C {
-		glog.V(1).Infof("Queues: sampling=%d, rescoring=%d, learning=%d",
+		klog.V(1).Infof("Queues: sampling=%d, rescoring=%d, learning=%d",
 			len(maSampling), len(rescoredMA), len(labeledExamplesChan))
 		globalStep := p0GlobalStep()
 		if globalStep == -1 || globalStep > lastSaveStep {
@@ -116,9 +116,9 @@ func (le *LabeledExamples) AppendMatchAction(matches []*Match, ma MatchAction) {
 }
 
 func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchAction, learnOutput chan<- LabeledExamples) {
-	poolSize := *flag_rescoreAndTrainPoolSize
+	poolSize := *flagRescoreAndTrainPoolSize
 	batchSize := *tensorflow.Flag_learnBatchSize
-	issueFreq := *flag_rescoreAndTrainIssueLearn
+	issueFreq := *flagRescoreAndTrainIssueLearn
 
 	pool := make([]MatchAction, 0)
 	count := 0
@@ -130,7 +130,7 @@ func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchA
 			pool[count%poolSize] = ma
 		}
 		count++
-		glog.V(3).Infof("Pool=%d, count=%d, batchSize=%d", len(pool), count, batchSize)
+		klog.V(3).Infof("Pool=%d, count=%d, batchSize=%d", len(pool), count, batchSize)
 
 		if count >= batchSize {
 			if count <= 10*batchSize {
@@ -175,28 +175,28 @@ func continuousLearning(learnInput <-chan LabeledExamples) {
 	var averageLoss, averageBoardLoss, averageActionsLoss float32
 	count := 0
 	for le := range learnInput {
-		glog.V(3).Infof("Learn: count=%d", count)
+		klog.V(3).Infof("Learn: count=%d", count)
 
 		// First learn with 0 steps: only evaluation without dropout.
 		loss, boardLoss, actionsLoss := players[0].Learner.Learn(
 			le.boardExamples, le.boardLabels,
-			le.actionsLabels, float32(*flag_learningRate),
+			le.actionsLabels, float32(*flagLearningRate),
 			0, nil)
-		glog.V(1).Infof("Evaluation loss: total=%g board=%g actions=%g",
+		klog.V(1).Infof("Evaluation loss: total=%g board=%g actions=%g",
 			loss, boardLoss, actionsLoss)
 
 		// Actually train.
 		_, _, _ = players[0].Learner.Learn(
 			le.boardExamples, le.boardLabels,
-			le.actionsLabels, float32(*flag_learningRate),
-			*flag_trainLoops, nil)
+			le.actionsLabels, float32(*flagLearningRate),
+			*flagTrainLoops, nil)
 
 		// Evaluate (learn with 0 steps)on training data.
 		loss, boardLoss, actionsLoss = players[0].Learner.Learn(
 			le.boardExamples, le.boardLabels,
-			le.actionsLabels, float32(*flag_learningRate),
+			le.actionsLabels, float32(*flagLearningRate),
 			0, nil)
-		glog.V(1).Infof("Training loss: total=%g board=%g actions=%g",
+		klog.V(1).Infof("Training loss: total=%g board=%g actions=%g",
 			loss, boardLoss, actionsLoss)
 
 		decay := 1 - 1/float32(1+count)
@@ -206,8 +206,8 @@ func continuousLearning(learnInput <-chan LabeledExamples) {
 		averageLoss = decayAverageLoss(averageLoss, loss, decay)
 		averageBoardLoss = decayAverageLoss(averageBoardLoss, boardLoss, decay)
 		averageActionsLoss = decayAverageLoss(averageActionsLoss, actionsLoss, decay)
-		if glog.V(2) || count%100 == 0 {
-			glog.Infof("Average Losses (step=%d): total=%.4g board=%.4g actions=%.4g",
+		if klog.V(2) || count%100 == 0 {
+			klog.Infof("Average Losses (step=%d): total=%.4g board=%.4g actions=%.4g",
 				p0GlobalStep(), averageLoss, averageBoardLoss, averageActionsLoss)
 		}
 		count++

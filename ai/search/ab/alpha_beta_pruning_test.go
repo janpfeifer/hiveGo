@@ -2,13 +2,13 @@ package ab_test
 
 import (
 	"fmt"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 	"reflect"
 	"testing"
 
 	"github.com/janpfeifer/hiveGo/ai"
 	. "github.com/janpfeifer/hiveGo/ai/search/ab"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
-	. "github.com/janpfeifer/hiveGo/state"
 )
 
 var _ = fmt.Printf
@@ -16,7 +16,7 @@ var _ = fmt.Printf
 type PieceLayout struct {
 	pos    Pos
 	player uint8
-	piece  Piece
+	piece  PieceType
 }
 
 var scorer = ai.TrainedBest
@@ -30,7 +30,7 @@ func buildBoard(layout []PieceLayout) (b *Board) {
 	return
 }
 
-func listMovesForPiece(b *Board, piece Piece, pos Pos) (poss []Pos) {
+func listMovesForPiece(b *Board, piece PieceType, pos Pos) (poss []Pos) {
 	poss = nil
 	d := b.Derived
 	for _, a := range d.Actions {

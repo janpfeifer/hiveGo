@@ -2,12 +2,11 @@ package state_test
 
 import (
 	"fmt"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 	"log"
 	"reflect"
 	"strings"
 	"testing"
-
-	. "github.com/janpfeifer/hiveGo/state"
 )
 
 var (
@@ -73,7 +72,7 @@ func convertTextToBoard(txt string) (b *Board, removable map[Pos]bool, start Pos
 				continue
 			}
 			x := col
-			y := row >> 1 - x >> 1
+			y := row>>1 - x>>1
 			pos := Pos{int8(col), int8(y)}
 			start = pos
 

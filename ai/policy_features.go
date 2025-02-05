@@ -1,3 +1,5 @@
+package ai
+
 // Policy features add a set of features per action of the board, plus padding.
 //
 // Each action is represented by:
@@ -26,14 +28,11 @@
 //
 // See below in the constants defined for "Features Per Position" for a
 // description of the information per position in the Radius-2 area.
-package ai
 
 import (
 	"fmt"
-
-	"github.com/golang/glog"
-
-	. "github.com/janpfeifer/hiveGo/state"
+	. "github.com/janpfeifer/hiveGo/internal/state"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -132,7 +131,7 @@ const (
 	POS_FEATURE_PIECE_ONE_HOT = POS_FEATURE_PLAYER_OWNER + 1
 
 	// Whether the piece is removable without breaking the hive.
-	POS_FEATURE_IS_PIECE_REMOVABLE = POS_FEATURE_PIECE_ONE_HOT + int(NUM_PIECE_TYPES)
+	POS_FEATURE_IS_PIECE_REMOVABLE = POS_FEATURE_PIECE_ONE_HOT + int(NumPieceTypes)
 
 	// Player owner of the stack pieces (from top to bottom), except very bottom piece.
 	// Notice all will at beatles, except maybe the last one, which is represented separatedly.
@@ -145,7 +144,7 @@ const (
 
 	// Total dimension of the feature vector per position.
 	// Current value = 16
-	FEATURES_PER_POSITION = POS_FEATURE_STACK_BOTTOM_PIECE_ONE_HOT + int(NUM_PIECE_TYPES)
+	FEATURES_PER_POSITION = POS_FEATURE_STACK_BOTTOM_PIECE_ONE_HOT + int(NumPieceTypes)
 )
 
 func playerToValue(b *Board, player uint8) float32 {
@@ -193,7 +192,7 @@ func stackFeatures(b *Board, pos Pos, stack EncodedStack) (f []float32) {
 			stack, player, piece = stack.PopPiece()
 			f[POS_FEATURE_STACKED_BEATLE_OWNER+stackPos] = playerToValue(b, player)
 		}
-		// Piece at very bottom is stored separately, in the next field:
+		// PieceType at very bottom is stored separately, in the next field:
 		f[POS_FEATURE_STACKED_BEATLE_OWNER+stackPos-1] = 0
 
 		// Information about piece at the very bottom of stack -- in most cases the same as the top of the stack.
@@ -217,7 +216,7 @@ func pieceFeatureToStr(f []float32) string {
 	if f[0] == -1 {
 		player = "Opponent"
 	}
-	for ii := ANT; ii < LAST_PIECE_TYPE; ii++ {
+	for ii := ANT; ii < LastPiece; ii++ {
 		if f[int(ii)] == 1 {
 			return fmt.Sprintf("%s(%s)", PieceNames[ii], player)
 		}
@@ -229,7 +228,7 @@ func PositionFeaturesToString(f []float32) string {
 	if len(f) != FEATURES_PER_POSITION {
 		msg := fmt.Sprintf("Invalid Position Features: wanted dimension=%d, got dimension=%d",
 			FEATURES_PER_POSITION, len(f))
-		glog.Error(msg)
+		klog.Error(msg)
 		return msg
 	}
 
@@ -241,5 +240,5 @@ func PositionFeaturesToString(f []float32) string {
 }
 
 func init() {
-	glog.V(1).Infof("Number of features per position = %d\n", FEATURES_PER_POSITION)
+	klog.V(1).Infof("Number of features per position = %d\n", FEATURES_PER_POSITION)
 }

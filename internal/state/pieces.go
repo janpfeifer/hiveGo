@@ -12,24 +12,25 @@ var _ = fmt.Printf
 // pieces before and after the move must be non-empty.
 //
 // Args:
-//   srcPos: from where this move starts.
-//   originalPos: where the piece is going to leave from: this is equal to
-//     srcPos for the first step of a piece, and then something different
-//     later on. Presumably will be empty and therefore can't be considered as
-//     an occupied neighboor.
-//   invalid: Set of positions not to consider, since they were already visited.
+//
+//	srcPos: from where this move starts.
+//	originalPos: where the piece is going to leave from: this is equal to
+//	  srcPos for the first step of a piece, and then something different
+//	  later on. Presumably will be empty and therefore can't be considered as
+//	  an occupied neighboor.
+//	invalid: Set of positions not to consider, since they were already visited.
 func (b *Board) EmptyAndConnectedNeighbours(srcPos, originalPos Pos, invalid map[Pos]bool) (poss []Pos) {
-	poss = make([]Pos, 0, NUM_NEIGHBOURS)
+	poss = make([]Pos, 0, NumNeighbors)
 
 	// Initialize neighbours and occupied predicate (assuming the piece will leave originalPos).
 	neighbours := srcPos.Neighbours()
-	occupied := make([]bool, NUM_NEIGHBOURS)
-	for ii := 0; ii < NUM_NEIGHBOURS; ii++ {
+	occupied := make([]bool, NumNeighbors)
+	for ii := 0; ii < NumNeighbors; ii++ {
 		occupied[ii] = b.HasPiece(neighbours[ii]) && neighbours[ii] != originalPos
 	}
 
 	// Find valid connections.
-	for ii := 0; ii < NUM_NEIGHBOURS; ii++ {
+	for ii := 0; ii < NumNeighbors; ii++ {
 		tgtPos := neighbours[ii]
 		if invalid[tgtPos] {
 			// Likely already visited.
@@ -39,8 +40,8 @@ func (b *Board) EmptyAndConnectedNeighbours(srcPos, originalPos Pos, invalid map
 			// Target destination must be empty.
 			continue
 		}
-		positionLeftOfMoveOccupied := occupied[(ii+1)%NUM_NEIGHBOURS]
-		positionRightOfMoveOccupied := occupied[(ii-1+NUM_NEIGHBOURS)%NUM_NEIGHBOURS]
+		positionLeftOfMoveOccupied := occupied[(ii+1)%NumNeighbors]
+		positionRightOfMoveOccupied := occupied[(ii-1+NumNeighbors)%NumNeighbors]
 		if positionLeftOfMoveOccupied && positionRightOfMoveOccupied {
 			// Squeeze between two pieces is not allowed.
 			continue
@@ -97,7 +98,7 @@ func (b *Board) spiderMovesDFS(srcPos, originalPos Pos, depth int, endPos, visit
 // grasshopperMoves enumerates the valid moves for the Grasshopper located at the given position.
 func (b *Board) grasshopperMoves(srcPos Pos) (poss []Pos) {
 	poss = nil
-	for direction := 0; direction < NUM_NEIGHBOURS; direction++ {
+	for direction := 0; direction < NumNeighbors; direction++ {
 		steps, tgtPos := b.grasshopperNextFree(srcPos, direction)
 		if steps > 1 {
 			poss = append(poss, tgtPos)

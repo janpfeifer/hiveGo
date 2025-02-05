@@ -3,57 +3,66 @@ package state
 import (
 	"encoding/gob"
 	"fmt"
+	"k8s.io/klog/v2"
 	"sort"
-
-	"github.com/golang/glog"
 )
 
 var _ = fmt.Print
 
-type Piece uint8
+// PieceType currently limited to the 5 basic types plus a NoPiece, the null value.
+type PieceType uint8
 
 const (
-	NO_PIECE Piece = iota
+	NoPiece PieceType = iota
 	ANT
 	BEETLE
 	GRASSHOPPER
 	QUEEN
 	SPIDER
-	LAST_PIECE_TYPE
+	LastPiece
 )
 
 const (
-	NUM_PLAYERS       = 2
-	NUM_NEIGHBOURS    = 6
-	NUM_PIECE_TYPES   = LAST_PIECE_TYPE - 1 // Includes the "NO_PIECE" type.
-	DEFAULT_MAX_MOVES = 100
+	// NumPlayers currently limited to 2.
+	NumPlayers = 2
+
+	// NumNeighbors of each position: the board is hexagonal.
+	NumNeighbors = 6
+
+	// NumPieceTypes doesn't include the NoPiece type.
+	NumPieceTypes = LastPiece - 1
+
+	// DefaultMaxMoves after which the game is considered a draw.
+	DefaultMaxMoves = 100
 )
 
 var (
-	PieceLetters  = [LAST_PIECE_TYPE]string{"-", "A", "B", "G", "Q", "S"}
-	LetterToPiece = map[string]Piece{"A": ANT, "B": BEETLE, "G": GRASSHOPPER, "Q": QUEEN, "S": SPIDER}
-	PieceNames    = [LAST_PIECE_TYPE]string{
+	PieceLetters  = [LastPiece]string{"-", "A", "B", "G", "Q", "S"}
+	LetterToPiece = map[string]PieceType{"A": ANT, "B": BEETLE, "G": GRASSHOPPER, "Q": QUEEN, "S": SPIDER}
+	PieceNames    = [LastPiece]string{
 		"None", "Ant", "Beetle", "Grasshopper", "Queen", "Spider",
 	}
 
-	// Pieces enumerates all the pieces, skipping the "NO_PIECE".
-	Pieces = [NUM_PIECE_TYPES]Piece{ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER}
+	// Pieces enumerates all the pieces, skipping the "NoPiece".
+	Pieces = [NumPieceTypes]PieceType{ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER}
 )
 
-var INITIAL_AVAILABILITY = Availability{3, 2, 3, 1, 2}
+// Availability represents the number of each piece type available to a player to put on the board.
+type Availability [5]uint8
 
-const TOTAL_PIECES_PER_PLAYER = 11
+// InitialAvailability at the start of a match. See also TotalPiecesPerPlayer.
+var InitialAvailability = Availability{3, 2, 3, 1, 2}
+
+// TotalPiecesPerPlayer is the some of the InitialAvailability.
+const TotalPiecesPerPlayer = 11
 
 // Pos packages x, y position.
 type Pos [2]int8
 
-// Array with counts of pieces for A, B, G, Q, S respectively
-type Availability [5]uint8
-
 // Board is a compact representation of the game state. It's compact to allow fast/cheap
 // search on the space. Use it through methods that decode the packaged data.
 type Board struct {
-	available            [NUM_PLAYERS]Availability
+	available            [NumPlayers]Availability
 	board                map[Pos]EncodedStack
 	MoveNumber, MaxMoves int
 	NextPlayer           uint8
@@ -71,7 +80,7 @@ func AbsInt8(x int8) int8 {
 	return (x ^ y) - y
 }
 
-func (p Piece) String() string {
+func (p PieceType) String() string {
 	return PieceNames[p]
 }
 
@@ -85,7 +94,7 @@ func (pos Pos) Y() int8 {
 
 // Distance returns the manhattan distance of two positions.
 func (pos Pos) Distance(pos2 Pos) int {
-	return int(AbsInt8(pos[0] - pos2[0])) + int(AbsInt8(pos[1] - pos2[1]))
+	return int(AbsInt8(pos[0]-pos2[0])) + int(AbsInt8(pos[1]-pos2[1]))
 }
 
 func (pos Pos) Equal(pos2 Pos) bool {
@@ -151,16 +160,16 @@ type EncodedStack uint64
 
 // PieceAt returns player and piece at position pos in the stack.
 // Pos 0 is the top of the stack, 1 is the first piece under it, etc.
-// If there is no pieces at given position, it returns NO_PIECE.
-func (stack EncodedStack) PieceAt(stackPos uint8) (player uint8, piece Piece) {
+// If there is no pieces at given position, it returns NoPiece.
+func (stack EncodedStack) PieceAt(stackPos uint8) (player uint8, piece PieceType) {
 	shift := stackPos << 3
 	player = uint8((stack >> (shift + 7)) & 1)
-	piece = Piece((stack >> shift) & 0x7F)
+	piece = PieceType((stack >> shift) & 0x7F)
 	return
 }
 
 // Top returns the player, piece at top.
-func (stack EncodedStack) Top() (player uint8, piece Piece) {
+func (stack EncodedStack) Top() (player uint8, piece PieceType) {
 	return stack.PieceAt(0)
 }
 
@@ -173,7 +182,7 @@ func (stack EncodedStack) HasPiece() bool {
 // owning it.
 func (stack EncodedStack) HasQueen() (bool, uint8) {
 	for stack != 0 {
-		if Piece(stack&0x7F) == QUEEN {
+		if PieceType(stack&0x7F) == QUEEN {
 			return true, uint8(stack >> 7 & 1)
 		}
 		stack >>= 8
@@ -192,14 +201,14 @@ func (stack EncodedStack) CountPieces() (count uint8) {
 }
 
 // StackPiece stacks piece and returns new stack value.
-func (stack EncodedStack) StackPiece(player uint8, piece Piece) EncodedStack {
+func (stack EncodedStack) StackPiece(player uint8, piece PieceType) EncodedStack {
 	// TODO: check if stack is full, and if player can only be 0 or 1.
 	return (stack << 8) | EncodedStack(piece&0x7F) | EncodedStack((player&1)<<7)
 }
 
 // PopPiece removes piece from top of the stak and returns the updated stack
 // and the player/piece popped.
-func (stack EncodedStack) PopPiece() (newStack EncodedStack, player uint8, piece Piece) {
+func (stack EncodedStack) PopPiece() (newStack EncodedStack, player uint8, piece PieceType) {
 	player, piece = stack.Top()
 	newStack = stack >> 8
 	return
@@ -217,11 +226,11 @@ func (a Availability) Count() (count uint8) {
 // NewBoard creates a new empty board, with the correct initial number of pieces.
 func NewBoard() *Board {
 	board := &Board{
-		available: [NUM_PLAYERS]Availability{
-			INITIAL_AVAILABILITY, INITIAL_AVAILABILITY},
+		available: [NumPlayers]Availability{
+			InitialAvailability, InitialAvailability},
 		board:      map[Pos]EncodedStack{},
 		MoveNumber: 1,
-		MaxMoves:   DEFAULT_MAX_MOVES,
+		MaxMoves:   DefaultMaxMoves,
 		NextPlayer: 0,
 		Previous:   nil,
 	}
@@ -248,13 +257,13 @@ func (b *Board) OpponentPlayer() uint8 {
 }
 
 // Available returns how many pieces of the given type are available for the given player.
-func (b *Board) Available(player uint8, piece Piece) uint8 {
+func (b *Board) Available(player uint8, piece PieceType) uint8 {
 	return b.available[player][piece-1]
 }
 
 // SetAvailable sets the number of pieces available for the given type for the
 // given player.
-func (b *Board) SetAvailable(player uint8, piece Piece, value uint8) {
+func (b *Board) SetAvailable(player uint8, piece PieceType, value uint8) {
 	b.available[player][piece-1] = uint8(value)
 }
 
@@ -265,7 +274,7 @@ func (b *Board) HasPiece(pos Pos) bool {
 }
 
 // PieceAt returns the piece at the top of the stack on the given position.
-func (b *Board) PieceAt(pos Pos) (player uint8, piece Piece, stacked bool) {
+func (b *Board) PieceAt(pos Pos) (player uint8, piece PieceType, stacked bool) {
 	stack, _ := b.board[pos]
 	player, piece = stack.PieceAt(0)
 	stacked = ((stack & 0x7F00) != 0)
@@ -288,14 +297,14 @@ func (b *Board) StackAt(pos Pos) (stack EncodedStack) {
 
 // StackPiece adds a piece to the given board position. It doesn't subtract from
 // the available list.
-func (b *Board) StackPiece(pos Pos, player uint8, piece Piece) {
+func (b *Board) StackPiece(pos Pos, player uint8, piece PieceType) {
 	stack, _ := b.board[pos]
 	stack = stack.StackPiece(player, piece)
 	b.board[pos] = stack
 }
 
 // PopPiece pops the piece at the given location, and returns it.
-func (b *Board) PopPiece(pos Pos) (player uint8, piece Piece) {
+func (b *Board) PopPiece(pos Pos) (player uint8, piece PieceType) {
 	var stack EncodedStack
 	stack, player, piece = b.board[pos].PopPiece()
 	if stack != 0 {
@@ -359,7 +368,6 @@ func (b *Board) DisplayUsedLimits() (min_x, max_x, min_y, max_y int8) {
 	return
 }
 
-
 // OccupiedPositions returns all the positions used.
 func (b *Board) OccupiedPositions() (poss []Pos) {
 	poss = make([]Pos, 0, len(b.board))
@@ -379,7 +387,7 @@ func (b *Board) OccupiedPositions() (poss []Pos) {
 func (pos Pos) Neighbours() []Pos {
 	x, y := pos[0], pos[1]
 	return []Pos{
-		{x, y-1}, {x+1, y-1}, {x+1,y},
+		{x, y - 1}, {x + 1, y - 1}, {x + 1, y},
 		{x, y + 1}, {x - 1, y + 1}, {x - 1, y}}
 
 	// Version with on display X,Y axis.
@@ -428,7 +436,7 @@ func (b *Board) PlayerNeighbours(player uint8, pos Pos) (poss []Pos) {
 	poss = pos.Neighbours()
 	poss = FilterPositions(poss, func(p Pos) bool {
 		posPlayer, piece, _ := b.PieceAt(p)
-		return piece != NO_PIECE && player == posPlayer
+		return piece != NoPiece && player == posPlayer
 	})
 	return
 }
@@ -468,7 +476,7 @@ func LoadMatch(dec *gob.Decoder) (initial *Board, actions []Action, scores []flo
 		if err = dec.Decode(&saveFileVersion); err != nil {
 			return
 		}
-		glog.V(2).Infof("Loading saveFileVersion %d", saveFileVersion)
+		klog.V(2).Infof("Loading saveFileVersion %d", saveFileVersion)
 		if err = dec.Decode(&initial.MaxMoves); err != nil {
 			return
 		}
@@ -492,7 +500,7 @@ func LoadMatch(dec *gob.Decoder) (initial *Board, actions []Action, scores []flo
 			return
 		}
 	}
-	glog.V(2).Infof("Loaded MaxMoves=%d, %d scores, %d actions, %d actionsLabels",
+	klog.V(2).Infof("Loaded MaxMoves=%d, %d scores, %d actions, %d actionsLabels",
 		initial.MaxMoves, len(scores), len(actions), len(actionsLabels))
 	return
 }
@@ -502,7 +510,7 @@ func LoadMatch(dec *gob.Decoder) (initial *Board, actions []Action, scores []flo
 func SaveMatch(enc *gob.Encoder, MaxMoves int, actions []Action, scores []float32, actionsLabels [][]float32) error {
 	saveFileVersion := -1
 	if err := enc.Encode(saveFileVersion); err != nil {
-		return fmt.Errorf("Failed to encode match's board: %v", err)
+		return fmt.Errorf("failed to encode match's board: %v", err)
 	}
 	saveFileVersion = ActionsScoresAndActionsLabels
 	if err := enc.Encode(saveFileVersion); err != nil {

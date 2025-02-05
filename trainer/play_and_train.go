@@ -5,11 +5,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 	"sync"
 	"time"
-
-	"github.com/golang/glog"
-	. "github.com/janpfeifer/hiveGo/state"
 )
 
 var (
@@ -96,7 +94,7 @@ func playAndTrain() {
 	parallelism := getParallelism()
 	setAutoBatchSizesForParallelism(parallelism)
 	if isSamePlayer {
-		glog.Infof("Same player playing both sides, learning from both.")
+		klog.Infof("Same player playing both sides, learning from both.")
 	}
 
 	// Generate played games.
@@ -109,7 +107,7 @@ func playAndTrain() {
 
 	// Rescore player1's moves, for learning.
 	var rescoreMatchChan chan *Match
-	if !isSamePlayer && *flag_rescore {
+	if !isSamePlayer && *flagRescore {
 		rescoreMatchChan = make(chan *Match, 5)
 		for i := 0; i < parallelism; i++ {
 			go continuouslyRescorePlayer1(matchChan, rescoreMatchChan)
@@ -135,10 +133,10 @@ func playAndTrain() {
 	lastSaveStep := p0GlobalStep()
 	for _ = range ticker.C {
 		if rescoreMatchChan == nil {
-			glog.V(1).Infof("Queues: matches=%d batches=%d learning=%d",
+			klog.V(1).Infof("Queues: matches=%d batches=%d learning=%d",
 				len(matchChan), len(batchChan), len(labeledExamplesChan))
 		} else {
-			glog.V(1).Infof("Queues: finishedMatches=%d rescoreMatches=%d batches=%d learning=%d",
+			klog.V(1).Infof("Queues: finishedMatches=%d rescoreMatches=%d batches=%d learning=%d",
 				len(rescoreMatchChan), len(matchChan), len(batchChan), len(labeledExamplesChan))
 		}
 		globalStep := p0GlobalStep()
@@ -162,7 +160,7 @@ func continuouslyPlay(matchIdGen *IdGen, matchStats *MatchStats, matchChan chan<
 			}
 			msg = fmt.Sprintf("player %d wins", player)
 		}
-		glog.V(1).Infof("Match %d finished (%s in %d moves). %d matches played so far. "+
+		klog.V(1).Infof("Match %d finished (%s in %d moves). %d matches played so far. "+
 			"Last %d results: p0 win=%d, p1 win=%d, draw=%d",
 			id, msg, len(match.Actions), matchStats.TotalCount, NumMatchesToKeepForStats,
 			matchStats.Wins[0], matchStats.Wins[1], matchStats.Draws)
@@ -172,7 +170,7 @@ func continuouslyPlay(matchIdGen *IdGen, matchStats *MatchStats, matchChan chan<
 
 func continuouslyRescorePlayer1(mInput <-chan *Match, mOutput chan<- *Match) {
 	for match := range mInput {
-		glog.V(1).Infof("Match received for rescoring.")
+		klog.V(1).Infof("Match received for rescoring.")
 		// Pick only moves done by player 0 (or both if they are the same)
 		from, to, _ := match.SelectRangeOfActions()
 		for idx := range match.Actions {
@@ -204,7 +202,7 @@ func continuouslyRescorePlayer1(mInput <-chan *Match, mOutput chan<- *Match) {
 				match.ActionsLabels[idx] = actionsLabels[0]
 			}
 		}
-		glog.V(1).Infof("Rescored match issued.")
+		klog.V(1).Infof("Rescored match issued.")
 		mOutput <- match
 	}
 }
@@ -214,15 +212,14 @@ func batchMatches(matchChan <-chan *Match, batchChan chan<- []*Match) {
 	batch := make([]*Match, 0, batchSize)
 	for match := range matchChan {
 		batch = append(batch, match)
-		glog.V(1).Infof("Current batch: %d", len(batch))
+		klog.V(1).Infof("Current batch: %d", len(batch))
 		if len(batch) == batchSize {
-			glog.V(1).Infof("Batch of %d matches issued.", len(batch))
+			klog.V(1).Infof("Batch of %d matches issued.", len(batch))
 			batchChan <- batch
 			batch = make([]*Match, 0, batchSize)
 		}
 	}
 }
-
 
 // continuousMatchesToLabeledExamples takes batches, and send labeled examples for training.
 // It generate labeled examples from the latest 2 batches.
@@ -230,12 +227,12 @@ func continuousMatchesToLabeledExamples(batchChan <-chan []*Match, labeledExampl
 	batchSize := *flag_continuosPlayAndTrainBatchMatches
 	var previousBatch []*Match
 	for batch := range batchChan {
-		glog.V(1).Infof("Batch received.")
+		klog.V(1).Infof("Batch received.")
 
 		if *flag_continuosPlayAndTrainKeepPreviousBatch {
 			// Merge new batch into previous batch.
 			if previousBatch == nil {
-				glog.V(1).Infof("Storing batch until 2 are available.")
+				klog.V(1).Infof("Storing batch until 2 are available.")
 				previousBatch = batch
 				continue
 			}
@@ -249,7 +246,7 @@ func continuousMatchesToLabeledExamples(batchChan <-chan []*Match, labeledExampl
 			} else {
 				previousBatch = append(previousBatch, batch...)
 			}
-			glog.V(1).Infof("Batch aggregated: generating labeled examples.")
+			klog.V(1).Infof("Batch aggregated: generating labeled examples.")
 		} else {
 			previousBatch = batch
 		}
@@ -258,7 +255,7 @@ func continuousMatchesToLabeledExamples(batchChan <-chan []*Match, labeledExampl
 		for _, match := range previousBatch {
 			n += len(match.Actions) + 42
 		}
-		if !isSamePlayer && !*flag_distill && !*flag_rescore {
+		if !isSamePlayer && !*flagDistill && !*flagRescore {
 			n /= 2
 		}
 		le := LabeledExamples{
@@ -267,9 +264,9 @@ func continuousMatchesToLabeledExamples(batchChan <-chan []*Match, labeledExampl
 			actionsLabels: make([][]float32, 0, n),
 		}
 		for _, match := range previousBatch {
-			if isSamePlayer || *flag_distill || *flag_rescore {
+			if isSamePlayer || *flagDistill || *flagRescore {
 				// Include both players data.
-				if *flag_learnWithEndScore {
+				if *flagLearnWithEndScore {
 					labelWithEndScore(match)
 				}
 				match.AppendLabeledExamples(&le)
@@ -282,8 +279,8 @@ func continuousMatchesToLabeledExamples(batchChan <-chan []*Match, labeledExampl
 				}
 			}
 		}
-		glog.V(1).Infof("Labeled examples issued.")
+		klog.V(1).Infof("Labeled examples issued.")
 		labeledExamplesChan <- le
-		glog.V(3).Infof("boardLabels=%v", le.boardLabels)
+		klog.V(3).Infof("boardLabels=%v", le.boardLabels)
 	}
 }

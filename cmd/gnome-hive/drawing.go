@@ -3,17 +3,17 @@ package main
 import (
 	"fmt"
 	"github.com/janpfeifer/hiveGo/images"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 	"log"
 	"math"
 
 	"github.com/gotk3/gotk3/cairo"
 	"github.com/gotk3/gotk3/gtk"
-	. "github.com/janpfeifer/hiveGo/state"
 )
 
 var (
-	pieceSurfaces     [LAST_PIECE_TYPE]*cairo.Surface
-	pieceBaseSurfaces [NUM_PLAYERS]*cairo.Surface
+	pieceSurfaces     [LastPiece]*cairo.Surface
+	pieceBaseSurfaces [NumPlayers]*cairo.Surface
 )
 
 // Standard face size.
@@ -24,8 +24,8 @@ var (
 	zoomFactor     = 1.0
 	shiftX, shiftY = 0.0, 0.0
 
-	// Currently selected off-board piece (NO_PIECE if nothing is selected)
-	selectedOffBoardPiece = NO_PIECE
+	// Currently selected off-board piece (NoPiece if nothing is selected)
+	selectedOffBoardPiece = NoPiece
 
 	// Currently selected piece to move.
 	hasSelectedPiece = false
@@ -38,7 +38,7 @@ func loadImageResources() {
 		log.Fatalf("Failed to create files for images: %+v", err)
 	}
 	// Load each piece drawing.
-	for ii := Piece(1); ii < LAST_PIECE_TYPE; ii++ {
+	for ii := PieceType(1); ii < LastPiece; ii++ {
 		imagePath := images.NameToInfo[PieceNames[ii]].Path()
 		if imagePath == "" {
 			log.Fatalf("Cannot find image for piece %q", PieceNames[ii])
@@ -51,7 +51,7 @@ func loadImageResources() {
 	}
 
 	// Load base piece surface for each player.
-	for ii := 0; ii < NUM_PLAYERS; ii++ {
+	for ii := 0; ii < NumPlayers; ii++ {
 		imagePath := images.NameToInfo[fmt.Sprintf("tile_player_%d", ii)].Path()
 		if imagePath == "" {
 			log.Fatalf("Cannot find image for tile %d", ii)
@@ -152,7 +152,7 @@ func drawMainBoard(da *gtk.DrawingArea, cr *cairo.Context) {
 	}
 
 	// Draw placement candidates.
-	if selectedOffBoardPiece != NO_PIECE {
+	if selectedOffBoardPiece != NoPiece {
 		drawPlacementPositions(da, cr, dp)
 	}
 
@@ -206,7 +206,7 @@ func drawOffBoardArea(da *gtk.DrawingArea, cr *cairo.Context, player uint8) {
 	}
 
 	// Loop over the piece types
-	for piece := Piece(1); piece < LAST_PIECE_TYPE; piece++ {
+	for piece := PieceType(1); piece < LastPiece; piece++ {
 		count := board.Available(player, piece)
 		if count == 0 {
 			continue
@@ -224,7 +224,7 @@ func drawOffBoardArea(da *gtk.DrawingArea, cr *cairo.Context, player uint8) {
 	cr.Clip()
 }
 
-func offBoardPieceToPosition(da *gtk.DrawingArea, piece Piece) (x, y float64) {
+func offBoardPieceToPosition(da *gtk.DrawingArea, piece PieceType) (x, y float64) {
 	allocation := da.GetAllocation()
 	width, height := float64(allocation.GetWidth()), float64(allocation.GetHeight())
 	xc, yc := width/2.0, height/2.0
@@ -235,14 +235,14 @@ func offBoardPieceToPosition(da *gtk.DrawingArea, piece Piece) (x, y float64) {
 	return
 }
 
-func offBoardPositionToPiece(da *gtk.DrawingArea, x, y float64) (piece Piece) {
-	for piece = Piece(1); piece < LAST_PIECE_TYPE; piece++ {
+func offBoardPositionToPiece(da *gtk.DrawingArea, x, y float64) (piece PieceType) {
+	for piece = PieceType(1); piece < LastPiece; piece++ {
 		pX, pY := offBoardPieceToPosition(da, piece)
 		if math.Abs(x-pX) < standardFace && math.Abs(y-pY) < hexTriangleHeight(standardFace) {
 			return
 		}
 	}
-	piece = NO_PIECE
+	piece = NoPiece
 	return
 }
 
@@ -323,12 +323,12 @@ func drawHexagonSelection(da *gtk.DrawingArea, cr *cairo.Context, face, xc, yc f
 	drawHexagon(da, cr, standardFace, xc, yc)
 }
 
-func drawPieceAndBase(da *gtk.DrawingArea, cr *cairo.Context, player uint8, piece Piece, face, xc, yc float64) {
+func drawPieceAndBase(da *gtk.DrawingArea, cr *cairo.Context, player uint8, piece PieceType, face, xc, yc float64) {
 	drawPieceBase(da, cr, player, face, xc, yc)
 	drawPiece(da, cr, piece, face, xc, yc)
 }
 
-func drawPiece(da *gtk.DrawingArea, cr *cairo.Context, piece Piece, face, xc, yc float64) {
+func drawPiece(da *gtk.DrawingArea, cr *cairo.Context, piece PieceType, face, xc, yc float64) {
 	drawPieceSurface(da, cr, pieceSurfaces[piece], face*0.75, xc, yc)
 }
 

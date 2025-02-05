@@ -1,46 +1,51 @@
 package main
 
+// BROKEN: don't use without fixing it.
+
 import (
 	"bufio"
 	"encoding/gob"
 	"flag"
 	"fmt"
+	"github.com/janpfeifer/must"
+	"github.com/pkg/errors"
 	"io"
-	"log"
+	"k8s.io/klog/v2"
 	"os"
 	"regexp"
 	"strconv"
 
-	"github.com/golang/glog"
-	. "github.com/janpfeifer/hiveGo/state"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 )
 
 var (
-	flag_input  = flag.String("input", "", "Text file with moves.")
-	flag_output = flag.String("output", "", "New saved file.")
-	flag_wins   = flag.Bool("wins", false, "Converts only matches with a win.")
+	flagInput  = flag.String("input", "", "Text file with moves.")
+	flagOutput = flag.String("output", "", "New saved file.")
+	flagWins   = flag.Bool("wins", false, "Converts only matches with a win.")
 
-
-	reMove = regexp.MustCompile(`Move ([ABGQS]): \((-?\d+), (-?\d+)\)->\((-?\d+), (-?\d+)\)`)
+	reMove  = regexp.MustCompile(`Move ([ABGQS]): \((-?\d+), (-?\d+)\)->\((-?\d+), (-?\d+)\)`)
 	rePlace = regexp.MustCompile(`Place ([ABGQS]) in \((-?\d+), (-?\d+)\)`)
 )
 
 type Match struct {
 	MaxMoves int
-	Actions []Action
-	Scores []float32
+	Actions  []Action
+	Scores   []float32
 }
 
-func loadMatches(results chan<- *Match) {
-	file, err := os.Open(*flag_input)
+// loadMatch from input file and write to given channel.
+func loadMatch(results chan<- *Match) error {
+	defer close(results)
+	file, err := os.Open(*flagInput)
 	if err != nil {
-		log.Panicf("Cannot open '%s' for reading: %v", *flag_output, err)
+
+		return errors.Wrapf(err, "cannot open %q for reading", *flagOutput)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	board := NewBoard()
-	match := &Match{MaxMoves:board.MaxMoves}
+	match := &Match{MaxMoves: board.MaxMoves}
 	for scanner.Scan() {
 		line := scanner.Text()
 		var action Action
@@ -60,7 +65,7 @@ func loadMatches(results chan<- *Match) {
 			y, _ := strconv.Atoi(parts[3])
 			action.TargetPos = Pos{int8(x), int8(y)}
 		} else {
-			glog.Errorf("Unparsed line: [%s]", line)
+			klog.Errorf("Unparsed line: [%s]", line)
 			continue
 		}
 		_ = board.FindActionDeep(action)
@@ -69,42 +74,43 @@ func loadMatches(results chan<- *Match) {
 		match.Scores = append(match.Scores, 0)
 	}
 	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+		return errors.Wrapf(err, "failed to read %q", *flagInput)
 	}
 	if !board.IsFinished() {
-		glog.Errorf("Match hasn't finished at move number %d", board.MoveNumber)
+		klog.Errorf("Match hasn't finished at move number %d", board.MoveNumber)
 	}
-	glog.Infof("Converted match with %d moves", board.MoveNumber)
+	klog.Infof("Converted match with %d moves", board.MoveNumber)
 	results <- match
-	close(results)
+	return nil
 }
 
-func openWriterAndBackup(filename string) io.WriteCloser {
+func openWriterAndBackup(filename string) (io.WriteCloser, error) {
 	if _, err := os.Stat(filename); err == nil {
-		err = os.Rename(filename, filename+"~")
+		backupName := filename + "~"
+		err = os.Rename(filename, backupName)
 		if err != nil {
-			log.Printf("Failed to rename '%s' to '%s~': %v", filename, filename, err)
+			return nil, errors.Wrapf(err, "failed to rename %q to %q", filename, backupName)
 		}
 	}
 	file, err := os.Create(filename)
 	if err != nil {
-		log.Panicf("Failed to save file to '%s': %v", filename, err)
+		return nil, errors.Wrapf(err, "failed to create %q", filename)
 	}
-	return file
+	return file, nil
 }
 
 func main() {
 	flag.Parse()
 	results := make(chan *Match)
-	go loadMatches(results)
+	go loadMatch(results)
 
-	file := openWriterAndBackup(*flag_output)
+	file := must.M1(openWriterAndBackup(*flagOutput))
 	enc := gob.NewEncoder(file)
 	count := 0
 	for match := range results {
-		SaveMatch(enc, match.MaxMoves, match.Actions, match.Scores, nil)
+		must.M(SaveMatch(enc, match.MaxMoves, match.Actions, match.Scores, nil))
 		count++
 	}
-	file.Close()
+	must.M(file.Close())
 	fmt.Printf("%d matches converted.\n", count)
 }

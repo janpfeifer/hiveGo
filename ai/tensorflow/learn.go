@@ -1,12 +1,10 @@
 package tensorflow
 
 import (
+	. "github.com/janpfeifer/hiveGo/internal/state"
 	"log"
 	"math/rand"
 
-	. "github.com/janpfeifer/hiveGo/state"
-
-	"github.com/golang/glog"
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
@@ -120,7 +118,7 @@ func (s *Scorer) learnOneMiniBatch(feeds map[tf.Output]*tf.Tensor, train, scoreA
 	if scoreActions {
 		fetches = append(fetches, s.BoardLosses)
 		fetches = append(fetches, s.ActionsLosses)
-		if glog.V(3) {
+		if klog.V(3) {
 			fetches = append(fetches, s.ActionsPredictions)
 		}
 	}
@@ -134,10 +132,10 @@ func (s *Scorer) learnOneMiniBatch(feeds map[tf.Output]*tf.Tensor, train, scoreA
 		}
 	}
 
-	if glog.V(3) {
-		glog.V(3).Infof("Feeded tensors: ")
+	if klog.V(3) {
+		klog.V(3).Infof("Feeded tensors: ")
 		for to, tensor := range feeds {
-			glog.V(3).Infof("\t%s: %v = %v", to.Op.Name(), tensor.Shape(),
+			klog.V(3).Infof("\t%s: %v = %v", to.Op.Name(), tensor.Shape(),
 				tensor.Value())
 		}
 	}
@@ -150,8 +148,8 @@ func (s *Scorer) learnOneMiniBatch(feeds map[tf.Output]*tf.Tensor, train, scoreA
 	if scoreActions {
 		boardLoss = results[1].Value().(float32)
 		actionsLoss = results[2].Value().(float32)
-		if glog.V(3) {
-			glog.Infof("Actions predictions: %v", results[3].Value().([]float32))
+		if klog.V(3) {
+			klog.Infof("Actions predictions: %v", results[3].Value().([]float32))
 		}
 	} else {
 		boardLoss = 0
@@ -201,7 +199,7 @@ func (s *Scorer) Learn(
 			if epochs > 0 && perStepCallback != nil {
 				perStepCallback()
 			}
-			glog.V(1).Infof("Loss after epoch: total=%g, board=%g, actions=%g",
+			klog.V(1).Infof("Loss after epoch: total=%g, board=%g, actions=%g",
 				loss, boardLoss, actionsLoss)
 		}
 		return
@@ -214,7 +212,7 @@ func (s *Scorer) Learn(
 		for epoch := 0; epoch < epochs || epoch == 0; epoch++ {
 			miniBatches := fc.randomMiniBatches(*Flag_learnBatchSize)
 			if first {
-				glog.V(1).Infof("Learn with %d mini-batches of size %d", len(miniBatches), *Flag_learnBatchSize)
+				klog.V(1).Infof("Learn with %d mini-batches of size %d", len(miniBatches), *Flag_learnBatchSize)
 				first = false
 			}
 			for _, batch := range miniBatches {
@@ -246,7 +244,7 @@ func (s *Scorer) Learn(
 			averageLoss /= float32(countExamples)
 			averageBoardLoss /= float32(countExamples)
 			averageActionsLoss /= float32(countExamples)
-			glog.V(1).Infof("Loss after epoch %d: total=%g, board=%g, actions=%g",
+			klog.V(1).Infof("Loss after epoch %d: total=%g, board=%g, actions=%g",
 				countEpoch, averageLoss, averageBoardLoss, averageActionsLoss)
 			countEpoch++
 			countExamples = 0

@@ -1,7 +1,7 @@
 package ab
 
 import (
-	"github.com/golang/glog"
+	"github.com/golang/klog.
 	"github.com/janpfeifer/hiveGo/ai/players"
 	"log"
 )
@@ -38,7 +38,7 @@ func ParsePlayerParam(data interface{}, key, value string) {
 func FinalizeParsing(data interface{}, player *players.SearcherScorerPlayer) {
 	d := data.(*alphaBetaSearcher)
 	if d.useAB {
-		glog.V(1).Info("Creating AlphaBetaPruning searcher")
+		klog.V(1).Info("Creating AlphaBetaPruning searcher")
 		if player.Searcher != nil {
 			log.Panicf(
 				"Searcher already selected while setting up AlphaBetaPruning.")

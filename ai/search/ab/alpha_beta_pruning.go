@@ -3,6 +3,7 @@ package ab
 import (
 	"flag"
 	"fmt"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 	"log"
 	"math"
 	"math/rand"
@@ -12,10 +13,8 @@ import (
 
 	"github.com/janpfeifer/hiveGo/ai/search"
 
-	"github.com/golang/glog"
 	"github.com/janpfeifer/hiveGo/ai"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
-	. "github.com/janpfeifer/hiveGo/state"
 )
 
 var _ = log.Printf
@@ -54,16 +53,18 @@ func printBoard(b *Board) {
 // TODO: Iterative deepening, principal variation estimation of scores.
 //
 // Args:
-//    board: current board
-//    scorer: batch scores boards.
-//    maxDepth: How deep to make the search.
-//    parallelize: Parallelize search, only first depth is parallelized.
-//    randomness: If > 0, a random value of this magnitude is added to the leaf node values.
+//
+//	board: current board
+//	scorer: batch scores boards.
+//	maxDepth: How deep to make the search.
+//	parallelize: Parallelize search, only first depth is parallelized.
+//	randomness: If > 0, a random value of this magnitude is added to the leaf node values.
 //
 // Returns:
-//    bestAction: that it suggests taking.
-//    bestBoard: Board after taking bestAction.
-//    bestScore: score of taking betAction
+//
+//	bestAction: that it suggests taking.
+//	bestBoard: Board after taking bestAction.
+//	bestScore: score of taking betAction
 //
 // TODO: Add support to a parallelized version. Careful with stats, likely will need a mutex.
 func AlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int, parallelize bool, randomness float32, stats *abStats) (
@@ -86,8 +87,8 @@ func TimedAlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int, paralleli
 	// Yes, crazy right ? But without this the if below doesn't work ? TODO: report this, as of Go 1.11.2.
 	// https://groups.google.com/forum/#!topic/golang-nuts/Yg09oBiRWbo
 	// Looking at the assembly code generated, it seems related inlined time.go:790 code, that gets inserted
-	// between the call to glog.V(2) and actually fetching its result ???
-	hmm := bool(glog.V(3))
+	// between the call to klog.V(2) and actually fetching its result ???
+	hmm := bool(klog.V(3))
 	_ = &hmm
 	if hmm {
 		muLogBoard.Lock()
@@ -124,13 +125,13 @@ func TimedAlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int, paralleli
 		fmt.Printf("Best action found: %s - score=%.2f, αβ-score=%.2f, prob=%.2f%%\n\n",
 			bestAction, scores[0], bestScore, bestActionProb*100)
 	}
-	if glog.V(2) {
-		glog.V(2).Infof("Counts: %v", stats)
+	if klog.V(2) {
+		klog.V(2).Infof("Counts: %v", stats)
 		evals := float64(stats.evals)
 		leafEvals := float64(stats.leafEvals)
 		leafEvalsConsidered := float64(stats.leafEvals)
-		glog.V(2).Infof("  nodes/s=%.1f, evals/s=%.1f", float64(stats.nodes)/elapsedTime, evals/elapsedTime)
-		glog.V(2).Infof("  leafEvals=%.2f%%, leafEvalsConsidered=%.2f%%", 100*leafEvals/evals, 100*leafEvalsConsidered/leafEvals)
+		klog.V(2).Infof("  nodes/s=%.1f, evals/s=%.1f", float64(stats.nodes)/elapsedTime, evals/elapsedTime)
+		klog.V(2).Infof("  leafEvals=%.2f%%, leafEvalsConsidered=%.2f%%", 100*leafEvals/evals, 100*leafEvalsConsidered/leafEvals)
 	}
 	return
 }
@@ -232,7 +233,7 @@ func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action) (
 	actionsLabels = make([][]float32, 0, len(actions))
 	for actionIdx, action := range actions {
 		bestAction, newBoard, score := TimedAlphaBeta(b, ab.scorer, ab.maxDepth, ab.parallelized, ab.randomness)
-		glog.V(1).Infof("Move #%d (%d left), Action taken: %s / Best action examined %s (score=%.4g)",
+		klog.V(1).Infof("Move #%d (%d left), Action taken: %s / Best action examined %s (score=%.4g)",
 			b.MoveNumber, len(actions)-actionIdx-1, action, bestAction, score)
 		scores = append(scores, score)
 		if len(b.Derived.Actions) > 1 {

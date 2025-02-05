@@ -1,7 +1,7 @@
 package ai
 
 import (
-	. "github.com/janpfeifer/hiveGo/state"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 )
 
 // Score for the winning side. For the loosing side it
@@ -9,10 +9,11 @@ import (
 const END_GAME_SCORE = float32(10)
 
 // Scorer returns two scores:
-//   value: how likely the current player is to win, in the form of
-//     a score from +10 and -10.
-//   policy: Probability for each of the action. This is optional, and
-//     some models may not return it.
+//
+//	value: how likely the current player is to win, in the form of
+//	  a score from +10 and -10.
+//	policy: Probability for each of the action. This is optional, and
+//	  some models may not return it.
 type Scorer interface {
 	Score(board *Board, scoreActions bool) (score float32, actionProbs []float32)
 

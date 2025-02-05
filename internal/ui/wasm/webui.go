@@ -2,15 +2,15 @@ package main
 
 import (
 	"fmt"
+	state2 "github.com/janpfeifer/hiveGo/internal/state"
 	"log"
 	"math"
 
 	"github.com/gopherjs/gopherjs/js"
 	"github.com/gopherjs/jquery"
-	"github.com/janpfeifer/hiveGo/state"
 )
 
-//Convenience:
+// Convenience:
 var jq = jquery.NewJQuery
 
 const (
@@ -81,7 +81,7 @@ func hexTriangleHeight(face float64) float64 {
 }
 
 // Convert board positions to screen position.
-func (ui *UIParams) PosToXY(pos state.Pos, stackCount int) (x, y float64) {
+func (ui *UIParams) PosToXY(pos state2.Pos, stackCount int) (x, y float64) {
 	face := ui.Face()
 	hexWidth := 1.5 * face
 	triangleHeight := hexTriangleHeight(face)
@@ -182,7 +182,7 @@ func createBoardRects() {
 }
 
 func MarkNextPlayer() {
-	for ii := uint8(0); ii < state.NUM_PLAYERS; ii++ {
+	for ii := uint8(0); ii < state2.NumPlayers; ii++ {
 		width := 2.0 * ui.PixelRatio
 		stroke := "firebrick"
 		if Board.IsFinished() {
@@ -287,7 +287,7 @@ func OpenStartGameDialog() {
 
 func StartGameDialogDone() {
 	// TODO: clean and restart board and UI pieces.
-	Board = state.NewBoard()
+	Board = state2.NewBoard()
 	IsRunning = true
 
 	// Prepare game.
@@ -391,13 +391,13 @@ func Obj(jo jquery.JQuery) *js.Object {
 
 // Game information.
 var (
-	Board     *state.Board
+	Board     *state2.Board
 	IsRunning = false
 )
 
-func ExecuteAction(action state.Action) {
+func ExecuteAction(action state2.Action) {
 	// Animate action.
-	if action.Piece != state.NO_PIECE {
+	if action.Piece != state2.NoPiece {
 		player := Board.NextPlayer
 		if action.Move {
 			RemovePiece(action)
@@ -425,13 +425,13 @@ func ExecuteAction(action state.Action) {
 
 	if len(Board.Derived.Actions) == 0 {
 		// Auto-execute skip action.
-		if action.Piece == state.NO_PIECE {
+		if action.Piece == state2.NoPiece {
 			// Two skip actions in a row.
 			log.Fatal("No moves avaialble to either players !?")
 			return
 		}
 		// Recurse to a skip action.
-		ExecuteAction(state.Action{Piece: state.NO_PIECE})
+		ExecuteAction(state2.Action{Piece: state2.NoPiece})
 		return
 	}
 
@@ -445,7 +445,7 @@ func main() {
 	print("Your current jQuery version is: " + jq().Jquery)
 
 	// Create board parts.
-	Board = state.NewBoard()
+	Board = state2.NewBoard()
 	IsRunning = false
 
 	// Create UIParams.

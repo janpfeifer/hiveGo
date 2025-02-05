@@ -1,22 +1,22 @@
-package ascii_ui
+// Package cli implements a command-line UI for the game.
+package cli
 
 import (
 	"bufio"
 	"errors"
 	"fmt"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 	"log"
 	"os"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
-
-	. "github.com/janpfeifer/hiveGo/state"
 )
 
 const (
-	LINES_PER_ROW    = 4
-	CHARS_PER_COLUMN = 9
+	LinesPerRow    = 4
+	CharsPerColumn = 9
 )
 
 func centerString(s string, fit int) string {
@@ -41,7 +41,7 @@ var (
 	parsingErrorMsg = "Failed to read command 3 times"
 )
 
-func NewUI(color bool, clearScreen bool) *UI {
+func New(color bool, clearScreen bool) *UI {
 	return &UI{
 		color:       color,
 		clearScreen: clearScreen,
@@ -228,7 +228,7 @@ func (ui *UI) PrintPlayer(board *Board) {
 }
 
 func (ui *UI) PrintAvailable(board *Board) {
-	for player := uint8(0); player < NUM_PLAYERS; player++ {
+	for player := uint8(0); player < NumPlayers; player++ {
 		var pieces []string
 		for _, piece := range Pieces {
 			pieces = append(pieces, fmt.Sprintf("%s-%d", PieceLetters[piece],
@@ -248,7 +248,7 @@ func (ui *UI) PrintBoard(board *Board) {
 	// Loop over board rows.
 	for y := min_y; y <= max_y; y++ {
 		// Loop over line within a row.
-		for line := int8(0); line < LINES_PER_ROW; line++ {
+		for line := int8(0); line < LinesPerRow; line++ {
 			ui.printBoardLine(board, y, line, min_x, max_x)
 		}
 	}
@@ -259,7 +259,7 @@ func (ui *UI) printBoardLine(board *Board, y, line, min_x, max_x int8) {
 		adj_y := y
 		adj_line := line
 		if x%2 != 0 {
-			adj_line = (line - LINES_PER_ROW/2 + LINES_PER_ROW) % LINES_PER_ROW
+			adj_line = (line - LinesPerRow/2 + LinesPerRow) % LinesPerRow
 			if adj_line >= 2 {
 				adj_y -= 1
 			}
@@ -274,47 +274,47 @@ func (ui *UI) printBoardLine(board *Board, y, line, min_x, max_x int8) {
 }
 
 func (ui *UI) printStrip(board *Board, pos Pos,
-	player uint8, piece Piece, stacked bool, line int8, lastX bool) {
+	player uint8, piece PieceType, stacked bool, line int8, lastX bool) {
 	switch {
 	case line == 0:
 		fmt.Print(" /")
 		if !lastX {
-			fmt.Print(strings.Repeat(" ", CHARS_PER_COLUMN-2))
+			fmt.Print(strings.Repeat(" ", CharsPerColumn-2))
 		}
 	case line == 1:
 		fmt.Print("/")
 		if !lastX {
 			coord := fmt.Sprintf("%d,%d", pos.X(), pos.Y())
-			fmt.Print(" " + centerString(coord, CHARS_PER_COLUMN-2))
+			fmt.Print(" " + centerString(coord, CharsPerColumn-2))
 		}
 	case line == 2:
 		fmt.Print("\\")
 		if !lastX {
-			if piece == NO_PIECE {
-				fmt.Print(strings.Repeat(" ", CHARS_PER_COLUMN-1))
+			if piece == NoPiece {
+				fmt.Print(strings.Repeat(" ", CharsPerColumn-1))
 			} else {
 				fmt.Print(" ")
 				if !stacked {
 					fmt.Print(ui.colorStart(player, piece) +
-						centerString(PieceLetters[piece], CHARS_PER_COLUMN-2) +
+						centerString(PieceLetters[piece], CharsPerColumn-2) +
 						ui.colorEnd())
 				} else {
 					stack := board.StackAt(pos)
-					fmt.Print(ui.stackedPieces(player, piece, stack, CHARS_PER_COLUMN-2))
+					fmt.Print(ui.stackedPieces(player, piece, stack, CharsPerColumn-2))
 				}
 			}
 		}
 	case line == 3:
 		fmt.Print(" \\")
 		if !lastX {
-			fmt.Print(strings.Repeat("_", CHARS_PER_COLUMN-2))
+			fmt.Print(strings.Repeat("_", CharsPerColumn-2))
 		}
 	}
 }
 
 // colorStart returns the string to start a color appropriate for the given
 // player/piece pair.
-func (ui *UI) colorStart(player uint8, piece Piece) string {
+func (ui *UI) colorStart(player uint8, piece PieceType) string {
 	if !ui.color {
 		return ""
 	}
@@ -347,7 +347,7 @@ func (ui *UI) blinkStart() string {
 	return "\033[5m"
 }
 
-func (ui *UI) stackedPieces(player uint8, piece Piece, stack EncodedStack, fit int) string {
+func (ui *UI) stackedPieces(player uint8, piece PieceType, stack EncodedStack, fit int) string {
 	numPieces := int(stack.CountPieces())
 	totalLen := 2 + numPieces
 	marginLeft := (fit - totalLen) / 2
@@ -390,7 +390,7 @@ func (ui *UI) printPlacementActions(b *Board) {
 	}
 
 	// List pieces that can be placed.
-	pieces := make(map[Piece]bool)
+	pieces := make(map[PieceType]bool)
 	for _, action := range d.Actions {
 		if !action.Move {
 			pieces[action.Piece] = true
@@ -400,10 +400,10 @@ func (ui *UI) printPlacementActions(b *Board) {
 		return
 	}
 	piecesStr := make([]string, 0, len(Pieces))
-	var examplePiece Piece
+	var examplePiece PieceType
 	for p, _ := range pieces {
 		piecesStr = append(piecesStr, PieceLetters[p])
-		if examplePiece == NO_PIECE {
+		if examplePiece == NoPiece {
 			examplePiece = p
 		}
 	}
@@ -453,7 +453,7 @@ func (ui *UI) printMoveActions(b *Board) {
 
 	// Print actions organized by source position.
 	var (
-		examplePiece                 Piece
+		examplePiece                 PieceType
 		exampleSrcPos, exampleTgtPos Pos
 	)
 	for ii, srcPos := range srcPoss {

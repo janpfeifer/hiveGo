@@ -5,7 +5,7 @@ package tfddqn
 import (
 	"fmt"
 	"github.com/janpfeifer/hiveGo/ai/tensorflow"
-	. "github.com/janpfeifer/hiveGo/state"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 )
 
 // UseType defines which use is being made of the Scorer: the
@@ -15,11 +15,11 @@ type UseType int
 
 const (
 	ForSearch UseType = 0
-	ForLearn UseType = 0
-	ForScore UseType = 1
+	ForLearn  UseType = 0
+	ForScore  UseType = 1
 )
 
-type Scorer struct{
+type Scorer struct {
 	models [2]*tensorflow.Scorer
 
 	// active is the model currently selected to score and learn.
@@ -46,14 +46,13 @@ func New(basename string) (scorer *Scorer) {
 }
 
 // SwapModels alternate the model currently used to search/learn.
-func (s *Scorer) SwapModels() { s.active = 1-s.active }
+func (s *Scorer) SwapModels() { s.active = 1 - s.active }
 
 // SetUsage specifies the model usage.
 func (s *Scorer) SetUsage(u UseType) { s.usage = u }
 
-func (s *Scorer) modelIdx() int { return s.active ^ int(s.usage) }
+func (s *Scorer) modelIdx() int             { return s.active ^ int(s.usage) }
 func (s *Scorer) model() *tensorflow.Scorer { return s.models[s.modelIdx()] }
-
 
 // Score implements ai.Scorer interface by calling the selected model's implementation.
 func (s *Scorer) Score(board *Board, scoreActions bool) (score float32, actionProbs []float32) {
@@ -101,5 +100,3 @@ func (s *Scorer) String() string {
 	return fmt.Sprintf("TF DDQN: models in %s%s and %s%s", selections[0], s.models[0].Basename,
 		selections[1], s.models[1].Basename)
 }
-
-

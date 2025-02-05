@@ -4,44 +4,41 @@ import (
 	"encoding/gob"
 	"flag"
 	"fmt"
-	"github.com/golang/glog"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/janpfeifer/hiveGo/ai/players"
-	_ "github.com/janpfeifer/hiveGo/ai/search/ab"
-	_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
+
+	//"github.com/janpfeifer/hiveGo/ai/players"
+	//_ "github.com/janpfeifer/hiveGo/ai/search/ab"
+	//_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
+	. "github.com/janpfeifer/hiveGo/internal/state"
 	"io"
+	"k8s.io/klog/v2"
 	"log"
 	"os"
 	//"github.com/janpfeifer/hiveGo/ai/tensorflow"
 	_ "github.com/janpfeifer/hiveGo/ai"
-	//_ "github.com/janpfeifer/hiveGo/ai/tfddqn"
-	. "github.com/janpfeifer/hiveGo/state"
 )
 
 var _ = fmt.Printf
 
 var (
-	flag_players = [2]*string{
-		flag.String("p0", "hotseat", "First player: hotseat, ai"),
-		flag.String("p1", "hotseat", "Second player: hotseat, ai"),
-	}
-	flag_aiConfig = flag.String("ai", "", "Configuration string for the AI.")
-	flag_maxMoves = flag.Int(
-		"max_moves", 100, "Max moves before game is assumed to be a draw.")
+	//flag_players = [2]*string{
+	//	flag.String("p0", "hotseat", "First player: hotseat, ai"),
+	//	flag.String("p1", "hotseat", "Second player: hotseat, ai"),
+	//}
+	flagAIConfig = flag.String("ai", "", "Configuration string for the AI.")
+	flagMaxMoves = flag.Int(
+		"max_moves", DefaultMaxMoves, "Max moves before game is considered a draw.")
 
 	// Save match at end.
-	flag_saveMatch = flag.String("save", "", "File name where to save match. Matches are appendeded to given file.")
+	flagSaveMatch = flag.String("save", "", "File name where to save match. Matches are appended to given file.")
 
 	// Sequence of boards that make up for the game. Used for undo-ing actions.
 	gameSeq []*Board
 )
 
-func init() {
-	//flag.BoolVar(&tensorflow.CpuOnly, "cpu", false, "Force to use CPU, even if GPU is available")
-}
-
-const APP_ID = "com.github.janpfeifer.hiveGo.gnome-hive"
+const AppId = "com.github.janpfeifer.hiveGo.cmd.gnome-hive"
 
 // Board in use. It will always be set.
 var (
@@ -67,13 +64,13 @@ func openForAppending(filename string) io.WriteCloser {
 
 func main() {
 	flag.Parse()
-	if *flag_maxMoves <= 0 {
-		log.Fatalf("Invalid --max_moves=%d", *flag_maxMoves)
+	if *flagMaxMoves <= 0 {
+		log.Fatalf("Invalid --max_moves=%d", *flagMaxMoves)
 	}
 
 	// Build initial board: it is used only for drawing available pieces,
 	board = NewBoard()
-	board.MaxMoves = *flag_maxMoves
+	board.MaxMoves = *flagMaxMoves
 	board.BuildDerived()
 
 	// Creates and runs main window.
@@ -86,25 +83,25 @@ func main() {
 func newGame() {
 	// Create board.
 	board = NewBoard()
-	board.MaxMoves = *flag_maxMoves
+	board.MaxMoves = *flagMaxMoves
 	board.BuildDerived()
 	initial = board
 	actions = nil
 	scores = nil
-	gameSeq := make([]*Board, 0, *flag_maxMoves)
+	gameSeq := make([]*Board, 0, *flagMaxMoves)
 	gameSeq = append(gameSeq, board)
 
-	// Create players:
-	for ii := 0; ii < 2; ii++ {
-		switch {
-		case *flag_players[ii] == "hotseat":
-			continue
-		case *flag_players[ii] == "ai":
-			aiPlayers[ii] = players.NewAIPlayer(*flag_aiConfig, true)
-		default:
-			log.Fatalf("Unknown player type --p%d=%s", ii, *flag_players[ii])
-		}
-	}
+	//// Create players:
+	//for ii := 0; ii < 2; ii++ {
+	//	switch {
+	//	case *flag_players[ii] == "hotseat":
+	//		continue
+	//	case *flag_players[ii] == "ai":
+	//		aiPlayers[ii] = players.NewAIPlayer(*flagAIConfig, true)
+	//	default:
+	//		log.Fatalf("Unknown player type --p%d=%s", ii, *flag_players[ii])
+	//	}
+	//}
 
 	// Initialize UI state.
 	started = true
@@ -121,7 +118,7 @@ func newGame() {
 }
 
 func executeAction(action Action) {
-	glog.Infof("Player %d played %s", board.NextPlayer, action)
+	klog.Infof("Player %d played %s", board.NextPlayer, action)
 	board = board.Act(action)
 	actions = append(actions, action)
 	scores = append(scores, 0)
@@ -129,7 +126,7 @@ func executeAction(action Action) {
 	finished = board.IsFinished()
 	if !finished && len(board.Derived.Actions) == 0 {
 		// Player has no available moves, skip.
-		log.Printf("No action available, automatic action.")
+		klog.Infof("No action available, automatic action.")
 		if action.IsSkipAction() {
 			// Two skip actions in a row.
 			log.Fatal("No moves avaialble to either players !?")
@@ -140,14 +137,15 @@ func executeAction(action Action) {
 	}
 	followAction()
 
-	if board.IsFinished() && *flag_saveMatch != "" {
-		log.Printf("Saving match to %s", *flag_saveMatch)
-		file := openForAppending(*flag_saveMatch)
+	if board.IsFinished() && *flagSaveMatch != "" {
+		klog.Infof("Saving match to %s", *flagSaveMatch)
+		file := openForAppending(*flagSaveMatch)
+		defer func() { _ = file.Close() }()
 		enc := gob.NewEncoder(file)
 		if err := SaveMatch(enc, initial.MaxMoves, actions, scores, nil); err != nil {
-			log.Printf("Failed to save match to %s: %v", *flag_saveMatch, err)
+			klog.Errorf("Failed to save match to %s: %v", *flagSaveMatch, err)
+			klog.Errorf("Game continuing anyway...")
 		}
-		file.Close()
 	}
 }
 
@@ -164,7 +162,7 @@ func undoAction() {
 
 // Setting that come after executing an action.
 func followAction() {
-	selectedOffBoardPiece = NO_PIECE
+	selectedOffBoardPiece = NoPiece
 	hasSelectedPiece = false
 	nextIsAI = !finished && aiPlayers[board.NextPlayer] != nil
 	if nextIsAI {
