@@ -1,6 +1,8 @@
-# hiveGo 
+<img align="left" src="images/Queen.png" alt="Queen Bee" width="64px"/>
 
-<img align="right" src="images/Queen.png" alt="Queen Bee" width="100px"/>
+# hiveGo <br/>
+
+
 
 [Hive game](https://en.wikipedia.org/wiki/Hive_(game)), backed by an [AlphaZero](https://en.wikipedia.org/wiki/AlphaZero) 
 based AI.
@@ -8,8 +10,9 @@ based AI.
 Started from an [earlier version in Python](https://github.com/makatony/hiveAI), which was a bit slow to generate training 
 data for a Reinforcement Learning AI.
 
+<img align="right" src="images/Ant.png" alt="Ant" width="100px"/>
+
 > [!WARNING]
-> <img align="right" src="images/Ant.png" alt="Ant" width="100px"/>
 > 🚧🛠 Currently broken: this is a 2017/2018 project, that I'm bringing back to life, this time using [GoMLX](github.com/gomlx/gomlx)🚧🛠
 
 ## Command line version
