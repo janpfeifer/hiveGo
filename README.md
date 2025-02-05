@@ -6,24 +6,32 @@ based AI.
 Started from an [earlier version in Python](https://github.com/makatony/hiveAI), which was a bit slow to generate training 
 data for a Reinforcement Learning AI.
 
+> [!WARNING]
+> 🚧🛠 Currently broken: this is a 2017/2018 project, that I'm bringing back to life, this time using [GoMLX](github.com/gomlx/gomlx)🚧🛠
+
 ## Command line version
 
-Hopefully this should work on linux box with Go properly installed:
+Simplest version to run. Hotseat mode (no AI) is already working:
+
 
 ```
-    go install github/janpfeifer/hiveGo/hive
-    go install github/janpfeifer/hiveGo && hiveGo
+    go run github/janpfeifer/hiveGo/cmd/hive
 ```
+
+![image](https://github.com/user-attachments/assets/f67d8ad5-f047-4154-843e-4319aa55b794)
 
 ## Gnome Version
 
 Easy to build in XWindows -- well, more or less, depending on the dependencies working out fine. Probably one could compile it in windows as well ... 
 
+TODO: use Fyne to make it portable.
+
 ```
-    go get github/janpfeifer/hiveGo
-    go install github/janpfeifer/hiveGo/gnome-hive && \
-      gnome-hive -p1=ai -ai=ab,max_depth=1 --vmodule=main=1,alpha_beta_pruning=1,linear_scorer=1 --logtostderr
+    go run github/janpfeifer/hiveGo/cmd/gnome-hive
 ```
+
+![image](https://github.com/user-attachments/assets/87fe827c-14b8-4367-91d9-98a9be067f89)
+
 
 ## Web Version
 
