@@ -1,4 +1,6 @@
-# hiveGo
+# hiveGo 
+
+<img align="right" src="images/Queen.png" alt="Queen Bee" width="100px"/>
 
 [Hive game](https://en.wikipedia.org/wiki/Hive_(game)), backed by an [AlphaZero](https://en.wikipedia.org/wiki/AlphaZero) 
 based AI.
@@ -7,6 +9,7 @@ Started from an [earlier version in Python](https://github.com/makatony/hiveAI),
 data for a Reinforcement Learning AI.
 
 > [!WARNING]
+> <img align="right" src="images/Ant.png" alt="Ant" width="100px"/>
 > 🚧🛠 Currently broken: this is a 2017/2018 project, that I'm bringing back to life, this time using [GoMLX](github.com/gomlx/gomlx)🚧🛠
 
 ## Command line version
@@ -34,6 +37,7 @@ TODO: use Fyne to make it portable.
 
 
 ## Web Version
+<img align="right" src="images/Spider.png" alt="Spider" width="100px"/>
 
 The Gnome version works nicely ... but asking anyone to install it is cruel. And I wouldn't want to distribute a binary -- then I would have to try to compile everything staticly.
 
