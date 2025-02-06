@@ -29,7 +29,7 @@ func SortedKeys[M interface{ ~map[K]V }, K cmp.Ordered, V any](m M) iter.Seq[K] 
 // SortedKeysAndValues returns an interator over keys and values of a map m in a sorted fashion by the keys.
 //
 // It extracts the keys, sort them and then iterate over, so it's convenient but not fast.
-func SortedKeysAndValues[M interface{ ~map[K]V }, K cmp.Ordered, V any](m M) iter.Seq2[K, V] {
+func SortedKeysAndValues[Map interface{ ~map[K]V }, K cmp.Ordered, V any](m Map) iter.Seq2[K, V] {
 	sortedKeys := slices.Collect(maps.Keys(m))
 	slices.Sort(sortedKeys)
 	return func(yield func(K, V) bool) {
@@ -41,17 +41,37 @@ func SortedKeysAndValues[M interface{ ~map[K]V }, K cmp.Ordered, V any](m M) ite
 	}
 }
 
+// MapAnyKey returns any one key from the map. Non-deterministic, each time a different one could be returned.
+//
+// This is akin to accessing slice[0], it will panic if the map is empty.
+func MapAnyKey[Map interface{ ~map[K]V }, K comparable, V any](m Map) K {
+	for k, _ := range m {
+		return k
+	}
+	panic("map is empty, no key exists")
+}
+
+// MapAnyValue returns any one value from the map. Non-deterministic, each time a different one could be returned.
+//
+// This is akin to accessing slice[0], it will panic if the map is empty.
+func MapAnyValue[Map interface{ ~map[K]V }, K comparable, V any](m Map) V {
+	for _, v := range m {
+		return v
+	}
+	panic("map is empty, no value exists")
+}
+
 // Pair defines a pair of 2 different arbitrary pairs.
-type Pair[A, B any] struct {
-	A A
-	B B
+type Pair[F, S any] struct {
+	First  F
+	Second S
 }
 
 // CollectPairs from an interator with 2 values.
-func CollectPairs[A, B any](seq iter.Seq2[A, B]) []Pair[A, B] {
-	var pairs []Pair[A, B]
+func CollectPairs[F, S any](seq iter.Seq2[F, S]) []Pair[F, S] {
+	var pairs []Pair[F, S]
 	for a, b := range seq {
-		pairs = append(pairs, Pair[A, B]{a, b})
+		pairs = append(pairs, Pair[F, S]{a, b})
 	}
 	return pairs
 }
@@ -99,4 +119,17 @@ func (s Set[T]) Sub(s2 Set[T]) Set[T] {
 		}
 	}
 	return sub
+}
+
+// Equal returns whether s and s2 have the exact same elements.
+func (s Set[T]) Equal(s2 Set[T]) bool {
+	if len(s) != len(s2) {
+		return false
+	}
+	for k := range s {
+		if !s2.Has(k) {
+			return false
+		}
+	}
+	return true
 }
