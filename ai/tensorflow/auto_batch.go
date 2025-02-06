@@ -172,7 +172,7 @@ func (s *Scorer) autoBatchScoreAndDeliver(ab *AutoBatch) {
 		log.Panicf("Prediction failed: %v", err)
 	}
 
-	// Copy over resulting scores.
+	// Clone over resulting scores.
 	scores := results[0].Value().([]float32)
 	if len(scores) != ab.Len() {
 		log.Panicf("Expected %d scores (=number of boards given), got %d",
@@ -182,7 +182,7 @@ func (s *Scorer) autoBatchScoreAndDeliver(ab *AutoBatch) {
 		ab.requests[ii].score = score
 	}
 
-	// Copy over resulting action probabilities
+	// Clone over resulting action probabilities
 	if s.IsActionsClassifier() && ab.LenActions() > 0 {
 		allActionsProbs := results[1].Value().([]float32)
 		if len(allActionsProbs) != ab.LenActions() {

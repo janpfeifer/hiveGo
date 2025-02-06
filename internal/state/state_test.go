@@ -4,27 +4,22 @@ import (
 	"fmt"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
+	"github.com/stretchr/testify/require"
 	"reflect"
 	"testing"
-
-	. "github.com/janpfeifer/hiveGo/internal/state"
 )
 
 var _ = fmt.Printf
 
-type PieceLayout struct {
+// PieceOnBoard represents a position and ownership of a piece in the board.
+type PieceOnBoard struct {
 	pos    Pos
 	player uint8
 	piece  PieceType
 }
 
-func PieceLayoutsFromDisplayPos(pls []PieceLayout) {
-	for ii := range pls {
-		pls[ii].pos = pls[ii].pos.FromDisplayPos()
-	}
-}
-
-func buildBoard(layout []PieceLayout, displayPos bool) (b *Board) {
+// buildBoard from a collection of pieces. Their positions may be in "display coordinates".
+func buildBoard(layout []PieceOnBoard, displayPos bool) (b *Board) {
 	b = NewBoard()
 	for _, p := range layout {
 		pos := p.pos
@@ -37,23 +32,27 @@ func buildBoard(layout []PieceLayout, displayPos bool) (b *Board) {
 	return
 }
 
-func listMovesForPieceDisplayPos(b *Board, piece PieceType, pos Pos) (poss []Pos) {
-	pos = pos.FromDisplayPos()
-	poss = listMovesForPiece(b, piece, pos)
-	PosSlice(poss).DisplayPos()
-	return
+// listMovesForPieceDisplayPos takes the piece position in "display coordinates", and returns
+// the moves also in "display coordinates".
+func listMovesForPieceDisplayPos(b *Board, piece PieceType, displayPos Pos) []Pos {
+	pos := displayPos.FromDisplayPos()
+	moves := listMovesForPiece(b, piece, pos)
+	for idx := range moves {
+		moves[idx] = moves[idx].ToDisplayPos()
+	}
+	return moves
 }
 
-func listMovesForPiece(b *Board, piece PieceType, pos Pos) (poss []Pos) {
-	poss = nil
+func listMovesForPiece(b *Board, piece PieceType, pos Pos) []Pos {
+	var moves []Pos
 	d := b.Derived
 	for _, a := range d.Actions {
 		if a.Move && a.SourcePos == pos && a.Piece == piece {
-			poss = append(poss, a.TargetPos)
+			moves = append(moves, a.TargetPos)
 		}
 	}
-	PosSort(poss)
-	return
+	SortPositions(moves)
+	return moves
 }
 
 func printBoard(b *Board) {
@@ -112,7 +111,7 @@ func TestDisplayPos(t *testing.T) {
 		{0, 5}, {1, -5}, {-1, 6}, {3, -6},
 	}
 	for idx, pos := range from {
-		if got := pos.DisplayPos(); got != want[idx] {
+		if got := pos.ToDisplayPos(); got != want[idx] {
 			t.Errorf("Convert position to display: pos=%s, got=%s, wanted=%s", pos, got, want[idx])
 		}
 	}
@@ -127,7 +126,7 @@ func TestDisplayPos(t *testing.T) {
 }
 
 func TestOccupiedNeighbours(t *testing.T) {
-	board := buildBoard([]PieceLayout{
+	board := buildBoard([]PieceOnBoard{
 		{Pos{0, 0}, 0, ANT},
 		{Pos{-1, 0}, 1, BEETLE},
 		{Pos{1, 0}, 0, SPIDER},
@@ -151,7 +150,7 @@ func TestOccupiedNeighbours(t *testing.T) {
 }
 
 func TestQueenMoves(t *testing.T) {
-	layout := []PieceLayout{
+	layout := []PieceOnBoard{
 		{Pos{0, 0}, 0, ANT},
 		{Pos{-1, 0}, 1, BEETLE},
 		{Pos{1, 0}, 0, SPIDER},
@@ -170,7 +169,7 @@ func TestQueenMoves(t *testing.T) {
 	}
 
 	// Now queen can't move because it would break hive.
-	layout = append(layout, PieceLayout{Pos{3, 1}, 0, GRASSHOPPER})
+	layout = append(layout, PieceOnBoard{Pos{3, 1}, 0, GRASSHOPPER})
 	board = buildBoard(layout, true)
 	printBoard(board)
 	board.BuildDerived()
@@ -180,8 +179,8 @@ func TestQueenMoves(t *testing.T) {
 	}
 
 	// If we put some pieces around it can move again.
-	layout = append(layout, PieceLayout{Pos{1, 1}, 0, BEETLE})
-	layout = append(layout, PieceLayout{Pos{2, 2}, 0, BEETLE})
+	layout = append(layout, PieceOnBoard{Pos{1, 1}, 0, BEETLE})
+	layout = append(layout, PieceOnBoard{Pos{2, 2}, 0, BEETLE})
 	board = buildBoard(layout, true)
 	printBoard(board)
 	board.BuildDerived()
@@ -192,7 +191,7 @@ func TestQueenMoves(t *testing.T) {
 	}
 
 	// Finally piece is not supposed to squeeze among pieces:
-	layout = append(layout, PieceLayout{Pos{2, 0}, 0, ANT})
+	layout = append(layout, PieceOnBoard{Pos{2, 0}, 0, ANT})
 	board = buildBoard(layout, true)
 	board.BuildDerived()
 	queenMoves = listMovesForPieceDisplayPos(board, QUEEN, Pos{2, 1})
@@ -202,7 +201,7 @@ func TestQueenMoves(t *testing.T) {
 }
 
 func TestSpiderMoves(t *testing.T) {
-	layout := []PieceLayout{
+	layout := []PieceOnBoard{
 		{Pos{0, 0}, 0, ANT},
 		{Pos{-1, 0}, 1, BEETLE},
 		{Pos{1, 0}, 0, SPIDER},
@@ -225,24 +224,17 @@ func TestSpiderMoves(t *testing.T) {
 	// Spider at (1,1) is free to move.
 	want := []Pos{{3, 0}, {0, 3}}
 	spiderMoves = listMovesForPieceDisplayPos(board, SPIDER, Pos{1, 1})
-	if !reflect.DeepEqual(want, spiderMoves) {
-		PosSlice(want).FromDisplayPos()
-		//PosSlice(spiderMoves).FromDisplayPos()
-		t.Errorf("Wanted Spider moves to be %v, got %v", want, spiderMoves)
-	}
+	require.Equal(t, want, spiderMoves)
 
 	// Spider at (-1, 3)
 	want = []Pos{{-2, 1}, {1, 2}}
 	// printBoard(board)
 	spiderMoves = listMovesForPieceDisplayPos(board, SPIDER, Pos{-1, 3})
-	if !reflect.DeepEqual(want, spiderMoves) {
-		PosSlice(want).FromDisplayPos()
-		t.Errorf("Wanted Spider moves to be %v, got %v", want, spiderMoves)
-	}
+	require.Equal(t, want, spiderMoves)
 }
 
 func TestGrasshopperMoves(t *testing.T) {
-	layout := []PieceLayout{
+	layout := []PieceOnBoard{
 		{Pos{0, 0}, 0, ANT},
 		{Pos{-1, 0}, 1, BEETLE},
 		{Pos{1, 0}, 0, QUEEN},
@@ -275,7 +267,7 @@ func TestGrasshopperMoves(t *testing.T) {
 }
 
 func TestAntMoves(t *testing.T) {
-	layout := []PieceLayout{
+	layout := []PieceOnBoard{
 		{Pos{0, 0}, 0, ANT},
 		{Pos{-1, 1}, 1, BEETLE},
 		{Pos{1, 0}, 0, QUEEN},
@@ -319,7 +311,7 @@ func TestAntMoves(t *testing.T) {
 }
 
 func TestBeetleMoves(t *testing.T) {
-	layout := []PieceLayout{
+	layout := []PieceOnBoard{
 		{Pos{0, 0}, 0, BEETLE},
 		{Pos{0, -1}, 1, ANT},
 		{Pos{0, 1}, 0, SPIDER},
@@ -356,7 +348,7 @@ func TestBeetleMoves(t *testing.T) {
 }
 
 func TestAct(t *testing.T) {
-	layout := []PieceLayout{
+	layout := []PieceOnBoard{
 		{Pos{0, 0}, 0, ANT},
 		{Pos{0, 0}, 1, BEETLE},
 		{Pos{0, 0}, 0, BEETLE},
@@ -403,7 +395,7 @@ func TestAct(t *testing.T) {
 	// printBoard(board)
 
 	// Test situation where there are no action possible.
-	layout = []PieceLayout{
+	layout = []PieceOnBoard{
 		{Pos{0, 0}, 0, ANT},
 		{Pos{0, 0}, 1, BEETLE},
 	}
@@ -494,7 +486,7 @@ func TestInvalidMove(t *testing.T) {
 }
 
 func BenchmarkCalcDerived(b *testing.B) {
-	layout := []PieceLayout{
+	layout := []PieceOnBoard{
 		{Pos{-2, -1}, 1, ANT},
 		{Pos{-1, -1}, 0, GRASSHOPPER},
 		{Pos{-1, 1}, 0, BEETLE},

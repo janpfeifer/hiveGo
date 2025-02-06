@@ -343,7 +343,7 @@ func (b *Board) addMoveActions(player uint8, actions []Action) []Action {
 //
 // It also updates the derived information by calling `BuildDerived()`.
 func (b *Board) Act(action Action) (newB *Board) {
-	newB = b.Copy()
+	newB = b.Clone()
 	if action.Piece != NoPiece {
 		if !action.Move {
 			// Placement

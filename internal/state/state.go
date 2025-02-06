@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"k8s.io/klog/v2"
+	"maps"
 	"sort"
 )
 
@@ -47,6 +48,11 @@ var (
 	Pieces = [NumPieceTypes]PieceType{ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER}
 )
 
+// String returns the long piece name.
+func (p PieceType) String() string {
+	return PieceNames[p]
+}
+
 // Availability represents the number of each piece type available to a player to put on the board.
 type Availability [5]uint8
 
@@ -59,35 +65,18 @@ const TotalPiecesPerPlayer = 11
 // Pos packages x, y position.
 type Pos [2]int8
 
-// Board is a compact representation of the game state. It's compact to allow fast/cheap
-// search on the space. Use it through methods that decode the packaged data.
-type Board struct {
-	available            [NumPlayers]Availability
-	board                map[Pos]EncodedStack
-	MoveNumber, MaxMoves int
-	NextPlayer           uint8
-
-	// Previous is a link to the Board at the previous position, or nil if
-	// this is the initial Board.
-	Previous *Board
-
-	// Derived information is regenerated after each move.
-	Derived *Derived
-}
-
+// AbsInt8 returns the absolute value of an int8.
 func AbsInt8(x int8) int8 {
 	y := x >> 7
 	return (x ^ y) - y
 }
 
-func (p PieceType) String() string {
-	return PieceNames[p]
-}
-
+// X coordinate of the position.
 func (pos Pos) X() int8 {
 	return pos[0]
 }
 
+// Y coordinate of the position.
 func (pos Pos) Y() int8 {
 	return pos[1]
 }
@@ -97,32 +86,50 @@ func (pos Pos) Distance(pos2 Pos) int {
 	return int(AbsInt8(pos[0]-pos2[0])) + int(AbsInt8(pos[1]-pos2[1]))
 }
 
+// Equal returns whether positions are the same.
 func (pos Pos) Equal(pos2 Pos) bool {
-	return pos[0] == pos2[0] && pos[1] == pos2[1]
+	return pos == pos2
 }
 
+// String returns a text representation of Pos.
 func (pos Pos) String() string {
 	return fmt.Sprintf("(%d, %d)", pos[0], pos[1])
 }
 
-func (pos Pos) DisplayPos() Pos {
-	deltaY := pos[0] >> 1
-	return Pos{pos[0], pos[1] + deltaY}
-}
-
+// FromDisplayPos converts a "display coordinate" position to the state coordinate.
+// This is used by UI libraries, as the "display coordinate" is friendlier for humans.
 func (pos Pos) FromDisplayPos() Pos {
 	deltaY := pos[0] >> 1
 	return Pos{pos[0], pos[1] - deltaY}
 }
 
+// ToDisplayPos converts a state coordinate to a "display coordinate".
+// This is used by UI libraries, as the "display coordinate" is friendlier for humans.
+func (pos Pos) ToDisplayPos() Pos {
+	deltaY := pos[0] >> 1
+	return Pos{pos[0], pos[1] + deltaY}
+}
+
+// SortPositions sorts according to y first and then x.
+func SortPositions(positions []Pos) {
+	sort.Slice(positions, func(i, j int) bool {
+		if positions[i][1] != positions[j][1] {
+			return positions[i][1] < positions[j][1]
+		} else {
+			return positions[i][0] < positions[j][0]
+		}
+	})
+}
+
+// PosSlice is a slice f Pos.
 type PosSlice []Pos
 
-func (p PosSlice) DisplayPos() {
+func (p PosSlice) toDisplayPos() {
 	for ii := range p {
-		p[ii] = p[ii].DisplayPos()
+		p[ii] = p[ii].ToDisplayPos()
 	}
 }
-func (p PosSlice) FromDisplayPos() {
+func (p PosSlice) fromDisplayPos() {
 	for ii := range p {
 		p[ii] = p[ii].FromDisplayPos()
 	}
@@ -178,7 +185,7 @@ func (stack EncodedStack) HasPiece() bool {
 	return (stack & 0x7F) != 0
 }
 
-// Returns whether there is a queen in the given stack of pieces and return the player
+// HasQueen returns whether there is a queen in the given stack of pieces and return the player
 // owning it.
 func (stack EncodedStack) HasQueen() (bool, uint8) {
 	for stack != 0 {
@@ -223,6 +230,23 @@ func (a Availability) Count() (count uint8) {
 	return
 }
 
+// Board is a compact representation of the game state. It's compact to allow fast/cheap
+// search on the space, by creating clones of it.
+// Use it through methods that decode the packaged data.
+type Board struct {
+	available            [NumPlayers]Availability
+	board                map[Pos]EncodedStack
+	MoveNumber, MaxMoves int
+	NextPlayer           uint8
+
+	// Previous is a link to the Board at the previous position, or nil if
+	// this is the initial Board.
+	Previous *Board
+
+	// Derived information is regenerated after each move.
+	Derived *Derived
+}
+
 // NewBoard creates a new empty board, with the correct initial number of pieces.
 func NewBoard() *Board {
 	board := &Board{
@@ -238,20 +262,18 @@ func NewBoard() *Board {
 	return board
 }
 
-// Copy makes a deep copy of the board for a next move. The new Board.Previous
+// Clone makes a deep copy of the board for a next move. The new Board.Previous
 // is set to the current one, b.
-func (b *Board) Copy() *Board {
+func (b *Board) Clone() *Board {
 	newB := &Board{}
 	*newB = *b
 	newB.Derived = nil
 	newB.Previous = b
-	newB.board = make(map[Pos]EncodedStack)
-	for pos, stack := range b.board {
-		newB.board[pos] = stack
-	}
+	newB.board = maps.Clone(b.board)
 	return newB
 }
 
+// OpponentPlayer returns the player that is not the next one to play.
 func (b *Board) OpponentPlayer() uint8 {
 	return 1 - b.NextPlayer
 }
@@ -315,53 +337,54 @@ func (b *Board) PopPiece(pos Pos) (player uint8, piece PieceType) {
 	return
 }
 
+// NumPiecesOnBoard is the number of currently placed pieces.
 func (b *Board) NumPiecesOnBoard() int8 {
 	return int8(len(b.board))
 }
 
 // UsedLimits returns the max/min of x/y used in the board. Stores copy
 // in Derived, to be reused if needed.
-func (b *Board) UsedLimits() (min_x, max_x, min_y, max_y int8) {
+func (b *Board) UsedLimits() (minX, maxX, minY, maxY int8) {
 	if b.Derived != nil {
 		return b.Derived.MinX, b.Derived.MaxX, b.Derived.MinY, b.Derived.MaxY
 	}
 	first := true
 	for pos, _ := range b.board {
 		x, y := pos.X(), pos.Y()
-		if first || x > max_x {
-			max_x = x
+		if first || x > maxX {
+			maxX = x
 		}
-		if first || x < min_x {
-			min_x = x
+		if first || x < minX {
+			minX = x
 		}
-		if first || y > max_y {
-			max_y = y
+		if first || y > maxY {
+			maxY = y
 		}
-		if first || y < min_y {
-			min_y = y
+		if first || y < minY {
+			minY = y
 		}
 		first = false
 	}
 	return
 }
 
-// DisplayUsedLimits returns the max/min of x/y of the display.
-func (b *Board) DisplayUsedLimits() (min_x, max_x, min_y, max_y int8) {
+// DisplayUsedLimits returns the max/min of x/y of the display in "display coordinates".
+func (b *Board) DisplayUsedLimits() (minX, maxX, minY, maxY int8) {
 	first := true
 	for pos, _ := range b.board {
-		pos = pos.DisplayPos()
-		x, y := pos.X(), pos.Y()
-		if first || x > max_x {
-			max_x = x
+		displayPos := pos.ToDisplayPos()
+		x, y := displayPos.X(), displayPos.Y()
+		if first || x > maxX {
+			maxX = x
 		}
-		if first || x < min_x {
-			min_x = x
+		if first || x < minX {
+			minX = x
 		}
-		if first || y > max_y {
-			max_y = y
+		if first || y > maxY {
+			maxY = y
 		}
-		if first || y < min_y {
-			min_y = y
+		if first || y < minY {
+			minY = y
 		}
 		first = false
 	}

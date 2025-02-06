@@ -19,5 +19,5 @@ conv_test*
 hiveGo.sublime*
 
 local/
-models/
+ai/models/
 venv/

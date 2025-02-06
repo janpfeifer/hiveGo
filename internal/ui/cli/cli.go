@@ -240,35 +240,36 @@ func (ui *UI) PrintAvailable(board *Board) {
 }
 
 func (ui *UI) PrintBoard(board *Board) {
-	min_x, max_x, min_y, max_y := board.DisplayUsedLimits()
-	min_x--
-	max_x++
-	min_y--
-	max_y++
+	minX, maxX, minY, maxY := board.DisplayUsedLimits()
+	minX--
+	maxX++
+	minY--
+	maxY++
 	// Loop over board rows.
-	for y := min_y; y <= max_y; y++ {
+	for y := minY; y <= maxY; y++ {
 		// Loop over line within a row.
 		for line := int8(0); line < LinesPerRow; line++ {
-			ui.printBoardLine(board, y, line, min_x, max_x)
+			ui.printBoardLine(board, y, line, minX, maxX)
 		}
 	}
 }
 
-func (ui *UI) printBoardLine(board *Board, y, line, min_x, max_x int8) {
-	for x := min_x; x <= max_x+1; x++ {
-		adj_y := y
-		adj_line := line
+func (ui *UI) printBoardLine(board *Board, y, line, minX, maxX int8) {
+	for x := minX; x <= maxX+1; x++ {
+		adjY := y
+		adjLine := line
 		if x%2 != 0 {
-			adj_line = (line - LinesPerRow/2 + LinesPerRow) % LinesPerRow
-			if adj_line >= 2 {
-				adj_y -= 1
+			adjLine = (line - LinesPerRow/2 + LinesPerRow) % LinesPerRow
+			if adjLine >= 2 {
+				adjY -= 1
 			}
 		}
-		displayPos := Pos{x, adj_y}
-		pos := displayPos.FromDisplayPos()
+		// The display coordinate (the X,Y in the screen) doesn't exactly map to the
+		// state position (the X,Y of the hexagonal positions).
+		pos := Pos{x, adjY}.FromDisplayPos()
 		player, piece, stacked := board.PieceAt(pos)
-		lastX := (x == max_x+1)
-		ui.printStrip(board, pos, player, piece, stacked, adj_line, lastX)
+		lastX := x == maxX+1
+		ui.printStrip(board, pos, player, piece, stacked, adjLine, lastX)
 	}
 	fmt.Println()
 }
@@ -385,11 +386,11 @@ func (ui *UI) printActions(b *Board) {
 
 func (ui *UI) printPlacementActions(b *Board) {
 	d := b.Derived
-	if len(d.PlacementPositions) == 0 {
+	if len(d.PlacementPositions[b.NextPlayer]) == 0 {
 		return
 	}
 
-	// List pieces that can be placed.
+	// Set of pieces that can be placed.
 	pieces := make(map[PieceType]bool)
 	for _, action := range d.Actions {
 		if !action.Move {
@@ -445,18 +446,18 @@ func (ui *UI) printMoveActions(b *Board) {
 	}
 
 	// Sort source positions.
-	srcPoss := make([]Pos, 0, len(pieces))
+	srcPositions := make([]Pos, 0, len(pieces))
 	for srcPos := range pieces {
-		srcPoss = append(srcPoss, srcPos)
+		srcPositions = append(srcPositions, srcPos)
 	}
-	PosSort(srcPoss)
+	PosSort(srcPositions)
 
 	// Print actions organized by source position.
 	var (
 		examplePiece                 PieceType
 		exampleSrcPos, exampleTgtPos Pos
 	)
-	for ii, srcPos := range srcPoss {
+	for ii, srcPos := range srcPositions {
 		piece := pieces[srcPos][0].Piece
 		tgtPoss := make([]Pos, 0, len(pieces[srcPos]))
 		for _, action := range pieces[srcPos] {

@@ -1,9 +1,8 @@
-// Package state holds information about a game state.
-//
+package state
+
 // This file holds the definition of Surface of a hive. These are connected
 // areas where an ANT can move. Usually there is only an external one,
-// sorrounding the hive. But there can more internal ones.
-package state
+// surrounding the hive. But there can more internal ones.
 
 // Surfaces are connected areas of the hive space, where an ANT
 // could presumably move.
@@ -14,7 +13,7 @@ type Surfaces struct {
 
 var UnusedPos = Pos{127, 127}
 
-// Initializes Surfaces from Board position.
+// Surfaces create a new Surfaces object from Board position.
 func (b *Board) Surfaces() (surfaces *Surfaces) {
 	surfaces = &Surfaces{}
 

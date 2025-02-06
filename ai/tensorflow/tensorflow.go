@@ -658,7 +658,7 @@ func (s *Scorer) BatchScore(boards []*Board, scoreActions bool) (scores []float3
 		log.Panicf("Prediction failed: %v", err)
 	}
 
-	// Copy over resulting tensors.
+	// Clone over resulting tensors.
 	scores = results[0].Value().([]float32)
 	if len(scores) != len(boards) {
 		log.Panicf("Expected %d scores (=number of boards given), got %d",
