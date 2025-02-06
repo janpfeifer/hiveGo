@@ -7,13 +7,11 @@
 [Hive game](https://en.wikipedia.org/wiki/Hive_(game)), backed by an [AlphaZero](https://en.wikipedia.org/wiki/AlphaZero) 
 based AI.
 
-Started from an [earlier version in Python](https://github.com/makatony/hiveAI), which was a bit slow to generate training 
-data for a Reinforcement Learning AI.
-
 <img align="right" src="images/Ant.png" alt="Ant" width="100px"/>
 
 > [!WARNING]
-> 🚧🛠 Currently broken: this is a 2017/2018 project, that I'm bringing back to life, this time using [GoMLX](github.com/gomlx/gomlx)🚧🛠
+> 🚧🛠 Currently the AI is broken 🚧🛠 <br/>
+> This is a 2017/2018 project built with TensorFlow, that I'm bringing back to life, this time using [GoMLX](github.com/gomlx/gomlx).
 
 ## Command line version
 
@@ -74,9 +72,10 @@ neighbourhood kernel is different depending if one are on odd/even columns.
 
 See experiments in [this colab](https://colab.research.google.com/drive/1r4P5Uc3S5Lw3sznEVMrbF3H9HkskZH6S)
 
-## Note
+## Thanks
 
-Thanks for Florence Poirel for the awesome drawings!
+* Thanks for Florence Poirel for the awesome drawings!
+* The project started from [earlier version in Python](https://github.com/makatony/hiveAI), but it was greatly improved since.
 
 Background pictures:
 * Winning pattern from [pexels.com/light-creative-abstract-colorful-134](https://www.pexels.com/photo/light-creative-abstract-colorful-134/)
