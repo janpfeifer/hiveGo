@@ -1,50 +1,54 @@
 package state
 
 import (
+	"github.com/janpfeifer/hiveGo/internal/generics"
 	"k8s.io/klog/v2"
 	"log"
 	"strings"
 )
 
-// removable returns set of removable, without breaking the hive, pieces.
+// removablePositions returns set of removablePositions, without breaking the hive, pieces.
 //
 // The algorithm first finds out which pieces are in a loop or not, and
 // then makes a final decision on whether they are removable.
-func (b *Board) removable() (removable map[Pos]bool) {
-	return convertToRemovables(b, updateLoopInfo(b))
+//
+// Notice the result of this is stored in Derived.RemovablePositions.
+func (b *Board) removablePositions() generics.Set[Pos] {
+	return loopInfoToRemovablePositions(b, updateLoopInfo(b))
 }
 
-func convertToRemovables(b *Board, loopInfo map[Pos]*rmNode) (removable map[Pos]bool) {
-	removable = make(map[Pos]bool, b.NumPiecesOnBoard())
+func loopInfoToRemovablePositions(b *Board, loopInfo map[Pos]*rmNode) generics.Set[Pos] {
+	removable := generics.MakeSet[Pos](int(b.NumPiecesOnBoard()))
 	for pos, node := range loopInfo {
 		_, _, stacked := b.PieceAt(pos)
 		if stacked || node.IsRemovable() {
-			removable[pos] = true
+			removable.Insert(pos)
 		}
 	}
-	return
+	return removable
 }
 
-// TestRemovable whether the position is removable.
-func (b *Board) TestRemovable(initialPos Pos) (removable map[Pos]bool) {
-	return convertToRemovables(b, updateLoopInfoWithPos(b, initialPos))
+// TestRemovablePositionsForPos is used for testing the Derived.RemovablePositions generating
+// algorithm. Don't call it directly.
+func (b *Board) TestRemovablePositionsForPos(initialPos Pos) generics.Set[Pos] {
+	return loopInfoToRemovablePositions(b, updateLoopInfoWithPos(b, initialPos))
 }
 
-// TestOldRemovable for the older version of removable.
-func (b *Board) TestOldRemovable() (removable map[Pos]bool) {
-	removable = make(map[Pos]bool)
+// OldRemovablePositions for the older version of removablePositions.
+func (b *Board) OldRemovablePositions() generics.Set[Pos] {
+	removable := generics.MakeSet[Pos]()
 	for pos, _ := range b.board {
-		if b.IsRemovable(pos) {
-			removable[pos] = true
+		if b.oldIsRemovable(pos) {
+			removable.Insert(pos)
 		}
 	}
-	return
+	return removable
 }
 
-// rmNode is the removable information: it informs about which neighbors
+// rmNode is the removablePositions information: it informs about which neighbors
 // are connected.
 type rmNode struct {
-	// Neighbours, in order. The first one will be the parent in DFS search.
+	// NeighborsSlice, in order. The first one will be the parent in DFS search.
 	N []Pos
 
 	// Connections. One per neighbour in N. If C[i] != i it means that there
@@ -169,11 +173,11 @@ func (ri *recursiveInfo) popFromStack() {
 
 // updateLoopInfo performs a DFS, updating when it finds loops.
 func updateLoopInfo(b *Board) map[Pos]*rmNode {
-	// Pick any starting position.
-	var pos Pos
-	for pos = range b.board {
-		break
+	if len(b.board) == 0 {
+		return nil
 	}
+	// Pick any starting position.
+	pos := generics.MapAnyKey(b.board)
 	return updateLoopInfoWithPos(b, pos)
 }
 

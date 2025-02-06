@@ -2,6 +2,7 @@ package state_test
 
 import (
 	"fmt"
+	"github.com/janpfeifer/hiveGo/internal/generics"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"log"
 	"reflect"
@@ -97,11 +98,11 @@ func testRemovableAlternatives(t *testing.T, useOld bool) {
 		fmt.Println()
 		printBoard(board)
 		fmt.Println()
-		var removable map[Pos]bool
+		var removable generics.Set[Pos]
 		if useOld {
-			removable = board.TestOldRemovable()
+			removable = board.OldRemovablePositions()
 		} else {
-			removable = board.TestRemovable(start)
+			removable = board.TestRemovablePositionsForPos(start)
 		}
 		if !reflect.DeepEqual(removable, want) {
 			t.Errorf("Removable(%v): wanted=%v, got=%v", useOld, want, removable)
@@ -117,24 +118,24 @@ func TestOldRemovable(t *testing.T) {
 	testRemovableAlternatives(t, true)
 }
 
-func BenchmarkRemovable(b *testing.B) {
+func BenchmarkRemovablePositions(b *testing.B) {
 	board, _, start := convertTextToBoard(benchmarkBoardText)
-	fmt.Println()
-	printBoard(board)
-	fmt.Println()
+	//fmt.Println()
+	//printBoard(board)
+	//fmt.Println()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = board.TestRemovable(start)
+		_ = board.TestRemovablePositionsForPos(start)
 	}
 }
 
-func BenchmarkOldRemovable(b *testing.B) {
+func BenchmarkOldRemovablePositions(b *testing.B) {
 	board, _, _ := convertTextToBoard(benchmarkBoardText)
-	fmt.Println()
-	printBoard(board)
-	fmt.Println()
+	//fmt.Println()
+	//printBoard(board)
+	//fmt.Println()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = board.TestOldRemovable()
+		_ = board.OldRemovablePositions()
 	}
 }

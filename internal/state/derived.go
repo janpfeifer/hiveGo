@@ -7,6 +7,7 @@ package state
 
 import (
 	"fmt"
+	"github.com/janpfeifer/hiveGo/internal/generics"
 	"log"
 	"math/rand"
 )
@@ -42,8 +43,8 @@ type Derived struct {
 	Singles             [NumPlayers]uint8 // Count pieces that are at the tip (only one neighbour)
 
 	// Pieces that can be removed without breaking the hive.
-	RemovablePieces map[Pos]bool
-	PlayersActions  [NumPlayers][]Action
+	RemovablePositions generics.Set[Pos]
+	PlayersActions     [NumPlayers][]Action
 
 	// Actions of the next player to move (shortcut to PlayersActions[NextPlayer]).
 	Actions []Action
@@ -79,7 +80,7 @@ func (a Action) String() string {
 	}
 }
 
-// Comparison of values.
+// Equal compares whether two actions are the same.
 func (a Action) Equal(a2 Action) bool {
 	if a.Piece != a2.Piece {
 		return false
@@ -120,7 +121,7 @@ func (b *Board) BuildDerived() {
 		derived.PlacementPositions[p] = b.placementPositions(p)
 	}
 
-	derived.RemovablePieces = b.removable()
+	derived.RemovablePositions = b.removablePositions()
 	for p := uint8(0); p < NumPlayers; p++ {
 		derived.PlayersActions[p] = b.ValidActions(p)
 		shuffleActions(derived.PlayersActions[p])
@@ -180,7 +181,7 @@ func (b *Board) placementPositions(player uint8) (placements map[Pos]bool) {
 		return
 	}
 	if len(b.board) == 1 && b.CountAt(Pos{0, 0}) == 1 {
-		for _, pos := range (Pos{0, 0}.Neighbours()) {
+		for _, pos := range (Pos{0, 0}.NeighborsSlice()) {
 			placements[pos] = true
 		}
 		return
@@ -227,14 +228,14 @@ func (b *Board) addPlacementActions(player uint8, actions []Action) []Action {
 	return actions
 }
 
-// IsRemovable determines whether a piece on specified position is
-// removable without splitting the hive.
+// oldIsRemovable determines whether a piece on specified position is
+// removablePositions without splitting the hive.
 //
-// Deprecated, use Derived.RemovablePieces instead, which is much faster.
-func (b *Board) IsRemovable(pos Pos) bool {
+// Deprecated, use Derived.RemovablePositions instead, which is much faster.
+func (b *Board) oldIsRemovable(pos Pos) bool {
 	_, _, stacked := b.PieceAt(pos)
 	if stacked {
-		// If there is a piece underneath, the top piece is always removable.
+		// If there is a piece underneath, the top piece is always removablePositions.
 		return true
 	}
 
@@ -252,8 +253,8 @@ func (b *Board) IsRemovable(pos Pos) bool {
 	}
 
 	// Do a DFS from one neighbor and make sure to reach the other ones. This is O(N), and since
-	// IsRemovable is called for every position, overal it is a O(N^2) algorithm. Maybe there
-	// is a better way to do this, leveraging the result of IsRemovable of other nodes ?
+	// oldIsRemovable is called for every position, overal it is a O(N^2) algorithm. Maybe there
+	// is a better way to do this, leveraging the result of oldIsRemovable of other nodes ?
 	start := neighbours[0]
 	visitedMap := map[Pos]bool{pos: true}
 	mustFind := make(map[Pos]bool)
@@ -306,8 +307,8 @@ func (b *Board) addMoveActions(player uint8, actions []Action) []Action {
 			// We are only interested in the current player.
 			continue
 		}
-		if !d.RemovablePieces[srcPos] {
-			// Skip pieces that if removed would break the hive.
+		if !d.RemovablePositions.Has(srcPos) {
+			// Skip pieces that if removal would break the hive.
 			continue
 		}
 

@@ -200,7 +200,7 @@ func stackFeatures(b *Board, pos Pos, stack EncodedStack) (f []float32) {
 		f[POS_FEATURE_STACK_BOTTOM_PIECE_ONE_HOT+int(piece-1)] = 1
 
 		// Is piece removable?
-		if b.Derived.RemovablePieces[pos] {
+		if b.Derived.RemovablePositions[pos] {
 			f[POS_FEATURE_IS_PIECE_REMOVABLE] = 1.0
 		}
 	}

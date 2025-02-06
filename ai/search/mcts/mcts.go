@@ -1,6 +1,6 @@
 package mcts
 
-// Monte Carlo Tree Search implementation for Alpha-Zero algorith. A very good description
+// Monte Carlo Tree Search implementation for Alpha-Zero algorith. First very good description
 // in a post from Surag Nair, in https://web.stanford.edu/~surag/posts/alphazero.html
 
 import (

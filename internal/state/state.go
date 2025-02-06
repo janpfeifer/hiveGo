@@ -3,6 +3,7 @@ package state
 import (
 	"encoding/gob"
 	"fmt"
+	"iter"
 	"k8s.io/klog/v2"
 	"maps"
 	"sort"
@@ -400,14 +401,32 @@ func (b *Board) OccupiedPositions() (poss []Pos) {
 	return poss
 }
 
-// Neighbours returns the 6 neighbour positions of the reference position. It
+var neighborRelPositions = [6]Pos{{0, -1}, {1, -1}, {1, 0}, {0, 1}, {-1, 1}, {-1, 0}}
+
+// Neighbors iterates over the 6 neighbor positions of the reference position.
+//
+// The iteration is properly ordered to match the direction.
+//
+// Also, the neighbors are listed in a clockwise manner.
+func (pos Pos) Neighbors() iter.Seq[Pos] {
+	return func(yield func(Pos) bool) {
+		x, y := pos[0], pos[1]
+		for _, relPos := range neighborRelPositions {
+			if !yield(Pos{x + relPos[0], y + relPos[1]}) {
+				return
+			}
+		}
+	}
+}
+
+// NeighborsSlice returns the 6 neighbour positions of the reference position. It
 // returns a newly allocated slice.
 //
-// The list is properly ordered to match the direction. So if one takes Neighbours()[2] multiple
+// The list is properly ordered to match the direction. So if one takes NeighborsSlice()[2] multiple
 // times, one would move in straight line in the map.
 //
 // Also the neighbours are listed in a clockwise manner.
-func (pos Pos) Neighbours() []Pos {
+func (pos Pos) NeighborsSlice() []Pos {
 	x, y := pos[0], pos[1]
 	return []Pos{
 		{x, y - 1}, {x + 1, y - 1}, {x + 1, y},
@@ -443,20 +462,20 @@ func FilterPositions(positions []Pos, filter func(pos Pos) bool) (filtered []Pos
 
 // OccupiedNeighbours will return the slice of positions with occupied neighbours.
 func (b *Board) OccupiedNeighbours(pos Pos) (poss []Pos) {
-	poss = pos.Neighbours()
+	poss = pos.NeighborsSlice()
 	poss = FilterPositions(poss, func(p Pos) bool { return b.HasPiece(p) })
 	return
 }
 
 // EmptyNeighbours will return the slice of positions with empty neighbours.
 func (b *Board) EmptyNeighbours(pos Pos) (poss []Pos) {
-	poss = pos.Neighbours()
+	poss = pos.NeighborsSlice()
 	poss = FilterPositions(poss, func(p Pos) bool { return !b.HasPiece(p) })
 	return
 }
 
 func (b *Board) PlayerNeighbours(player uint8, pos Pos) (poss []Pos) {
-	poss = pos.Neighbours()
+	poss = pos.NeighborsSlice()
 	poss = FilterPositions(poss, func(p Pos) bool {
 		posPlayer, piece, _ := b.PieceAt(p)
 		return piece != NoPiece && player == posPlayer
