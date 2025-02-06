@@ -1,8 +1,7 @@
 package main
 
 import (
-	"maps"
-	"slices"
+	"github.com/janpfeifer/hiveGo/internal/generics"
 )
 
 // MaxMovingAverageWeight carried over from past examples.
@@ -111,10 +110,7 @@ func WinsMovingAverage(matchResults <-chan IndexedMatchResult, statsChan chan<- 
 
 // flushPending results from a sequence in order, even if not all results are in.
 func flushPending(count int, stats MovingAverages, pending map[int]MatchResult, statsChan chan<- MovingAverages) int {
-	sortedKeys := slices.Collect(maps.Keys(pending))
-	slices.Sort(sortedKeys)
-	for _, key := range sortedKeys {
-		result := pending[key]
+	for _, result := range generics.SortedKeysAndValues(pending) {
 		count++
 		stats.addResult(result, count)
 		statsChan <- stats

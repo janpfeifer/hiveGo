@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"k8s.io/klog/v2"
-	"log"
 	"os"
 	"regexp"
 	"strconv"

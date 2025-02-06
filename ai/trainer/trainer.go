@@ -5,7 +5,6 @@ import (
 	"math"
 	"sync"
 
-	"github.com/golang/klog.
 	"github.com/janpfeifer/hiveGo/ai"
 )
 

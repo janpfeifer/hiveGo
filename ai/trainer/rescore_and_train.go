@@ -81,7 +81,7 @@ func rescoreMatchActions(matches []*Match, maInput <-chan MatchAction, maOutput 
 		newScores, actionsLabels := players[0].Searcher.ScoreMatch(
 			match.Boards[from], match.Actions[from:to])
 
-		// Copy over new scores and labels for the particular action on the match.
+		// Clone over new scores and labels for the particular action on the match.
 		match.mu.Lock()
 		if match.Scores == nil {
 			match.Scores = make([]float32, len(match.Boards))
