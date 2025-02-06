@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	. "github.com/janpfeifer/hiveGo/internal/state"
+	"github.com/stretchr/testify/require"
 	"log"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -55,14 +55,14 @@ R.........
 `
 )
 
-func convertTextToBoard(txt string) (b *Board, removable map[Pos]bool, start Pos) {
+func convertTextToBoard(txt string) (b *Board, removable generics.Set[Pos]) {
 	lines := strings.Split(txt, "\n")
 	if lines[0] == "" {
 		lines = lines[1:]
 	}
 
 	b = NewBoard()
-	removable = make(map[Pos]bool, len(lines))
+	removable = generics.MakeSet[Pos]()
 
 	for row, line := range lines {
 		for col, code := range line {
@@ -75,11 +75,10 @@ func convertTextToBoard(txt string) (b *Board, removable map[Pos]bool, start Pos
 			x := col
 			y := row>>1 - x>>1
 			pos := Pos{int8(col), int8(y)}
-			start = pos
 
 			b.StackPiece(pos, 0, ANT)
 			if code == 'R' {
-				removable[pos] = true
+				removable.Insert(pos)
 			} else if code != 'N' {
 				log.Panicf("Board at row %d, col %d unexpected code '%c'.\n%s", row, col, code, txt)
 			}
@@ -90,52 +89,36 @@ func convertTextToBoard(txt string) (b *Board, removable map[Pos]bool, start Pos
 	return
 }
 
-func testRemovableAlternatives(t *testing.T, useOld bool) {
-	for _, txt := range testBoards {
-		board, want, start := convertTextToBoard(txt)
-		fmt.Println()
-		fmt.Println(txt)
-		fmt.Println()
+// testRemovableAlternatives was created for testing different variations of the algorithm.
+// We left only the fastest, but this function is left here as is if one day one tries
+// a different one.
+func testRemovableAlternatives(t *testing.T, version int) {
+	fmt.Printf("Testing removable version %d:\n", version)
+	for boardIdx, txt := range testBoards {
+		board, want := convertTextToBoard(txt)
+		fmt.Printf("> Board #%d:\n%s\n\n", boardIdx, txt)
 		printBoard(board)
-		fmt.Println()
-		var removable generics.Set[Pos]
-		if useOld {
-			removable = board.OldRemovablePositions()
-		} else {
-			removable = board.TestRemovablePositionsForPos(start)
-		}
-		if !reflect.DeepEqual(removable, want) {
-			t.Errorf("Removable(%v): wanted=%v, got=%v", useOld, want, removable)
+		startIdx := 0
+		for start := range board.OccupiedPositionsIter() {
+			var removable generics.Set[Pos]
+			switch version {
+			case 0:
+				removable = board.RemovablePositions(start)
+			}
+			require.Truef(t, want.Equal(removable), "Removable(version=%d, start#%d=%s):\n\twant=%v\n\t got=%v", version, startIdx, start, want, removable)
+			startIdx++
 		}
 	}
 }
 
 func TestRemovable(t *testing.T) {
-	testRemovableAlternatives(t, false)
-}
-
-func TestOldRemovable(t *testing.T) {
-	testRemovableAlternatives(t, true)
+	testRemovableAlternatives(t, 0)
 }
 
 func BenchmarkRemovablePositions(b *testing.B) {
-	board, _, start := convertTextToBoard(benchmarkBoardText)
-	//fmt.Println()
-	//printBoard(board)
-	//fmt.Println()
+	board, _ := convertTextToBoard(benchmarkBoardText)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = board.TestRemovablePositionsForPos(start)
-	}
-}
-
-func BenchmarkOldRemovablePositions(b *testing.B) {
-	board, _, _ := convertTextToBoard(benchmarkBoardText)
-	//fmt.Println()
-	//printBoard(board)
-	//fmt.Println()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = board.OldRemovablePositions()
+		_ = board.RemovablePositions()
 	}
 }

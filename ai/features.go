@@ -249,7 +249,7 @@ func fNumThreateningMoves(b *Board, def *FeatureDef, f []float32) {
 	}
 
 	// Add
-	freeOppQueenNeighbors := b.Derived.QueenPos[opponent].NeighborsSlice()
+	freeOppQueenNeighbors := b.Derived.QueenPos[opponent].Neighbours()
 	usedPieces := make(map[Pos]bool)
 	usedPositions := make([]Pos, 0, len(freeOppQueenNeighbors))
 	canPlaceAroundQueen := false

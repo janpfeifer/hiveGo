@@ -17,13 +17,13 @@ var _ = fmt.Printf
 //	originalPos: where the piece is going to leave from: this is equal to
 //	  srcPos for the first step of a piece, and then something different
 //	  later on. Presumably will be empty and therefore can't be considered as
-//	  an occupied neighboor.
+//	  an occupied neighbour.
 //	invalid: Set of positions not to consider, since they were already visited.
 func (b *Board) EmptyAndConnectedNeighbours(srcPos, originalPos Pos, invalid map[Pos]bool) (poss []Pos) {
 	poss = make([]Pos, 0, NumNeighbors)
 
 	// Initialize neighbours and occupied predicate (assuming the piece will leave originalPos).
-	neighbours := srcPos.NeighborsSlice()
+	neighbours := srcPos.Neighbours()
 	occupied := make([]bool, NumNeighbors)
 	for ii := 0; ii < NumNeighbors; ii++ {
 		occupied[ii] = b.HasPiece(neighbours[ii]) && neighbours[ii] != originalPos
@@ -109,7 +109,7 @@ func (b *Board) grasshopperMoves(srcPos Pos) (poss []Pos) {
 
 func (b *Board) grasshopperNextFree(srcPos Pos, direction int) (steps int, tgtPos Pos) {
 	steps = 0
-	for tgtPos = srcPos; b.HasPiece(tgtPos); tgtPos = tgtPos.NeighborsSlice()[direction] {
+	for tgtPos = srcPos; b.HasPiece(tgtPos); tgtPos = tgtPos.Neighbours()[direction] {
 		steps++
 	}
 	return
@@ -146,7 +146,7 @@ func (b *Board) antMoves(srcPos Pos) (poss []Pos) {
 func (b *Board) beetleMoves(srcPos Pos) (poss []Pos) {
 	// If on top of a piece, it can move anywhere.
 	if _, _, stacked := b.PieceAt(srcPos); stacked {
-		return srcPos.NeighborsSlice()
+		return srcPos.Neighbours()
 	}
 
 	// It can move onto any other piece.

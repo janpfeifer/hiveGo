@@ -3,6 +3,7 @@ package state
 import (
 	"encoding/gob"
 	"fmt"
+	"github.com/janpfeifer/hiveGo/internal/generics"
 	"iter"
 	"k8s.io/klog/v2"
 	"maps"
@@ -393,22 +394,23 @@ func (b *Board) DisplayUsedLimits() (minX, maxX, minY, maxY int8) {
 }
 
 // OccupiedPositions returns all the positions used.
-func (b *Board) OccupiedPositions() (poss []Pos) {
-	poss = make([]Pos, 0, len(b.board))
-	for pos := range b.board {
-		poss = append(poss, pos)
-	}
-	return poss
+func (b *Board) OccupiedPositions() []Pos {
+	return generics.KeysSlice(b.board)
+}
+
+// OccupiedPositionsIter iterates over all positions used.
+func (b *Board) OccupiedPositionsIter() iter.Seq[Pos] {
+	return maps.Keys(b.board)
 }
 
 var neighborRelPositions = [6]Pos{{0, -1}, {1, -1}, {1, 0}, {0, 1}, {-1, 1}, {-1, 0}}
 
-// Neighbors iterates over the 6 neighbor positions of the reference position.
+// NeighboursIter iterates over the 6 neighbor positions of the reference position.
 //
 // The iteration is properly ordered to match the direction.
 //
 // Also, the neighbors are listed in a clockwise manner.
-func (pos Pos) Neighbors() iter.Seq[Pos] {
+func (pos Pos) NeighboursIter() iter.Seq[Pos] {
 	return func(yield func(Pos) bool) {
 		x, y := pos[0], pos[1]
 		for _, relPos := range neighborRelPositions {
@@ -419,14 +421,14 @@ func (pos Pos) Neighbors() iter.Seq[Pos] {
 	}
 }
 
-// NeighborsSlice returns the 6 neighbour positions of the reference position. It
+// Neighbours returns the 6 neighbour positions of the reference position. It
 // returns a newly allocated slice.
 //
-// The list is properly ordered to match the direction. So if one takes NeighborsSlice()[2] multiple
+// The list is properly ordered to match the direction. So if one takes Neighbours()[2] multiple
 // times, one would move in straight line in the map.
 //
 // Also the neighbours are listed in a clockwise manner.
-func (pos Pos) NeighborsSlice() []Pos {
+func (pos Pos) Neighbours() []Pos {
 	x, y := pos[0], pos[1]
 	return []Pos{
 		{x, y - 1}, {x + 1, y - 1}, {x + 1, y},
@@ -444,13 +446,36 @@ func (pos Pos) NeighborsSlice() []Pos {
 	// }
 }
 
-// FilterPositions filters the given positions according to the given filter.
+// genericsIterFilter returns an iterators that only iterates over the values for which
+// the filterFn returns true.
+func genericsIterFilter[V any](seq iter.Seq[V], filterFn func(v V) bool) iter.Seq[V] {
+	return func(yield func(V) bool) {
+		for v := range seq {
+			if filterFn(v) {
+				if !yield(v) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// genericsIterLen returns the length of the iterator by iterating over it.
+func genericsIterLen[V any](seq iter.Seq[V]) int {
+	count := 0
+	for range seq {
+		count++
+	}
+	return count
+}
+
+// FilterPositionSlices filters the given positions according to the given filter.
 // It destroys the contents of the provided slice and reuses the allocated space
 // for the returned slice.
 //
-// FilterPositions will preserve the elements that `filter(pos)` returns true,
+// FilterPositionSlices will preserve the elements that `filter(pos)` returns true,
 // and discard the ones it returns false.
-func FilterPositions(positions []Pos, filter func(pos Pos) bool) (filtered []Pos) {
+func FilterPositionSlices(positions []Pos, filter func(pos Pos) bool) (filtered []Pos) {
 	filtered = positions[:0]
 	for _, pos := range positions {
 		if filter(pos) {
@@ -460,23 +485,28 @@ func FilterPositions(positions []Pos, filter func(pos Pos) bool) (filtered []Pos
 	return
 }
 
-// OccupiedNeighbours will return the slice of positions with occupied neighbours.
-func (b *Board) OccupiedNeighbours(pos Pos) (poss []Pos) {
-	poss = pos.NeighborsSlice()
-	poss = FilterPositions(poss, func(p Pos) bool { return b.HasPiece(p) })
+// OccupiedNeighbours returns the slice of positions with occupied neighbours.
+func (b *Board) OccupiedNeighbours(pos Pos) (positions []Pos) {
+	positions = pos.Neighbours()
+	positions = FilterPositionSlices(positions, func(p Pos) bool { return b.HasPiece(p) })
 	return
+}
+
+// OccupiedNeighboursIter iterate over the occupied neighbours.
+func (b *Board) OccupiedNeighboursIter(pos Pos) iter.Seq[Pos] {
+	return genericsIterFilter(pos.NeighboursIter(), func(p Pos) bool { return b.HasPiece(p) })
 }
 
 // EmptyNeighbours will return the slice of positions with empty neighbours.
 func (b *Board) EmptyNeighbours(pos Pos) (poss []Pos) {
-	poss = pos.NeighborsSlice()
-	poss = FilterPositions(poss, func(p Pos) bool { return !b.HasPiece(p) })
+	poss = pos.Neighbours()
+	poss = FilterPositionSlices(poss, func(p Pos) bool { return !b.HasPiece(p) })
 	return
 }
 
 func (b *Board) PlayerNeighbours(player uint8, pos Pos) (poss []Pos) {
-	poss = pos.NeighborsSlice()
-	poss = FilterPositions(poss, func(p Pos) bool {
+	poss = pos.Neighbours()
+	poss = FilterPositionSlices(poss, func(p Pos) bool {
 		posPlayer, piece, _ := b.PieceAt(p)
 		return piece != NoPiece && player == posPlayer
 	})

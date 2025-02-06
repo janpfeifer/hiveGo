@@ -121,7 +121,7 @@ func (b *Board) BuildDerived() {
 		derived.PlacementPositions[p] = b.placementPositions(p)
 	}
 
-	derived.RemovablePositions = b.removablePositions()
+	derived.RemovablePositions = b.RemovablePositions()
 	for p := uint8(0); p < NumPlayers; p++ {
 		derived.PlayersActions[p] = b.ValidActions(p)
 		shuffleActions(derived.PlayersActions[p])
@@ -181,7 +181,7 @@ func (b *Board) placementPositions(player uint8) (placements map[Pos]bool) {
 		return
 	}
 	if len(b.board) == 1 && b.CountAt(Pos{0, 0}) == 1 {
-		for _, pos := range (Pos{0, 0}.NeighborsSlice()) {
+		for _, pos := range (Pos{0, 0}.Neighbours()) {
 			placements[pos] = true
 		}
 		return

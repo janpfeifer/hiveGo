@@ -2,264 +2,136 @@ package state
 
 import (
 	"github.com/janpfeifer/hiveGo/internal/generics"
-	"k8s.io/klog/v2"
-	"log"
-	"strings"
 )
 
-// removablePositions returns set of removablePositions, without breaking the hive, pieces.
+// findArticulationPointsState stores the information of the graph used by the method FindArticulationPoints.
 //
-// The algorithm first finds out which pieces are in a loop or not, and
-// then makes a final decision on whether they are removable.
-//
-// Notice the result of this is stored in Derived.RemovablePositions.
-func (b *Board) removablePositions() generics.Set[Pos] {
-	return loopInfoToRemovablePositions(b, updateLoopInfo(b))
+// Except for findArticulationPointsState.positions, everything else is seen in terms of a graph.
+type findArticulationPointsState struct {
+	numVertices    uint8
+	isArticulation []bool
+	allEdgesTarget []uint8
+	edgesPerNode   [][2]uint8 // Shaped [node, 2], it holds the start and end indices into allEdgesTarget for each node.
+	tIn, tLow      []uint8
 }
 
-func loopInfoToRemovablePositions(b *Board, loopInfo map[Pos]*rmNode) generics.Set[Pos] {
+// RemovablePositions returns set of removablePositions, without breaking the hive, pieces.
+//
+// Notice the result of this is stored in Derived.RemovablePositions, and it shouldn't be called directly, except
+// for testing or benchmarking.
+//
+// It uses the popular linear algorithm to find the articulation points in a graph.
+//
+// Root is optional, and if given, it will start the DFS from the root.
+func (b *Board) RemovablePositions(rootPos ...Pos) generics.Set[Pos] {
+	if len(b.board) <= 1 {
+		return nil
+	}
+	ap := &findArticulationPointsState{
+		numVertices:    uint8(b.NumPiecesOnBoard()),
+		allEdgesTarget: make([]uint8, 0, NumNeighbors*b.NumPiecesOnBoard()),
+		edgesPerNode:   make([][2]uint8, b.NumPiecesOnBoard()),
+	}
+
+	// Enumerate positions and create a reverse map.
+	positions := generics.KeysSlice(b.board)
+	posToNodeIdx := make(map[Pos]uint8, len(positions))
+	for nodeIdx, pos := range positions {
+		//fmt.Printf("#%d: pos=%s\n", nodeIdx, pos)
+		posToNodeIdx[pos] = uint8(nodeIdx)
+	}
+	var root uint8 // Default to 0
+	if len(rootPos) > 0 {
+		if nodeIdx, found := posToNodeIdx[rootPos[0]]; found {
+			root = nodeIdx
+		}
+	}
+
+	// Build edges.
+	for nodeIdx, pos := range positions {
+		ap.edgesPerNode[nodeIdx][0] = uint8(len(ap.allEdgesTarget))
+		for neighbour := range b.OccupiedNeighboursIter(pos) {
+			if toNodeIdx, found := posToNodeIdx[neighbour]; found {
+				ap.allEdgesTarget = append(ap.allEdgesTarget, uint8(toNodeIdx))
+			}
+		}
+		ap.edgesPerNode[nodeIdx][1] = uint8(len(ap.allEdgesTarget))
+	}
+
+	// Find articulation nodes.
+	ap.FindArticulationPoints(root)
+
+	// Enumerate non-articulate points as removable.
 	removable := generics.MakeSet[Pos](int(b.NumPiecesOnBoard()))
-	for pos, node := range loopInfo {
-		_, _, stacked := b.PieceAt(pos)
-		if stacked || node.IsRemovable() {
-			removable.Insert(pos)
+	for nodeIdx, isAritculation := range ap.isArticulation {
+		if !isAritculation {
+			removable.Insert(positions[nodeIdx])
 		}
 	}
 	return removable
 }
 
-// TestRemovablePositionsForPos is used for testing the Derived.RemovablePositions generating
-// algorithm. Don't call it directly.
-func (b *Board) TestRemovablePositionsForPos(initialPos Pos) generics.Set[Pos] {
-	return loopInfoToRemovablePositions(b, updateLoopInfoWithPos(b, initialPos))
-}
-
-// OldRemovablePositions for the older version of removablePositions.
-func (b *Board) OldRemovablePositions() generics.Set[Pos] {
-	removable := generics.MakeSet[Pos]()
-	for pos, _ := range b.board {
-		if b.oldIsRemovable(pos) {
-			removable.Insert(pos)
-		}
+// FindArticulationPoints O(N+M), N = #nodes, M = #edges,
+// see description in https://cp-algorithms.com/graph/cutpoints.html
+//
+// It works by doing DFS and monitoring the "time of entry into node", let's call it t, and it is incremented
+// as each node is visited.
+//
+// For each node we keep track of tIn -> time that node was visited, and tLow the time of the node with the lowest
+// looping connection -- or itself, if it hasn't found a loop-back.
+func (ap *findArticulationPointsState) FindArticulationPoints(root uint8) {
+	if ap.numVertices == 0 {
+		return
 	}
-	return removable
-}
-
-// rmNode is the removablePositions information: it informs about which neighbors
-// are connected.
-type rmNode struct {
-	// NeighborsSlice, in order. The first one will be the parent in DFS search.
-	N []Pos
-
-	// Connections. One per neighbour in N. If C[i] != i it means that there
-	// is a connecting loop using neighbors N[i] and N[C[i]]. If a neighbour
-	// is connected to more than one N, it points to the lowest i (including
-	// itself).
-	C []int8
-}
-
-// newRmNode creates a new rmNode with the neighbours properly
-// set up. And if from is one of the neighbours, it will be in
-// position 0.
-func newRmNode(b *Board, pos, from Pos) *rmNode {
-	node := &rmNode{
-		N: b.OccupiedNeighbours(pos),
-	}
-	i := node.FindN(from)
-	if i > 0 {
-		node.N[0], node.N[i] = node.N[i], node.N[0]
-	}
-	node.C = make([]int8, len(node.N))
-	for iC := range node.C {
-		// Initially each neighbour is only connected to itself.
-		node.C[iC] = int8(iC)
-	}
-	return node
-}
-
-func (node *rmNode) FindN(n Pos) int8 {
-	for ii, n2 := range node.N {
-		if n2 == n {
-			return int8(ii)
-		}
-	}
-	return -1
-}
-
-func (node *rmNode) IsRemovable() bool {
-	for _, c := range node.C {
-		if c != 0 {
-			return false
-		}
-	}
-	return true
-}
-
-func (node *rmNode) ConnectN(n1, n2 Pos) {
-	i1 := node.FindN(n1)
-	if i1 < 0 {
-		log.Panicf("Position %s is not a neighbour.", n1)
-	}
-	i2 := node.FindN(n2)
-	if i2 < 0 {
-		log.Panicf("Position %s is not a neighbour.", n2)
-	}
-	node.ConnectIdx(i1, i2)
-}
-
-func (node *rmNode) ConnectIdx(i1, i2 int8) {
-	if node.C[i1] == node.C[i2] {
-		// They are already connected.
+	if ap.numVertices == 1 {
+		ap.isArticulation[0] = true
 		return
 	}
 
-	// Find lowest target.
-	lowest := i1
-	if i2 < lowest {
-		lowest = i2
-	}
-	iC1 := node.C[i1]
-	iC2 := node.C[i2]
-	if iC1 < lowest {
-		lowest = iC1
-	}
-	if iC2 < lowest {
-		lowest = iC2
-	}
+	// state of the algorithm:
+	ap.tIn = make([]uint8, ap.numVertices)
+	ap.tLow = make([]uint8, ap.numVertices)
+	ap.isArticulation = make([]bool, ap.numVertices)
 
-	// Convert all those connected to i1 and i2 to the lowest.
-	for i, iC := range node.C {
-		if iC == iC1 || iC == iC2 {
-			node.C[i] = lowest
+	// DFS starting from root: the root visit is different than the rest, so we do it here.
+	t := uint8(1)
+	ap.tIn[root] = 1
+	ap.tLow[root] = 1
+	t++
+	dfsChildren := 0
+	for _, neighbour := range ap.allEdgesTarget[ap.edgesPerNode[root][0]:ap.edgesPerNode[root][1]] {
+		if ap.tIn[neighbour] != 0 {
+			continue
+		}
+		dfsChildren++
+		t = ap.dfsVisit(root, neighbour, t)
+	}
+	// The root is an articulation point if it had to traverse through more than one neighbour on the DFS.
+	// If it were not an articulation point, all nodes would have been reached from the first descendant.
+	ap.isArticulation[root] = dfsChildren > 1
+}
+
+// dfsVisit returns the update time t.
+func (ap *findArticulationPointsState) dfsVisit(from, to, t uint8) uint8 {
+	ap.tIn[to] = t
+	ap.tLow[to] = t
+	ap.isArticulation[to] = false
+	t++
+	for _, neighbour := range ap.allEdgesTarget[ap.edgesPerNode[to][0]:ap.edgesPerNode[to][1]] {
+		if neighbour == from {
+			continue
+		}
+		if ap.tIn[neighbour] != 0 {
+			// "Back-edge", an edge to node already visited: we take this into account to our tLow.
+			ap.tLow[to] = min(ap.tLow[to], ap.tIn[neighbour])
+			continue
+		}
+		t = ap.dfsVisit(to, neighbour, t)
+		ap.tLow[to] = min(ap.tLow[to], ap.tLow[neighbour])
+		if ap.tLow[neighbour] >= ap.tIn[to] {
+			ap.isArticulation[to] = true
 		}
 	}
-}
-
-type recursiveInfo struct {
-	b        *Board
-	stack    []Pos
-	stackMap map[Pos]int
-
-	// stackConnect has a pointer to the higher position
-	// in the stack at which the positions nieghbours have
-	// been connected already. It's an optimization
-	// to accelerate climbing the stack in cases loops
-	// have already been registered.
-	stackConnect []int
-
-	loopInfo map[Pos]*rmNode
-}
-
-// Push position to stack.
-func (ri *recursiveInfo) pushToStack(pos Pos) {
-	ri.stackMap[pos] = len(ri.stack)
-	ri.stackConnect = append(ri.stackConnect, len(ri.stack))
-	ri.stack = append(ri.stack, pos)
-}
-
-// Pop position from stack.
-func (ri *recursiveInfo) popFromStack() {
-	pos := ri.stack[len(ri.stack)-1]
-	ri.stack = ri.stack[0 : len(ri.stack)-1]
-	delete(ri.stackMap, pos)
-	ri.stackConnect = ri.stackConnect[0 : len(ri.stackConnect)-1]
-
-	// Since the top of the stack will look into a new neighbour, it
-	// should indicate that it hasn't been connected yet.
-	if len(ri.stackConnect) > 0 {
-		ri.stackConnect[len(ri.stackConnect)-1] = len(ri.stackConnect) - 1
-	}
-}
-
-// updateLoopInfo performs a DFS, updating when it finds loops.
-func updateLoopInfo(b *Board) map[Pos]*rmNode {
-	if len(b.board) == 0 {
-		return nil
-	}
-	// Pick any starting position.
-	pos := generics.MapAnyKey(b.board)
-	return updateLoopInfoWithPos(b, pos)
-}
-
-func updateLoopInfoWithPos(b *Board, pos Pos) map[Pos]*rmNode {
-	ri := &recursiveInfo{
-		b:            b,
-		stack:        make([]Pos, 0, b.NumPiecesOnBoard()),
-		stackMap:     make(map[Pos]int, b.NumPiecesOnBoard()),
-		stackConnect: make([]int, 0, b.NumPiecesOnBoard()),
-		loopInfo:     make(map[Pos]*rmNode, b.NumPiecesOnBoard()),
-	}
-
-	recursivelyUpdateLoopInfo(ri, pos, pos)
-	return ri.loopInfo
-}
-
-func recursivelyUpdateLoopInfo(ri *recursiveInfo, pos, from Pos) {
-	klog.V(2).Infof("Visiting %s (from %s)", pos, from)
-	node := newRmNode(ri.b, pos, from)
-	ri.loopInfo[pos] = node
-	ri.pushToStack(pos)
-	first := 1 // Skip the "from" node.
-	if from == pos {
-		first = 0
-	}
-	for ii := first; ii < len(node.N); ii++ {
-		neighbour := node.N[ii]
-		if loopNode, visited := ri.loopInfo[neighbour]; visited {
-			stackStart, isInStack := ri.stackMap[neighbour]
-			if !isInStack {
-				// If neighbour is not in stack, it has already been visited and
-				// accounted for (because it was reached by the other end)
-				klog.V(2).Infof("  Skipping visit to %s, already visited", neighbour)
-				continue
-			}
-
-			// Connect node for pos back to ancestor in stack.
-			node.ConnectIdx(0, int8(ii))
-
-			// Connect everyone in path in stack.
-			// TODO: keep tabs of connections already made and jump them.
-			for stackIdx := len(ri.stack) - 2; stackIdx > stackStart; stackIdx-- {
-				if ri.stackConnect[stackIdx] < stackIdx {
-					// Skip directly to position already connected.
-					stackIdx = ri.stackConnect[stackIdx] + 1
-					if stackStart < ri.stackConnect[stackIdx] {
-						// Register the new stack position up to which all will be connected.
-						ri.stackConnect[stackIdx] = stackStart
-					}
-					continue
-				}
-
-				// Connects neighbour coming from the top of the stak to the neighbour coming
-				// from the bottom of the stack.
-				stackPos := ri.stack[stackIdx]
-				stackNode := ri.loopInfo[stackPos]
-				stackNode.ConnectN(ri.stack[stackIdx-1], ri.stack[stackIdx+1])
-
-				// Register the stack position up to which all will be connected.
-				ri.stackConnect[stackIdx] = stackStart
-			}
-
-			// Looping point in stack.
-			loopNode.ConnectN(ri.stack[stackStart+1], pos)
-
-			// Debug.
-			if klog.V(2).Enabled() {
-				var loop []Pos
-				loop = append(loop, pos)
-				for stackIdx := len(ri.stack) - 2; stackIdx > stackStart; stackIdx-- {
-					stackPos := ri.stack[stackIdx]
-					loop = append(loop, stackPos)
-				}
-				loop = append(loop, neighbour)
-				klog.V(2).Infof("  Loop found: %s", strings.Join(PosStrings(loop), ", "))
-			}
-
-		} else {
-			recursivelyUpdateLoopInfo(ri, neighbour, pos)
-		}
-	}
-
-	klog.V(2).Infof("  Popping back to %s", from)
-	ri.popFromStack()
+	//fmt.Printf("\t#%d: tIn=%d, tLow=%d, isArticulation=%v\n", to, ap.tIn[to], ap.tLow[to], ap.isArticulation[to])
+	return t
 }

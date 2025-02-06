@@ -17,11 +17,20 @@ func SliceMap[In, Out any](in []In, fn func(e In) Out) (out []Out) {
 	return
 }
 
+// KeysSlice returns a slice with the keys of a map.
+func KeysSlice[Map interface{ ~map[K]V }, K comparable, V any](m Map) []K {
+	keys := make([]K, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 // SortedKeys returns an iterator over the sorted keys of the given map.
 //
 // It extracts the keys, sort them and then iterate over, so it's convenient but not fast.
 func SortedKeys[M interface{ ~map[K]V }, K cmp.Ordered, V any](m M) iter.Seq[K] {
-	sortedKeys := slices.Collect(maps.Keys(m))
+	sortedKeys := KeysSlice(m)
 	slices.Sort(sortedKeys)
 	return slices.Values(sortedKeys)
 }
