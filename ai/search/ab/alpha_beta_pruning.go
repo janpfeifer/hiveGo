@@ -188,7 +188,7 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 			scores[ii] = -score
 		}
 
-		// Update best score.
+		// addResult best score.
 		if scores[ii] > bestScore {
 			bestScore = scores[ii]
 			bestAction = actions[ii]

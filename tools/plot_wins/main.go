@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/janpfeifer/hiveGo/tools/wins_ma"
 	"log"
 	"os"
 	"regexp"
@@ -16,10 +15,10 @@ func main() {
 	fmt.Println(`"P0 Wins" "P1 Wins" "Draw"`)
 
 	// Setup pipeline to process results.
-	resultsChan := make(chan wins_ma.MatchResult)
-	statsChan := make(chan wins_ma.Stats)
+	resultsChan := make(chan IndexedMatchResult)
+	statsChan := make(chan MovingAverages)
 	var wg sync.WaitGroup
-	go wins_ma.WinsMovingAverage(resultsChan, statsChan)
+	go WinsMovingAverage(resultsChan, statsChan)
 	wg.Add(1)
 	go func() {
 		for stats := range statsChan {
@@ -36,7 +35,7 @@ func main() {
 
 	var (
 		reResult = regexp.MustCompile(
-			`Match (\d+) finished \(`+
+			`Match (\d+) finished \(` +
 				`(player [01]|draw)`)
 		resetString = `Created TensorFlow device`
 	)
@@ -46,7 +45,7 @@ func main() {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.Contains(line, resetString) {
-			resultsChan <- wins_ma.MatchResult{-1, wins_ma.DRAW }
+			resultsChan <- IndexedMatchResult{-1, Draw}
 		}
 		matches := reResult.FindStringSubmatch(line)
 		if matches == nil {
@@ -56,17 +55,17 @@ func main() {
 		if err != nil {
 			log.Fatal("Failed to parse match num %v", err)
 		}
-		var r wins_ma.Result
+		var r MatchResult
 		if matches[2] == "player 0" {
-			r = wins_ma.P0_WINS
+			r = P0Wins
 		} else if matches[2] == "player 1" {
-			r = wins_ma.P1_WINS
+			r = P1Wins
 		} else if matches[2] == "draw" {
-			r = wins_ma.DRAW
+			r = Draw
 		} else {
 			log.Fatal("Unparseable match result: %s", line)
 		}
-		resultsChan <- wins_ma.MatchResult{idx, r}
+		resultsChan <- IndexedMatchResult{idx, r}
 	}
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
