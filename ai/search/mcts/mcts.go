@@ -6,6 +6,8 @@ package mcts
 import (
 	"flag"
 	"fmt"
+	"github.com/janpfeifer/hiveGo/ai"
+	"github.com/janpfeifer/hiveGo/ai/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"log"
 	"math"
@@ -15,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/janpfeifer/hiveGo/ai"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
 )
 
@@ -50,8 +51,8 @@ type mctsSearcher struct {
 	// If to explore paths in parallel. Not yet supported.
 	parallelized bool
 
-	// Scorer to use during search.
-	scorer ai.BatchScorer
+	// BoardScorer to use during search.
+	scorer ai.BatchBoardScorer
 
 	// Player parameter that indicates that MCTS was selected.
 	useMCTS bool
@@ -151,7 +152,7 @@ func newCacheNode(mcts *mctsSearcher, stats *matchStats, b *Board, root bool) *c
 	}
 
 	if *flag_mctsUseLinearScore {
-		newScore, _ := ai.TrainedBest.Score(b, false)
+		newScore, _ := features.TrainedBest.Score(b, false)
 		cn.score = newScore
 	}
 	if root && mcts.randomness > 0 {

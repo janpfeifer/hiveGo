@@ -3,6 +3,8 @@ package ab
 import (
 	"flag"
 	"fmt"
+	"github.com/janpfeifer/hiveGo/ai"
+	"github.com/janpfeifer/hiveGo/ai/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"log"
 	"math"
@@ -13,7 +15,6 @@ import (
 
 	"github.com/janpfeifer/hiveGo/ai/search"
 
-	"github.com/janpfeifer/hiveGo/ai"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
 )
 
@@ -30,7 +31,7 @@ type alphaBetaSearcher struct {
 	parallelized bool
 	randomness   float32
 
-	scorer ai.BatchScorer
+	scorer ai.BatchBoardScorer
 
 	// Player parameter that indicates that Alpha-Beta-Pruning was selected.
 	useAB bool
@@ -67,7 +68,7 @@ func printBoard(b *Board) {
 //	bestScore: score of taking betAction
 //
 // TODO: Add support to a parallelized version. Careful with stats, likely will need a mutex.
-func AlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int, parallelize bool, randomness float32, stats *abStats) (
+func AlphaBeta(board *Board, scorer ai.BatchBoardScorer, maxDepth int, parallelize bool, randomness float32, stats *abStats) (
 	bestAction Action, bestBoard *Board, bestScore float32) {
 	alpha := float32(-math.MaxFloat32)
 	beta := float32(-math.MaxFloat32)
@@ -78,7 +79,7 @@ func AlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int, parallelize bo
 
 var muLogBoard sync.Mutex
 
-func TimedAlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int, parallelize bool, randomness float32) (
+func TimedAlphaBeta(board *Board, scorer ai.BatchBoardScorer, maxDepth int, parallelize bool, randomness float32) (
 	bestAction Action, bestBoard *Board, bestScore float32) {
 	stats := abStats{}
 	start := time.Now()
@@ -101,7 +102,7 @@ func TimedAlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int, paralleli
 		ui.PrintBoard(board)
 		fmt.Println()
 		var bestActionProb float32
-		scores, vecActionsProbs := scorer.BatchScore([]*Board{board}, false)
+		scores, vecActionsProbs := scorer.BatchBoardScore([]*Board{board}, false)
 		if vecActionsProbs != nil {
 			actionsProbs := vecActionsProbs[0]
 			if len(actionsProbs) > 0 {
@@ -136,7 +137,7 @@ func TimedAlphaBeta(board *Board, scorer ai.BatchScorer, maxDepth int, paralleli
 	return
 }
 
-func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha, beta float32,
+func alphaBetaRecursive(board *Board, scorer ai.BatchBoardScorer, maxDepth int, alpha, beta float32,
 	randomness float32, stats *abStats) (
 	bestAction Action, bestBoard *Board, bestScore float32) {
 	stats.nodes++
@@ -166,7 +167,7 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchScorer, maxDepth int, alpha
 		for ii := range scores {
 			if !newBoards[ii].IsFinished() {
 				if randomness > 0 {
-					scores[ii] = ai.SigmoidTo10(scores[ii] + float32(rand.NormFloat64())*randomness)
+					scores[ii] = features.SigmoidTo10(scores[ii] + float32(rand.NormFloat64())*randomness)
 				}
 			}
 		}

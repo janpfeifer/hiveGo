@@ -1,11 +1,11 @@
 package main
 
 import (
+	"github.com/janpfeifer/hiveGo/ai"
+	"github.com/janpfeifer/hiveGo/ai/features"
 	"log"
 	"math"
 	"sync"
-
-	"github.com/janpfeifer/hiveGo/ai"
 )
 
 // Label matches with scores that reflect the final result.
@@ -123,12 +123,12 @@ func trainFromMatches(matches []*Match) {
 }
 
 func savePlayer0() {
-	if players[0].ModelFile != "" {
-		log.Printf("Saving to %s", players[0].ModelFile)
-		ai.LinearModelFileName = players[0].ModelFile // Hack for linear models. TODO: fix.
+	if players[0].ModelPath != "" {
+		log.Printf("Saving to %s", players[0].ModelPath)
+		features.LinearModelFileName = players[0].ModelPath // Hack for linear models. TODO: fix.
 		players[0].Learner.Save()
 		if klog.V(1) {
-			klog.V(1).Infof("Saved %s to %s", players[0].Learner, players[0].ModelFile)
+			klog.V(1).Infof("Saved %s to %s", players[0].Learner, players[0].ModelPath)
 		}
 	}
 }
@@ -158,11 +158,11 @@ func trainFromExamples(leTrain, leValidation *LabeledExamples) {
 
 // distill returns the score of the given board position, and no
 // action labels.
-func distill(scorer ai.BatchScorer, match *Match, from, to int) (scores []float32) {
+func distill(scorer ai.BatchBoardScorer, match *Match, from, to int) (scores []float32) {
 	boards := match.Boards[from:to]
 	if len(boards) == 0 {
 		return nil
 	}
-	scores, _ = scorer.BatchScore(boards, false)
+	scores, _ = scorer.BatchBoardScore(boards, false)
 	return
 }

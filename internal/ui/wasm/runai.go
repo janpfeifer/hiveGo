@@ -11,7 +11,7 @@ var (
 	AIPlayerNum           uint8
 	BusyBox               = jq("img#busy")
 
-	aiPlayer *players.SearcherScorerPlayer
+	aiPlayer *players.SearcherScorer
 )
 
 func StartAI(config string, aiPlayerNum int) {

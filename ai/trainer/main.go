@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"flag"
 	"fmt"
+	"github.com/janpfeifer/hiveGo/ai"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
 	"github.com/pkg/errors"
@@ -16,7 +17,6 @@ import (
 	"runtime/pprof"
 	"sync"
 
-	"github.com/janpfeifer/hiveGo/ai"
 	ai_players "github.com/janpfeifer/hiveGo/ai/players"
 	_ "github.com/janpfeifer/hiveGo/ai/search/ab"
 	_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
@@ -76,7 +76,7 @@ var (
 		"After how many rescored matches/action to issue another learning mini-batch.")
 
 	// AI for the players. If their configuration is exactly the same, they will point to the same object.
-	players = [2]*ai_players.SearcherScorerPlayer{nil, nil}
+	players = [2]*ai_players.SearcherScorer{nil, nil}
 )
 
 func init() {

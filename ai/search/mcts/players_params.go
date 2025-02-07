@@ -9,7 +9,7 @@ import (
 func init() {
 	for _, key := range []string{"mcts", "c_puct", "max_time", "max_traverses",
 		"min_traverses", "max_score", "max_depth", "randomness"} {
-		players.RegisterPlayerParameter("mcts", key,
+		players.RegisterPlayerModule("mcts", key,
 			NewParsingData, ParsePlayerParam, FinalizeParsing,
 			players.SearcherType)
 	}
@@ -56,7 +56,7 @@ func ParsePlayerParam(data interface{}, key, value string) {
 	}
 }
 
-func FinalizeParsing(data interface{}, player *players.SearcherScorerPlayer) {
+func FinalizeParsing(data interface{}, player *players.SearcherScorer) {
 	d := data.(*mctsSearcher)
 	if d.useMCTS {
 		if player.Searcher != nil {

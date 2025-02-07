@@ -116,13 +116,13 @@ func (b *Board) BuildDerived() {
 	derived.Repeats = b.FindRepeats()
 
 	// Per player info.
-	for p := uint8(0); p < NumPlayers; p++ {
+	for p := PlayerNum(0); p < NumPlayers; p++ {
 		derived.NumPiecesOnBoard[p] = TotalPiecesPerPlayer - b.available[p].Count()
 		derived.PlacementPositions[p] = b.placementPositions(p)
 	}
 
 	derived.RemovablePositions = b.RemovablePositions()
-	for p := uint8(0); p < NumPlayers; p++ {
+	for p := PlayerNum(0); p < NumPlayers; p++ {
 		derived.PlayersActions[p] = b.ValidActions(p)
 		shuffleActions(derived.PlayersActions[p])
 	}
@@ -141,7 +141,7 @@ func shuffleActions(actions []Action) {
 
 // ValidActions returns the list of valid actions for given player.
 // For the NextPlayer the list of actions is pre-cached in Derived.
-func (b *Board) ValidActions(player uint8) (actions []Action) {
+func (b *Board) ValidActions(player PlayerNum) (actions []Action) {
 	actions = make([]Action, 0, 25)
 	actions = b.addPlacementActions(player, actions)
 	actions = b.addMoveActions(player, actions)
@@ -174,7 +174,7 @@ func (b *Board) FindActionDeep(action Action) int {
 }
 
 // placementPositions enumerate placement positions.
-func (b *Board) placementPositions(player uint8) (placements map[Pos]bool) {
+func (b *Board) placementPositions(player PlayerNum) (placements map[Pos]bool) {
 	placements = make(map[Pos]bool)
 	if len(b.board) == 0 {
 		placements[Pos{0, 0}] = true
@@ -210,7 +210,7 @@ func (b *Board) placementPositions(player uint8) (placements map[Pos]bool) {
 
 // addPlacementActions adds valid placement actions to the given
 // actions slice.
-func (b *Board) addPlacementActions(player uint8, actions []Action) []Action {
+func (b *Board) addPlacementActions(player PlayerNum, actions []Action) []Action {
 	derived := b.Derived
 	mustPlaceQueen := b.Available(player, QUEEN) > 0 && derived.NumPiecesOnBoard[player] >= 3
 
@@ -294,7 +294,7 @@ func (b *Board) oldIsRemovable(pos Pos) bool {
 }
 
 // addMoveActions add valid move actions to the given actions slice
-func (b *Board) addMoveActions(player uint8, actions []Action) []Action {
+func (b *Board) addMoveActions(player PlayerNum, actions []Action) []Action {
 	if b.Available(player, QUEEN) != 0 {
 		// Queen not yet in the game, can't move.
 		return actions
@@ -435,12 +435,13 @@ func (b *Board) Height() int {
 	return int(b.Derived.MaxY - b.Derived.MinY)
 }
 
-func (b *Board) EnumeratePieces(cb func(player uint8, piece PieceType, pos Pos, covered bool)) {
+// TODO: write IterPieces instead of EnumeratePieces.
+func (b *Board) EnumeratePieces(cb func(player PlayerNum, piece PieceType, pos Pos, covered bool)) {
 	for pos, stack := range b.board {
 		covered := false
+		var player PlayerNum
+		var piece PieceType
 		for stack != 0 {
-			var player uint8
-			var piece PieceType
 			stack, player, piece = stack.PopPiece()
 			cb(player, piece, pos, covered)
 			covered = true

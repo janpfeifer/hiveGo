@@ -8,7 +8,7 @@ import (
 
 func init() {
 	for _, key := range []string{"ab", "max_depth", "randomness"} {
-		players.RegisterPlayerParameter("ab", key,
+		players.RegisterPlayerModule("ab", key,
 			NewParsingData, ParsePlayerParam, FinalizeParsing,
 			players.SearcherType)
 	}
@@ -35,7 +35,7 @@ func ParsePlayerParam(data interface{}, key, value string) {
 	}
 }
 
-func FinalizeParsing(data interface{}, player *players.SearcherScorerPlayer) {
+func FinalizeParsing(data interface{}, player *players.SearcherScorer) {
 	d := data.(*alphaBetaSearcher)
 	if d.useAB {
 		klog.V(1).Info("Creating AlphaBetaPruning searcher")

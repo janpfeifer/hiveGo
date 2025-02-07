@@ -7,20 +7,20 @@ import (
 
 // Data used for parsing of player options.
 type ParsingData struct {
-	Model               string
-	UseTFDDQN 				bool
+	Model     string
+	UseTFDDQN bool
 }
 
 func NewParsingData() (data interface{}) {
 	return &ParsingData{}
 }
 
-func FinalizeParsing(data interface{}, player *players.SearcherScorerPlayer) {
+func FinalizeParsing(data interface{}, player *players.SearcherScorer) {
 	d := data.(*ParsingData)
 	if d.UseTFDDQN {
 		player.Learner = New(d.Model)
 		player.Scorer = player.Learner
-		player.ModelFile = d.Model
+		player.ModelPath = d.Model
 	}
 }
 
@@ -37,9 +37,8 @@ func ParsePlayerParam(data interface{}, key, value string) {
 
 func init() {
 	for _, key := range []string{"model", "tfddqn"} {
-		players.RegisterPlayerParameter(
+		players.RegisterPlayerModule(
 			"tfddqn", key, NewParsingData, ParsePlayerParam, FinalizeParsing,
 			players.ScorerType)
 	}
 }
-

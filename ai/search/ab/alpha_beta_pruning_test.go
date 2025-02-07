@@ -2,11 +2,11 @@ package ab_test
 
 import (
 	"fmt"
+	"github.com/janpfeifer/hiveGo/ai/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"reflect"
 	"testing"
 
-	"github.com/janpfeifer/hiveGo/ai"
 	. "github.com/janpfeifer/hiveGo/ai/search/ab"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
 )
@@ -19,7 +19,7 @@ type PieceLayout struct {
 	piece  PieceType
 }
 
-var scorer = ai.TrainedBest
+var scorer = features.TrainedBest
 
 func buildBoard(layout []PieceLayout) (b *Board) {
 	b = NewBoard()
@@ -45,7 +45,7 @@ func listMovesForPiece(b *Board, piece PieceType, pos Pos) (poss []Pos) {
 func printBoard(b *Board) {
 	ui := ascii_ui.NewUI(true, false)
 	ui.PrintBoard(b)
-	ai.PrettyPrintFeatures(ai.FeatureVector(b, ai.AllFeaturesDim))
+	features.PrettyPrintFeatures(features.FeatureVector(b, features.BoardFeaturesDim))
 }
 
 func TestEndGameMove(t *testing.T) {

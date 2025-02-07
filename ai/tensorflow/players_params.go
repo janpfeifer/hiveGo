@@ -17,12 +17,12 @@ func NewParsingData() (data interface{}) {
 	return &ParsingData{SessionPoolSize: 1}
 }
 
-func FinalizeParsing(data interface{}, player *players.SearcherScorerPlayer) {
+func FinalizeParsing(data interface{}, player *players.SearcherScorer) {
 	d := data.(*ParsingData)
 	if d.UseTensorFlow {
 		player.Learner = New(d.Model, d.SessionPoolSize, d.ForceCPU)
 		player.Scorer = player.Learner
-		player.ModelFile = d.Model
+		player.ModelPath = d.Model
 	}
 }
 
@@ -50,7 +50,7 @@ func ParsePlayerParam(data interface{}, key, value string) {
 
 func init() {
 	for _, key := range []string{"model", "tf", "tf_cpu", "tf_session_pool_size"} {
-		players.RegisterPlayerParameter(
+		players.RegisterPlayerModule(
 			"tf", key, NewParsingData, ParsePlayerParam, FinalizeParsing,
 			players.ScorerType)
 	}

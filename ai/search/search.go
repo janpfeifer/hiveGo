@@ -1,14 +1,13 @@
 package search
 
 import (
+	"github.com/janpfeifer/hiveGo/ai"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"k8s.io/klog/v2"
 	"log"
 	"math"
 	"math/rand"
 	"sort"
-
-	"github.com/janpfeifer/hiveGo/ai"
 )
 
 var _ = log.Printf
@@ -41,7 +40,7 @@ type Searcher interface {
 // b.NextPlayer winning.
 //
 // Actions returned is a deep copy and can be changed.
-func ExecuteAndScoreActions(b *Board, scorer ai.BatchScorer) (
+func ExecuteAndScoreActions(b *Board, scorer ai.BatchBoardScorer) (
 	actions []Action, newBoards []*Board, scores []float32) {
 	if len(b.Derived.Actions) == 0 {
 		actions = []Action{{Piece: NoPiece}}
@@ -95,7 +94,7 @@ func ExecuteAndScoreActions(b *Board, scorer ai.BatchScorer) (
 	if len(boardsToScore) > 0 {
 		// Score non-game ending boards.
 		// TODO: Use "Principal Variation" to estimate the score.
-		scored, _ := scorer.BatchScore(boardsToScore, false)
+		scored, _ := scorer.BatchBoardScore(boardsToScore, false)
 		scoredIdx := 0
 		for ii := range scores {
 			if !newBoards[ii].IsFinished() {
@@ -132,7 +131,7 @@ func (s *ScoresToSort) Less(i, j int) bool { return s.scores[i] > s.scores[j] }
 
 type randomizedSearcher struct {
 	searcher   Searcher
-	scorer     ai.BatchScorer
+	scorer     ai.BatchBoardScorer
 	randomness float64
 }
 
@@ -219,6 +218,6 @@ func softmax(values []float64) (probs []float64) {
 //	randomness: Set to 0 to always take the action that maximizes the expected value (no
 //	  exploration). Otherwise works as divisor for the scores: larger values means more
 //	  randomness (exploration), smaller values means less randomness (exploitation).
-func NewRandomizedSearcher(searcher Searcher, scorer ai.BatchScorer, randomness float64) Searcher {
+func NewRandomizedSearcher(searcher Searcher, scorer ai.BatchBoardScorer, randomness float64) Searcher {
 	return &randomizedSearcher{searcher: searcher, scorer: scorer, randomness: randomness}
 }

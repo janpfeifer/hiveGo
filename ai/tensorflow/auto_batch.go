@@ -4,10 +4,10 @@ package tensorflow
 // tensorflow models.
 
 import (
+	"github.com/janpfeifer/hiveGo/ai/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"log"
 
-	"github.com/janpfeifer/hiveGo/ai"
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
@@ -32,11 +32,11 @@ type AutoBatchRequest struct {
 
 func (s *Scorer) newAutoBatchRequest(b *Board, scoreActions bool) (req *AutoBatchRequest) {
 	req = &AutoBatchRequest{
-		boardFeatures: ai.FeatureVector(b, s.version),
+		boardFeatures: features.FeatureVector(b, s.version),
 		done:          make(chan bool),
 	}
 	if s.HasFullBoard() {
-		req.fullBoardFeatures = ai.MakeFullBoardFeatures(b, ai.SuggestedFullBoardWidth, ai.SuggestedFullBoardHeight)
+		req.fullBoardFeatures = features.MakeFullBoardFeatures(b, features.SuggestedFullBoardWidth, features.SuggestedFullBoardHeight)
 	}
 	scoreActions = scoreActions && s.IsActionsClassifier()
 	if scoreActions && b.NumActions() > 1 {
@@ -46,8 +46,8 @@ func (s *Scorer) newAutoBatchRequest(b *Board, scoreActions bool) (req *AutoBatc
 		req.actionsPieces = make([][NumPieceTypes]float32, b.NumActions())
 		for actionIdx, action := range b.Derived.Actions {
 			req.actionsIsMove[actionIdx] = action.Move
-			req.actionsSrcPositions[actionIdx] = ai.PosToFullBoardPosition(b, action.SourcePos)
-			req.actionsTgtPositions[actionIdx] = ai.PosToFullBoardPosition(b, action.TargetPos)
+			req.actionsSrcPositions[actionIdx] = features.PosToFullBoardPosition(b, action.SourcePos)
+			req.actionsTgtPositions[actionIdx] = features.PosToFullBoardPosition(b, action.TargetPos)
 			req.actionsPieces[actionIdx][int(action.Piece)-1] = 1
 		}
 	}

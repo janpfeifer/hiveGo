@@ -1,9 +1,8 @@
-// Package players provides constructos of AI players from flags.
+// Package players provides a factory of AI players from flags.
 package players
 
 import (
-	"github.com/janpfeifer/hiveGo/ai"
-	"github.com/janpfeifer/hiveGo/ai/search"
+	"github.com/janpfeifer/hiveGo/ai/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"k8s.io/klog/v2"
 	"log"
@@ -20,57 +19,34 @@ const (
 
 // Player is anything that is able to play the game.
 type Player interface {
-	// Play returns the action chosen, the next board position and the associated score predicted.
-	Play(b *Board, matchName string) (action Action, board *Board, score float32, actionsLabels []float32)
+	// Play returns the action chosen, the next board position (after the action is taken)
+	// and optionally the current board scores predicted (this can be used for interactive training).
+	Play(board *Board, matchName string) (action Action, nextBoard *Board, score float32, actionsScores []float32)
+
+	// Finalize is called at the end of a match.
+	Finalize()
 }
 
-// SearcherScorerPlayer is a standard set up for an AI: a searcher and
-// a scorer. It implements the Player interface.
-type SearcherScorerPlayer struct {
-	Searcher     search.Searcher
-	Scorer       ai.BatchScorer
-	Learner      ai.LearnerScorer
-	ModelFile    string
-	Parallelized bool
+// Module implements a player constructor.
+type Module interface {
+	// NewPlayer is called once per match.
+	// If self playing, this may be called twice for the same match, once per player.
+	NewPlayer(playerNum int, params map[string]string) (Player, error)
 }
 
-// Play implements the Player interface: it chooses an action given a Board.
-func (p *SearcherScorerPlayer) Play(b *Board, matchName string) (
-	action Action, board *Board, score float32, actionsLabels []float32) {
-	action, board, score, actionsLabels = p.Searcher.Search(b)
-	klog.V(1).Infof("Match %s, Move #%d (%s): AI playing %v, score=%.3f",
-		matchName, b.MoveNumber, p.ModelFile, action, score)
-	return
-}
-
-// External model registration functions.
-type PlayerModuleInitFn func() (data any)
-type PlayerParameterFn func(data any, key, value string)
-type PlayerModuleFinalizeFn func(data any, player *SearcherScorerPlayer)
-
-// Registration of an external module for a keyword.
-type externalModuleRegistration struct {
-	module string
-	fn     PlayerParameterFn
+// moduleRegistration is a reference to the module and its name.
+type moduleRegistration struct {
+	Module
+	Name string
 }
 
 var (
 	// Registered external modules.
-	externalModulesInitFns             = make(map[string]PlayerModuleInitFn)
-	externalModulesScorerFinalizeFns   = make(map[string]PlayerModuleFinalizeFn)
-	externalModulesSearcherFinalizeFns = make(map[string]PlayerModuleFinalizeFn)
-	keywordToModules                   = make(map[string][]externalModuleRegistration)
+	keywordToModules = make(map[string]moduleRegistration)
 )
 
-// RegisterPlayerParameter function to process given parameters for given module. This allows
-// external modules to change the behavior of NewAIPlayer.
-// For each module, initFn will be called at the start of the parsing.
-// Then paramFn is called or each key/value pair (value may be empty).
-// Finally finalFn is called, where the external module can change the resulting
-// player object.
-func RegisterPlayerParameter(
-	module, key string, initFn PlayerModuleInitFn, paramFn PlayerParameterFn,
-	finalFn PlayerModuleFinalizeFn, mType ModuleType) {
+// RegisterPlayerModule so it can be used by any of the front-ends to play HiveGo.
+func RegisterPlayerModule(name string, module Module) {
 	externalModulesInitFns[module] = initFn
 	if mType == ScorerType {
 		externalModulesScorerFinalizeFns[module] = finalFn
@@ -110,7 +86,7 @@ func MustInt(s, paramName string) int {
 //	      distributed according to a softmax of the scores of each move, divided by this value.
 //	      So lower values (closer to 0) means less randomness, higher value means more randomness,
 //	      hence more exploration.
-func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
+func NewAIPlayer(config string, parallelized bool) *SearcherScorer {
 	if config == "" {
 		// Default AI.
 		config = "ab,max_depth=2"
@@ -158,7 +134,7 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 	}
 
 	// Shared parameters.
-	player := &SearcherScorerPlayer{Parallelized: parallelized}
+	player := &SearcherScorer{Parallelized: parallelized}
 
 	// External modules make their modifications to the player object.
 	for module, finalFn := range externalModulesScorerFinalizeFns {
@@ -168,7 +144,7 @@ func NewAIPlayer(config string, parallelized bool) *SearcherScorerPlayer {
 
 	// Default scorer.
 	if player.Scorer == nil {
-		player.Learner = ai.NewLinearScorerFromFile(player.ModelFile)
+		player.Learner = features.NewLinearScorerFromFile(player.ModelPath)
 		player.Scorer = player.Learner
 	}
 

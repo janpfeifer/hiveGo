@@ -34,6 +34,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"github.com/janpfeifer/hiveGo/ai/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"io/ioutil"
 	"log"
@@ -48,7 +49,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	tfconfig "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf"
 
-	"github.com/janpfeifer/hiveGo/ai"
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
@@ -536,9 +536,9 @@ func (s *Scorer) buildFeatures(boards []*Board, scoreActions bool) (fc *flatFeat
 	var batchWidth, batchHeight int
 	if s.HasFullBoard() {
 		fc.fullBoardFeatures = make([][][][]float32, len(boards))
-		batchWidth, batchHeight = ai.SuggestedFullBoardWidth, ai.SuggestedFullBoardHeight
+		batchWidth, batchHeight = features.SuggestedFullBoardWidth, features.SuggestedFullBoardHeight
 		for _, b := range boards {
-			w, h := ai.FullBoardDimensions(b)
+			w, h := features.FullBoardDimensions(b)
 			if w > batchWidth {
 				batchWidth = w
 			}
@@ -566,16 +566,16 @@ func (s *Scorer) buildFeatures(boards []*Board, scoreActions bool) (fc *flatFeat
 	// Generate features in Go slices.
 	actionIdx := 0
 	for boardIdx, board := range boards {
-		fc.boardFeatures[boardIdx] = ai.FeatureVector(board, s.version)
+		fc.boardFeatures[boardIdx] = features.FeatureVector(board, s.version)
 		if s.HasFullBoard() {
-			fc.fullBoardFeatures[boardIdx] = ai.MakeFullBoardFeatures(board, batchWidth, batchHeight)
+			fc.fullBoardFeatures[boardIdx] = features.MakeFullBoardFeatures(board, batchWidth, batchHeight)
 		}
 		if scoreActions && board.NumActions() > 1 {
 			for _, action := range board.Derived.Actions {
 				fc.actionsBoardIndices[actionIdx] = int64(boardIdx)
 				fc.actionsIsMove[actionIdx] = action.Move
-				fc.actionsSrcPositions[actionIdx] = ai.PosToFullBoardPosition(board, action.SourcePos)
-				fc.actionsTgtPositions[actionIdx] = ai.PosToFullBoardPosition(board, action.TargetPos)
+				fc.actionsSrcPositions[actionIdx] = features.PosToFullBoardPosition(board, action.SourcePos)
+				fc.actionsTgtPositions[actionIdx] = features.PosToFullBoardPosition(board, action.TargetPos)
 				fc.actionsPieces[actionIdx][int(action.Piece)-1] = 1
 				actionIdx++
 			}
