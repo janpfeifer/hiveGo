@@ -55,7 +55,7 @@ type SearcherScorer struct {
 	matchId   uint64
 	playerNum PlayerNum
 
-	Searcher search.Searcher
+	Searcher searchers.Searcher
 	Scorer   ai.BatchBoardScorer
 	Learner  ai.LearnerScorer
 }

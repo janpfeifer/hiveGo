@@ -1,4 +1,4 @@
-package search
+package searchers
 
 import (
 	"github.com/janpfeifer/hiveGo/internal/ai"
