@@ -1,7 +1,7 @@
 package tfddqn
 
 import (
-	"github.com/janpfeifer/hiveGo/ai/players"
+	players2 "github.com/janpfeifer/hiveGo/internal/players"
 	"log"
 )
 
@@ -15,7 +15,7 @@ func NewParsingData() (data interface{}) {
 	return &ParsingData{}
 }
 
-func FinalizeParsing(data interface{}, player *players.SearcherScorer) {
+func FinalizeParsing(data interface{}, player *players2.SearcherScorer) {
 	d := data.(*ParsingData)
 	if d.UseTFDDQN {
 		player.Learner = New(d.Model)
@@ -37,8 +37,8 @@ func ParsePlayerParam(data interface{}, key, value string) {
 
 func init() {
 	for _, key := range []string{"model", "tfddqn"} {
-		players.RegisterPlayerModule(
+		players2.RegisterPlayerModule(
 			"tfddqn", key, NewParsingData, ParsePlayerParam, FinalizeParsing,
-			players.ScorerType)
+			players2.ScorerType)
 	}
 }

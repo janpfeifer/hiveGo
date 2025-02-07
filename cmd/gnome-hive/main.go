@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
-	"github.com/janpfeifer/hiveGo/ai/players"
+	"github.com/janpfeifer/hiveGo/internal/players"
 
 	//"github.com/janpfeifer/hiveGo/ai/players"
 	//_ "github.com/janpfeifer/hiveGo/ai/search/ab"
@@ -97,7 +97,7 @@ func newGame() {
 	//	case *flag_players[ii] == "hotseat":
 	//		continue
 	//	case *flag_players[ii] == "ai":
-	//		aiPlayers[ii] = players.NewAIPlayer(*flagAIConfig, true)
+	//		aiPlayers[ii] = players.New(*flagAIConfig, true)
 	//	default:
 	//		log.Fatalf("Unknown player type --p%d=%s", ii, *flag_players[ii])
 	//	}

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/janpfeifer/hiveGo/ai"
+	players2 "github.com/janpfeifer/hiveGo/internal/players"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
 	"github.com/pkg/errors"
@@ -17,7 +18,6 @@ import (
 	"runtime/pprof"
 	"sync"
 
-	ai_players "github.com/janpfeifer/hiveGo/ai/players"
 	_ "github.com/janpfeifer/hiveGo/ai/search/ab"
 	_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
 	"github.com/janpfeifer/hiveGo/ai/tensorflow"
@@ -76,7 +76,7 @@ var (
 		"After how many rescored matches/action to issue another learning mini-batch.")
 
 	// AI for the players. If their configuration is exactly the same, they will point to the same object.
-	players = [2]*ai_players.SearcherScorer{nil, nil}
+	players = [2]*players2.SearcherScorer{nil, nil}
 )
 
 func init() {
@@ -619,14 +619,14 @@ func main() {
 	// Create AI players. If they are the same, reuse -- sharing same TF Session can be more
 	// efficient.
 	klog.Infof("Creating player 0 from '%s'", *flagPlayers[0])
-	players[0] = ai_players.NewAIPlayer(*flagPlayers[0], *flagNumMatches == 1)
+	players[0] = players2.New(*flagPlayers[0], *flagNumMatches == 1)
 	if *flagPlayers[1] == *flagPlayers[0] {
 		players[1] = players[0]
 		isSamePlayer = true
 		klog.Infof("Player 1 is the same as player 0, reusing AI player object.")
 	} else {
 		klog.Infof("Creating player 1 from '%s'", *flagPlayers[1])
-		players[1] = ai_players.NewAIPlayer(*flagPlayers[1], *flagNumMatches == 1)
+		players[1] = players2.New(*flagPlayers[1], *flagNumMatches == 1)
 	}
 
 	if *flag_continuosPlayAndTrain {

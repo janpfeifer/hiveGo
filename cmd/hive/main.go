@@ -3,17 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/janpfeifer/hiveGo/internal/players"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
 	"k8s.io/klog/v2"
 	"log"
-
-	// TensorFlow is included so it shows up as an option for scorers.
-	//_ "github.com/janpfeifer/hiveGo/ai"
-	//_ "github.com/janpfeifer/hiveGo/ai/tensorflow"
-	//_ "github.com/janpfeifer/hiveGo/ai/search/ab"
-	//_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
-	"github.com/janpfeifer/hiveGo/ai/players"
 )
 
 var (
@@ -45,7 +39,7 @@ func main() {
 	//	case *flagPlayers[ii] == "ai":
 	//		klog.Exitf("AI player not implemented yet.")
 	//		klog.V(1).Infof("Creating AI player with config %s", *flag_aiConfig)
-	//		//aiPlayers[ii] = players.NewAIPlayer(*flag_aiConfig, true)
+	//		//aiPlayers[ii] = players.New(*flag_aiConfig, true)
 	//	default:
 	//		log.Fatalf("Unknown player type --p%d=%s", ii, *flagPlayers[ii])
 	//	}

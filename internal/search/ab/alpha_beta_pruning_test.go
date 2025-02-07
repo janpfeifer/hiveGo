@@ -3,11 +3,11 @@ package ab_test
 import (
 	"fmt"
 	"github.com/janpfeifer/hiveGo/ai/features"
+	features2 "github.com/janpfeifer/hiveGo/internal/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"reflect"
 	"testing"
 
-	. "github.com/janpfeifer/hiveGo/ai/search/ab"
 	"github.com/janpfeifer/hiveGo/ascii_ui"
 )
 
@@ -45,7 +45,7 @@ func listMovesForPiece(b *Board, piece PieceType, pos Pos) (poss []Pos) {
 func printBoard(b *Board) {
 	ui := ascii_ui.NewUI(true, false)
 	ui.PrintBoard(b)
-	features.PrettyPrintFeatures(features.FeatureVector(b, features.BoardFeaturesDim))
+	features2.PrettyPrintFeatures(features2.FeatureVector(b, features2.BoardFeaturesDim))
 }
 
 func TestEndGameMove(t *testing.T) {

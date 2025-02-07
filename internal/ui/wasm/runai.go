@@ -2,8 +2,8 @@ package main
 
 import (
 	"github.com/gopherjs/gopherjs/js"
-	"github.com/janpfeifer/hiveGo/ai/players"
 	"github.com/janpfeifer/hiveGo/ai/search"
+	players2 "github.com/janpfeifer/hiveGo/internal/players"
 )
 
 var (
@@ -11,13 +11,13 @@ var (
 	AIPlayerNum           uint8
 	BusyBox               = jq("img#busy")
 
-	aiPlayer *players.SearcherScorer
+	aiPlayer *players2.SearcherScorer
 )
 
 func StartAI(config string, aiPlayerNum int) {
 	IsAIPlaying = true
 	AIPlayerNum = uint8(aiPlayerNum)
-	aiPlayer = players.NewAIPlayer(config, false)
+	aiPlayer = players2.New(config, false)
 	ScheduleAIPlay()
 	AdjustBusyBoxPosition()
 }

@@ -1,7 +1,7 @@
 package tensorflow
 
 import (
-	"github.com/janpfeifer/hiveGo/ai/players"
+	players2 "github.com/janpfeifer/hiveGo/internal/players"
 	"log"
 	"strconv"
 )
@@ -17,7 +17,7 @@ func NewParsingData() (data interface{}) {
 	return &ParsingData{SessionPoolSize: 1}
 }
 
-func FinalizeParsing(data interface{}, player *players.SearcherScorer) {
+func FinalizeParsing(data interface{}, player *players2.SearcherScorer) {
 	d := data.(*ParsingData)
 	if d.UseTensorFlow {
 		player.Learner = New(d.Model, d.SessionPoolSize, d.ForceCPU)
@@ -50,8 +50,8 @@ func ParsePlayerParam(data interface{}, key, value string) {
 
 func init() {
 	for _, key := range []string{"model", "tf", "tf_cpu", "tf_session_pool_size"} {
-		players.RegisterPlayerModule(
+		players2.RegisterPlayerModule(
 			"tf", key, NewParsingData, ParsePlayerParam, FinalizeParsing,
-			players.ScorerType)
+			players2.ScorerType)
 	}
 }

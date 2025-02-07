@@ -4,7 +4,7 @@ package tensorflow
 // tensorflow models.
 
 import (
-	"github.com/janpfeifer/hiveGo/ai/features"
+	"github.com/janpfeifer/hiveGo/internal/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"log"
 

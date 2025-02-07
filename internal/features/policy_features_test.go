@@ -2,7 +2,7 @@ package features_test
 
 import (
 	"fmt"
-	"github.com/janpfeifer/hiveGo/ai/features"
+	features2 "github.com/janpfeifer/hiveGo/internal/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
 	"k8s.io/klog/v2"
@@ -31,21 +31,21 @@ func isZero(f []float32) bool {
 }
 
 // Assumes the center is in (0, 0)
-func getPosition(pos, center Pos, f *features.ActionPositionFeatures) []float32 {
+func getPosition(pos, center Pos, f *features2.ActionPositionFeatures) []float32 {
 	relPos := Pos{pos.X() - center.X(), pos.Y() - center.Y()}
 	if relPos.X() == 0 && relPos.Y() == 0 {
 		return f.Center
 	}
-	neighbourhood := &features.X_EVEN_NEIGHBOURS
+	neighbourhood := &features2.X_EVEN_NEIGHBOURS
 	if center.X()%2 != 0 {
-		neighbourhood = &features.X_ODD_NEIGHBOURS
+		neighbourhood = &features2.X_ODD_NEIGHBOURS
 	}
 
 	for section := 0; section < 6; section++ {
-		for ii := 0; ii < features.POSITIONS_PER_SECTION; ii++ {
+		for ii := 0; ii < features2.POSITIONS_PER_SECTION; ii++ {
 			neighPos := neighbourhood[section][ii]
 			if relPos.Equal(neighPos) {
-				return f.Sections[section][ii*features.FEATURES_PER_POSITION : (ii+1)*features.FEATURES_PER_POSITION]
+				return f.Sections[section][ii*features2.FEATURES_PER_POSITION : (ii+1)*features2.FEATURES_PER_POSITION]
 			}
 		}
 	}
@@ -64,13 +64,13 @@ func TestPolicyFeatures(t *testing.T) {
 	action := Action{true, GRASSHOPPER, Pos{-1, -1}, Pos{1, 0}}
 	printBoardAction(b, action)
 
-	actionFeatures := features.NewActionFeatures(b, action, 0)
+	actionFeatures := features2.NewActionFeatures(b, action, 0)
 
 	// Completely unrelated position should be zero.
 	got := getPosition(Pos{-1, 0}, action.SourcePos, &actionFeatures.SourceFeatures)
 	if !isZero(got) {
 		klog.Errorf("Features for Pos{-1,0} should be 0, got %s instead",
-			features.PositionFeaturesToString(got))
+			features2.PositionFeaturesToString(got))
 	}
 
 	// Check stacked pieces.
@@ -81,8 +81,8 @@ func TestPolicyFeatures(t *testing.T) {
 	if !reflect.DeepEqual(want, got) {
 		fmt.Printf("Position %s with stack: Got %s, wanted %s\n",
 			pos,
-			features.PositionFeaturesToString(got),
-			features.PositionFeaturesToString(want),
+			features2.PositionFeaturesToString(got),
+			features2.PositionFeaturesToString(want),
 		)
 	}
 
@@ -94,8 +94,8 @@ func TestPolicyFeatures(t *testing.T) {
 	if !reflect.DeepEqual(want, got) {
 		fmt.Printf("Grasshopper in %s before move: Got %s, wanted %s\n",
 			pos,
-			features.PositionFeaturesToString(got),
-			features.PositionFeaturesToString(want),
+			features2.PositionFeaturesToString(got),
+			features2.PositionFeaturesToString(want),
 		)
 	}
 	// Before in Pos{1, 0}: want [Empty / SrcTgt=1]
@@ -105,8 +105,8 @@ func TestPolicyFeatures(t *testing.T) {
 	if !reflect.DeepEqual(want, got) {
 		fmt.Printf("Grasshopper in %s before move: Got %s, wanted %s\n",
 			pos,
-			features.PositionFeaturesToString(got),
-			features.PositionFeaturesToString(want),
+			features2.PositionFeaturesToString(got),
+			features2.PositionFeaturesToString(want),
 		)
 	}
 	// After in Pos{-1, -1}: want [Empty / SrcTgt=1]
@@ -116,8 +116,8 @@ func TestPolicyFeatures(t *testing.T) {
 	if !reflect.DeepEqual(want, got) {
 		fmt.Printf("Grasshopper in %s after move: Got %s, wanted %s\n",
 			pos,
-			features.PositionFeaturesToString(got),
-			features.PositionFeaturesToString(want),
+			features2.PositionFeaturesToString(got),
+			features2.PositionFeaturesToString(want),
 		)
 	}
 	// After in Pos{1, 0}: want want [Top: Grasshopper(Current), Stack([0 0 0]), Bottom: Grasshopper(Current) / SrcTgt=1]
@@ -127,17 +127,17 @@ func TestPolicyFeatures(t *testing.T) {
 	if !reflect.DeepEqual(want, got) {
 		fmt.Printf("Grasshopper in %s after move: Got %s, wanted %s\n",
 			pos,
-			features.PositionFeaturesToString(got),
-			features.PositionFeaturesToString(want),
+			features2.PositionFeaturesToString(got),
+			features2.PositionFeaturesToString(want),
 		)
 	}
 }
 
 // Print boards with rotated neighborhood.
 func debugNeighboursForPos(ui *cli.UI, base Pos) {
-	neig := features.X_EVEN_NEIGHBOURS
+	neig := features2.X_EVEN_NEIGHBOURS
 	if base.X()%2 == 1 {
-		neig = features.X_ODD_NEIGHBOURS
+		neig = features2.X_ODD_NEIGHBOURS
 	}
 	for rotation := 0; rotation < 6; rotation += 1 {
 		b := NewBoard()

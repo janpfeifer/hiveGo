@@ -1,16 +1,15 @@
 package ab
 
 import (
-	"github.com/golang/klog.
-	"github.com/janpfeifer/hiveGo/ai/players"
+	players2 "github.com/janpfeifer/hiveGo/internal/players"
 	"log"
 )
 
 func init() {
 	for _, key := range []string{"ab", "max_depth", "randomness"} {
-		players.RegisterPlayerModule("ab", key,
+		players2.RegisterPlayerModule("ab", key,
 			NewParsingData, ParsePlayerParam, FinalizeParsing,
-			players.SearcherType)
+			players2.SearcherType)
 	}
 }
 
@@ -27,15 +26,15 @@ func ParsePlayerParam(data interface{}, key, value string) {
 	if key == "ab" {
 		d.useAB = true
 	} else if key == "max_depth" {
-		d.maxDepth = players.MustInt(value, key)
+		d.maxDepth = players2.MustInt(value, key)
 	} else if key == "randomness" {
-		d.randomness = players.MustFloat32(value, key)
+		d.randomness = players2.MustFloat32(value, key)
 	} else {
 		log.Panicf("Unknown parameter '%s=%s' passed to ab module.", key, value)
 	}
 }
 
-func FinalizeParsing(data interface{}, player *players.SearcherScorer) {
+func FinalizeParsing(data interface{}, player *players2.SearcherScorer) {
 	d := data.(*alphaBetaSearcher)
 	if d.useAB {
 		klog.V(1).Info("Creating AlphaBetaPruning searcher")

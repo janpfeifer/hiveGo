@@ -34,7 +34,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"github.com/janpfeifer/hiveGo/ai/features"
+	"github.com/janpfeifer/hiveGo/internal/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"io/ioutil"
 	"log"
