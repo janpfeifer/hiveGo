@@ -172,8 +172,8 @@ type EncodedStack uint64
 // If there is no pieces at given position, it returns NoPiece.
 func (stack EncodedStack) PieceAt(stackPos uint8) (player uint8, piece PieceType) {
 	shift := stackPos << 3
-	player = uint8((stack >> (shift + 7)) & 1)
 	piece = PieceType((stack >> shift) & 0x7F)
+	player = uint8((stack >> (shift + 7)) & 1)
 	return
 }
 

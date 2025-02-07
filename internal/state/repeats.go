@@ -1,7 +1,8 @@
+package state
+
 // This file contains the functions that check if a match position
 // is repeated, and a cache of previous states of matches, to accelerate
 // search in some cases.
-package state
 
 import (
 	"encoding/binary"
