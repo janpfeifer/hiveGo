@@ -3,12 +3,21 @@
 package ai
 
 import (
+	"github.com/chewxy/math32"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 )
 
 // WinGameScore for the winning side. For the loosing side it is -WinGameScore.
-const WinGameScore = float32(10)
+// We make these +1 and -1, so it's easy to put a tanh(x) on the output of the model to get a
+// value from +1 to -1.
+const WinGameScore = float32(1)
+
+// SquashScore converts any score to a value between +WinGameScore and -WinGameScore
+// by using then tanh(x) function -- a type of S curve.
+func SquashScore(x float32) float32 {
+	return math32.Tanh(x) * WinGameScore
+}
 
 // BoardScorer returns two scores:
 //
