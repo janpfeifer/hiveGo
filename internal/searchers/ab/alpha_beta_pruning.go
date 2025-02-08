@@ -76,10 +76,6 @@ func TimedAlphaBeta(board *Board, scorer ai.BatchBoardScorer, maxDepth int, para
 	start := time.Now()
 	bestAction, bestBoard, bestScore = AlphaBeta(board, scorer, maxDepth, parallelize, randomness, &stats)
 	elapsedTime := time.Since(start).Seconds()
-	// Yes, crazy right ? But without this the if below doesn't work ? TODO: report this, as of Go 1.11.2.
-	// https://groups.google.com/forum/#!topic/golang-nuts/Yg09oBiRWbo
-	// Looking at the assembly code generated, it seems related inlined time.go:790 code, that gets inserted
-	// between the call to klog.V(2) and actually fetching its result ???
 	if klog.V(3).Enabled() {
 		muLogBoard.Lock()
 		defer muLogBoard.Unlock()
@@ -91,27 +87,30 @@ func TimedAlphaBeta(board *Board, scorer ai.BatchBoardScorer, maxDepth int, para
 		ui.PrintBoard(board)
 		fmt.Println()
 		var bestActionProb float32
-		scores, vecActionsProbs := scorer.BatchBoardScore([]*Board{board}, false)
-		if vecActionsProbs != nil {
-			actionsProbs := vecActionsProbs[0]
-			if len(actionsProbs) > 0 {
-				fmt.Printf("\nTop moves probs:\n")
-				bestActionProb = actionsProbs[board.FindActionDeep(bestAction)]
-				indices := make([]int, len(actionsProbs))
-				for ii := range indices {
-					indices[ii] = ii
-				}
-				sort.Slice(indices, func(i, j int) bool { return actionsProbs[indices[i]] > actionsProbs[indices[j]] })
-				for ii := 0; ii < 5 && ii < len(indices); ii++ {
-					action := board.Derived.Actions[indices[ii]]
-					prob := actionsProbs[indices[ii]]
-					if prob < 0.02 {
-						break
+		scores := scorer.BatchBoardScore([]*Board{board})
+
+		/*
+			if vecActionsProbs != nil {
+				actionsProbs := vecActionsProbs[0]
+				if len(actionsProbs) > 0 {
+					fmt.Printf("\nTop moves probs:\n")
+					bestActionProb = actionsProbs[board.FindActionDeep(bestAction)]
+					indices := make([]int, len(actionsProbs))
+					for ii := range indices {
+						indices[ii] = ii
 					}
-					fmt.Printf("\t%s - %.2f%%\n", action, prob*100)
+					sort.Slice(indices, func(i, j int) bool { return actionsProbs[indices[i]] > actionsProbs[indices[j]] })
+					for ii := 0; ii < 5 && ii < len(indices); ii++ {
+						action := board.Derived.Actions[indices[ii]]
+						prob := actionsProbs[indices[ii]]
+						if prob < 0.02 {
+							break
+						}
+						fmt.Printf("\t%s - %.2f%%\n", action, prob*100)
+					}
 				}
 			}
-		}
+		*/
 		fmt.Printf("Best action found: %s - score=%.2f, αβ-score=%.2f, prob=%.2f%%\n\n",
 			bestAction, scores[0], bestScore, bestActionProb*100)
 	}
@@ -147,7 +146,8 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchBoardScorer, maxDepth int, 
 		for ii := range scores {
 			if !newBoards[ii].IsFinished() {
 				if randomness > 0 {
-					scores[ii] = features.SigmoidTo10(scores[ii] + float32(rand.NormFloat64())*randomness)
+					noise := float32(rand.NormFloat64()*float64(randomness)) * ai.WinGameScore
+					scores[ii] += ai.SquashScore(scores[ii] + noise)
 				}
 			}
 		}
