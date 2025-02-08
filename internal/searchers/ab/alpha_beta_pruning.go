@@ -3,9 +3,10 @@ package ab
 import (
 	"flag"
 	"fmt"
-	"github.com/janpfeifer/hiveGo/ai"
-	"github.com/janpfeifer/hiveGo/ai/features"
+	"github.com/janpfeifer/hiveGo/internal/ai"
+	"github.com/janpfeifer/hiveGo/internal/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
+	"k8s.io/klog/v2"
 	"log"
 	"math"
 	"math/rand"
@@ -13,25 +14,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/janpfeifer/hiveGo/ai/search"
-
-	"github.com/janpfeifer/hiveGo/ascii_ui"
+	"github.com/janpfeifer/hiveGo/internal/searchers"
+	"github.com/janpfeifer/hiveGo/internal/ui/cli"
 )
-
-var _ = log.Printf
-var _ = fmt.Printf
-
-var flag_useActionProb = flag.Bool("ab_use_actions", false,
-	"Use action probabilities to sort actions. Requires TensorFlow model.")
-var flag_maxMoveRandomness = flag.Int("ab_max_move_randomness", 100,
-	"After this move randomness is dropped and the game follows on without it.")
 
 type alphaBetaSearcher struct {
 	maxDepth     int
 	parallelized bool
 	randomness   float32
-
-	scorer ai.BatchBoardScorer
+	scorer       ai.BatchBoardScorer
 
 	// Player parameter that indicates that Alpha-Beta-Pruning was selected.
 	useAB bool
@@ -44,11 +35,11 @@ type abStats struct {
 }
 
 func printBoard(b *Board) {
-	ui := ascii_ui.NewUI(true, false)
+	ui := cli.New(true, false)
 	ui.PrintBoard(b)
 }
 
-// Alpha Beta Pruning algorithm
+// AlphaBeta Pruning algorithm
 // See: wikipedia.org/wiki/Alpha-beta_pruning
 //
 // TODO: Iterative deepening, principal variation estimation of scores.
@@ -57,8 +48,8 @@ func printBoard(b *Board) {
 //
 //	board: current board
 //	scorer: batch scores boards.
-//	maxDepth: How deep to make the search.
-//	parallelize: Parallelize search, only first depth is parallelized.
+//	maxDepth: How deep to make the searchers.
+//	parallelize: Parallelize searchers, only first depth is parallelized.
 //	randomness: If > 0, a random value of this magnitude is added to the leaf node values.
 //
 // Returns:
@@ -89,13 +80,11 @@ func TimedAlphaBeta(board *Board, scorer ai.BatchBoardScorer, maxDepth int, para
 	// https://groups.google.com/forum/#!topic/golang-nuts/Yg09oBiRWbo
 	// Looking at the assembly code generated, it seems related inlined time.go:790 code, that gets inserted
 	// between the call to klog.V(2) and actually fetching its result ???
-	hmm := bool(klog.V(3))
-	_ = &hmm
-	if hmm {
+	if klog.V(3).Enabled() {
 		muLogBoard.Lock()
 		defer muLogBoard.Unlock()
 
-		ui := ascii_ui.NewUI(true, false)
+		ui := cli.New(true, false)
 		fmt.Println()
 		ui.PrintPlayer(board)
 		fmt.Printf(" - Move #%d\n\n", board.MoveNumber)
@@ -126,13 +115,13 @@ func TimedAlphaBeta(board *Board, scorer ai.BatchBoardScorer, maxDepth int, para
 		fmt.Printf("Best action found: %s - score=%.2f, αβ-score=%.2f, prob=%.2f%%\n\n",
 			bestAction, scores[0], bestScore, bestActionProb*100)
 	}
-	if klog.V(2) {
-		klog.V(2).Infof("Counts: %v", stats)
+	if klog.V(2).Enabled() {
+		klog.Infof("Counts: %v", stats)
 		evals := float64(stats.evals)
 		leafEvals := float64(stats.leafEvals)
 		leafEvalsConsidered := float64(stats.leafEvals)
-		klog.V(2).Infof("  nodes/s=%.1f, evals/s=%.1f", float64(stats.nodes)/elapsedTime, evals/elapsedTime)
-		klog.V(2).Infof("  leafEvals=%.2f%%, leafEvalsConsidered=%.2f%%", 100*leafEvals/evals, 100*leafEvalsConsidered/leafEvals)
+		klog.Infof("  nodes/s=%.1f, evals/s=%.1f", float64(stats.nodes)/elapsedTime, evals/elapsedTime)
+		klog.Infof("  leafEvals=%.2f%%, leafEvalsConsidered=%.2f%%", 100*leafEvals/evals, 100*leafEvalsConsidered/leafEvals)
 	}
 	return
 }
@@ -143,27 +132,18 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchBoardScorer, maxDepth int, 
 	stats.nodes++
 
 	// Sub-actions and boards available at this state.
-	var actions []Action
-	var newBoards []*Board
-	var scores []float32
-	if maxDepth <= 1 && *flag_useActionProb {
-		// TODO: Instead of expanding the board and using V(s_{t+1}), take Q(s_t, a_t) instead, since it's cheaper.
-		actions = board.Derived.Actions
-		log.Panic("Q(s,a) learning not implemented yet.")
-	} else {
-		actions, newBoards, scores = search.ExecuteAndScoreActions(board, scorer)
-		stats.evals += len(actions)
-		if maxDepth == 1 {
-			stats.leafEvals += len(actions)
-		}
+	actions := board.Derived.Actions
+	newBoards, scores := executeAndScoreActions(board, scorer)
+	stats.evals += len(scores)
+	if maxDepth == 1 {
+		stats.leafEvals += len(scores)
 	}
-
-	// If there are no valid actions, create the "pass" action
 	if len(actions) == 1 && newBoards[0].IsFinished() {
 		return actions[0], newBoards[0], scores[0]
 	}
+
 	if maxDepth <= 1 && randomness > 0 && board.MoveNumber <= *flag_maxMoveRandomness {
-		// Randomize only non end-of-game action.s
+		// Randomize only non end-of-game actions
 		for ii := range scores {
 			if !newBoards[ii].IsFinished() {
 				if randomness > 0 {
@@ -172,16 +152,16 @@ func alphaBetaRecursive(board *Board, scorer ai.BatchBoardScorer, maxDepth int, 
 			}
 		}
 	}
-	search.SortActionsBoardsScores(actions, newBoards, scores)
+	sortActionsBoardsAndScores(actions, newBoards, scores)
 
 	// The score to beat is the current "alpha" (best live score for current player)
 	bestScore = alpha
 	bestBoard = nil
 	bestAction = Action{}
 	for ii := range actions {
-		if search.IdleChan != nil {
+		if searchers.IdleChan != nil {
 			// Wait for an "idle" signal before each search.
-			<-search.IdleChan
+			<-searchers.IdleChan
 		}
 		if maxDepth > 1 && !newBoards[ii].IsFinished() {
 			// Runs alphaBeta for opponent player, so the alpha/beta are reversed.
@@ -255,3 +235,76 @@ func (ab *alphaBetaSearcher) ScoreMatch(b *Board, actions []Action) (
 	}
 	return
 }
+
+// executeAndScoreActions creates the boards after executing each of the board actions,
+// and returns the new boards and their scores according to the given scorer.
+//
+// It returns without using the scorer if any of the actions lead to b.NextPlayer winning.
+func executeAndScoreActions(board *Board, scorer ai.BatchBoardScorer) (newBoards []*Board, scores []float32) {
+	actions := board.Derived.Actions
+	scores = make([]float32, len(actions))
+	newBoards = make([]*Board, len(actions))
+
+	// Pre-score actions that lead to end-game.
+	boardsToScore := make([]*Board, 0, len(actions))
+	hasWinning := 0
+	for ii, action := range actions {
+		newBoards[ii] = board.Act(action)
+		if isEnd, score := ai.IsEndGameAndScore(newBoards[ii]); isEnd {
+			// End game is treated differently.
+			score = -score // Score for board.NextPlayer, not newBoards[ii].NextPlayer
+			if score > 0.0 {
+				hasWinning++
+			}
+			scores[ii] = score
+		} else {
+			boardsToScore = append(boardsToScore, newBoards[ii])
+		}
+	}
+
+	// Player wins, no need to score the other actions.
+	if hasWinning > 0 {
+		// Actually we could just trim return only the winning action(s). But
+		// for ML training, it's useful to return all and let it learn from it.
+		// But in any cases there is no need to rescore the other
+		// actions.
+		return
+	}
+
+	if len(boardsToScore) > 0 {
+		// Score non-game ending boards.
+		// TODO: Use "Principal Variation" to estimate the score.
+		scored := scorer.BatchBoardScore(boardsToScore)
+		scoredIdx := 0
+		for ii := range scores {
+			if !newBoards[ii].IsFinished() {
+				// Score for board.NextPlayer, not newBoards[ii].NextPlayer, hence
+				// we take the inverse here.
+				scores[ii] = -scored[scoredIdx]
+				scoredIdx++
+			}
+		}
+	}
+	return
+}
+
+// sortActionsBoardsAndScores jointly based on scores: higher scores first.
+func sortActionsBoardsAndScores(actions []Action, boards []*Board, scores []float32) {
+	s := &scoresToSort{actions, boards, scores}
+	sort.Sort(s)
+}
+
+// scoresToSort provides a way to jointly sort actions, boards and scores by their scores -- larger scores come first.
+type scoresToSort struct {
+	actions []Action
+	boards  []*Board
+	scores  []float32
+}
+
+func (s *scoresToSort) Swap(i, j int) {
+	s.actions[i], s.actions[j] = s.actions[j], s.actions[i]
+	s.boards[i], s.boards[j] = s.boards[j], s.boards[i]
+	s.scores[i], s.scores[j] = s.scores[j], s.scores[i]
+}
+func (s *scoresToSort) Len() int           { return len(s.scores) }
+func (s *scoresToSort) Less(i, j int) bool { return s.scores[i] > s.scores[j] }

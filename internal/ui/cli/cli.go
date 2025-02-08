@@ -54,12 +54,12 @@ func (ui *UI) CheckNoAvailableAction(board *Board) (*Board, bool) {
 		return board, false
 	}
 
-	// Nothing to play, skip (by playing SKIP_ACTION)
+	// Nothing to play, skip (by playing SkipAction)
 	fmt.Println()
 	ui.PrintPlayer(board)
 	fmt.Println(" has no available actions, skipping.")
 	fmt.Println()
-	board = board.Act(SKIP_ACTION)
+	board = board.Act(SkipAction)
 	return board, true
 }
 

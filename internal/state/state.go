@@ -46,6 +46,9 @@ type PlayerNum uint8
 const (
 	PlayerFirst PlayerNum = iota
 	PlayerSecond
+
+	// PlayerInvalid represents an invalid PlayerNum.
+	PlayerInvalid
 )
 
 var (

@@ -63,7 +63,8 @@ type Action struct {
 	SourcePos, TargetPos Pos
 }
 
-var SKIP_ACTION = Action{Piece: NoPiece}
+// SkipAction can only be played if there are no other actions to be taken.
+var SkipAction = Action{Piece: NoPiece}
 
 func (a Action) IsSkipAction() bool {
 	return a.Piece == NoPiece
@@ -124,10 +125,13 @@ func (b *Board) BuildDerived() {
 	derived.RemovablePositions = b.RemovablePositions()
 	for p := PlayerNum(0); p < NumPlayers; p++ {
 		derived.PlayersActions[p] = b.ValidActions(p)
-		shuffleActions(derived.PlayersActions[p])
+		//shuffleActions(derived.PlayersActions[p])
 	}
 
 	derived.Actions = derived.PlayersActions[b.NextPlayer]
+	if len(derived.Actions) == 0 {
+
+	}
 	derived.Wins, derived.NumSurroundingQueen, derived.QueenPos = b.endGame()
 	derived.Singles = b.ListSingles()
 }
@@ -141,11 +145,16 @@ func shuffleActions(actions []Action) {
 
 // ValidActions returns the list of valid actions for given player.
 // For the NextPlayer the list of actions is pre-cached in Derived.
-func (b *Board) ValidActions(player PlayerNum) (actions []Action) {
-	actions = make([]Action, 0, 25)
+// If there are no valid actions, it appends the SkipAction. So there will always be a valid action.
+func (b *Board) ValidActions(player PlayerNum) []Action {
+	actions := make([]Action, 0, 25)
 	actions = b.addPlacementActions(player, actions)
 	actions = b.addMoveActions(player, actions)
-	return
+	if len(actions) == 0 {
+		// If there are no valid actions, add SkipAction.
+		actions = append(actions, SkipAction)
+	}
+	return actions
 }
 
 // FindAction finds the index to the given action. It assumes the action is the exact same slice,
@@ -400,6 +409,8 @@ func (b *Board) NumActions() int {
 	return len(b.Derived.Actions)
 }
 
+// IsFinished returns whether the board represents a finished match.
+// It depends on Derived.
 func (b *Board) IsFinished() bool {
 	return b.Derived.Repeats >= MaxBoardRepeats || b.Derived.Wins[0] || b.Derived.Wins[1]
 }
@@ -409,7 +420,12 @@ func (b *Board) Draw() bool {
 		b.Derived.Wins[0] == b.Derived.Wins[1])
 }
 
-func (b *Board) Winner() uint8 {
+// Winner returns the player that wins on the current board.
+// If it is a Draw or the match is not finished, return PlayerInvalid.
+func (b *Board) Winner() PlayerNum {
+	if !b.IsFinished() || b.Draw() {
+		return PlayerInvalid
+	}
 	if b.Derived.Wins[0] {
 		return 0
 	} else {

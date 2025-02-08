@@ -80,9 +80,10 @@ type LearnerScorer interface {
 	String() string
 }
 
-// EndGameScore returns weather it's the end of the game, and the hard-coded score of a win/loss/draw
+// IsEndGameAndScore returns weather it's the end of the game, and the hard-coded score of a win/loss/draw
 // for the current player if it is finished.
-func EndGameScore(b *Board) (isEnd bool, score float32) {
+// If isEnd is false, the score should be ignored.
+func IsEndGameAndScore(b *Board) (isEnd bool, score float32) {
 	if !b.IsFinished() {
 		return false, 0
 	}

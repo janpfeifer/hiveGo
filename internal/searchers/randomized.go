@@ -2,81 +2,89 @@ package searchers
 
 import (
 	"github.com/gomlx/exceptions"
-	"github.com/janpfeifer/hiveGo/internal/ai"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"k8s.io/klog/v2"
-	"log"
 	"math"
 	"math/rand/v2"
 	"slices"
 )
 
-// randomizedSearcher is a meta Searcher, that introduces randomness to its scorer.
-type randomizedSearcher struct {
-	searcher   Searcher
-	scorer     ai.BatchBoardScorer
-	randomness float64
+// NewRandomizedSearcher adds randomness to the action taken by an existing Searcher.
+// Args:
+//
+//   - searcher: Baseline Searcher.
+//   - randomness (>=0): Amount of randomness to use: it is applied as a divisor to the scores
+//     returned by the Searcher, except if there is a winning move.
+//     The larger the value the more it leads to randomness (exploration), and lower values
+//     lead to "pick the best scoring move" (exploitation), with zero meaning no randomness.
+//   - maxMoveRandomness: starting at this move no more randomness is used. This allows
+//     randomness to be used only earlier in the match.
+func NewRandomizedSearcher(searcher Searcher, randomness float64, maxMoveRandomness int) Searcher {
+	if randomness <= 0 {
+		// Without randomness, simply return the original Searcher.
+		return searcher
+	}
+	return &randomizedSearcher{searcher: searcher, randomness: randomness, maxMoveRandomness: maxMoveRandomness}
 }
 
-// Search implements the Searcher interface.
-func (rs *randomizedSearcher) Search(b *Board) (Action, *Board, float32, []float32) {
-	// If there are no valid actions, create the "pass" action
-	actions, newBoards, scores := ExecuteAndScoreActions(b, rs.scorer)
+// randomizedSearcher is a meta Searcher, that introduces randomness to its scorer.
+type randomizedSearcher struct {
+	searcher          Searcher
+	randomness        float64
+	maxMoveRandomness int
+}
 
-	for ii := range actions {
-		isEnded, score := ai.EndGameScore(newBoards[ii])
-		if !isEnded {
-			_, _, scores[ii], _ = rs.searcher.Search(newBoards[ii])
-			scores[ii] = -scores[ii]
-		} else {
-			if !newBoards[ii].Draw() && newBoards[ii].Winner() == b.NextPlayer {
-				return actions[ii], newBoards[ii], -score, ai.OneHotEncoding(len(actions), ii)
-			}
-			scores[ii] = -score
-		}
+// Assert randomizedSearcher is a Searcher.
+var _ Searcher = &randomizedSearcher{}
+
+// Search implements the Searcher interface.
+func (rs *randomizedSearcher) Search(board *Board) (chosenAction Action, nextBoard *Board, score float32, actionsScores []float32) {
+	actions := board.Derived.Actions
+
+	// Get scores from base searcher for current board.
+	chosenAction, nextBoard, score, actionsScores = rs.searcher.Search(board)
+
+	// If we reached the max move number for randomness, or if the searcher doesn't return scores for the
+	// different actions, or if there is only one action possible, or if it is an end-game move,
+	// we don't add any randomness.
+	if board.MoveNumber >= rs.maxMoveRandomness || nextBoard.IsFinished() || len(actionsScores) <= 1 {
+		return
+	}
+	if len(actionsScores) != len(actions) {
+		exceptions.Panicf("randomizedSearcher: Searcher returned %d actionsScores, but board has %d actions!?", len(actionsScores), len(actions))
 	}
 
 	// Calculate probability for each action.
-	probabilities := make([]float64, len(scores))
-	for ii, score := range scores {
-		probabilities[ii] = float64(score) / rs.randomness
+	logits := make([]float64, len(actionsScores))
+	for ii, score := range actionsScores {
+		logits[ii] = float64(score) / rs.randomness
 	}
-	probabilities = softmax(probabilities)
-	actionsLabels := make([]float32, len(probabilities))
-	for ii, prob := range probabilities {
-		actionsLabels[ii] = float32(prob)
-	}
-
-	// Special case: randomness == 0 (or less): just take the max.
-	if rs.randomness <= 0 {
-		maxIdx, maxScore := 0, scores[0]
-		for ii := 1; ii < len(scores); ii++ {
-			if scores[ii] > maxScore {
-				maxScore = scores[ii]
-				maxIdx = ii
-			}
-		}
-		klog.V(1).Infof("Estimated best score: %.2f", maxScore)
-		return actions[maxIdx], newBoards[maxIdx], maxScore, actionsLabels
-	}
+	probabilities := softmax(logits)
 
 	// Select from probabilities.
 	chance := rand.Float64()
 	// klog.Infof("chance=%f, scores=%v, probabilities=%v", chance, scores, probabilities)
-	for ii, value := range probabilities {
-		if chance <= value {
-			klog.V(1).Infof("Score of selected action (%s): %.2f", actions[ii], scores[ii])
-			return actions[ii], newBoards[ii], scores[ii], actionsLabels
+	for actionIdx, value := range probabilities {
+		if chance > value {
+			chance -= value
+			continue
 		}
-		chance -= value
-	}
-	exceptions.Panicf("Nothing selected!? final chance=%f", chance)
-	return Action{}, nil, 0.0, nil
-}
 
-func (rs *randomizedSearcher) ScoreMatch(b *Board, actions []Action) (
-	scores []float32, actionsLabels [][]float32) {
-	log.Panicf("ScoreMatch not implemented for RandomizedSearcher")
+		// Found the new action:
+		if klog.V(2).Enabled() {
+			klog.Infof("randomizedSearcher selection: action=%s, score=%s", actions[actionIdx], actionsScores[actionIdx])
+		}
+		if actions[actionIdx] == chosenAction {
+			// randomizedSearcher chose the same as the base searcher.
+			return
+		}
+		chosenAction = actions[actionIdx]
+		nextBoard = board.Act(chosenAction)
+		score = actionsScores[actionIdx]
+		return
+	}
+	// It should not reach here.
+	exceptions.Panicf("Nothing selected!? remaining chance=%f, probabilities=%v", chance, probabilities)
 	return
 }
 
@@ -96,15 +104,4 @@ func softmax(values []float64) (probs []float64) {
 		probs[ii] /= sum
 	}
 	return
-}
-
-// NewRandomizedSearcher takes an action based on score associated to that action.
-// Args:
-//
-//	searcher: Searcher to use after the first move.
-//	randomness: Set to 0 to always take the action that maximizes the expected value (no
-//	  exploration). Otherwise works as divisor for the scores: larger values means more
-//	  randomness (exploration), smaller values means less randomness (exploitation).
-func NewRandomizedSearcher(searcher Searcher, scorer ai.BatchBoardScorer, randomness float64) Searcher {
-	return &randomizedSearcher{searcher: searcher, scorer: scorer, randomness: randomness}
 }

@@ -232,7 +232,7 @@ func (match *Match) fillActionLabelsWithActionTaken() {
 			actionsLabels = ai.OneHotEncoding(board.NumActions(), actionIdx)
 		} else {
 			if board.NumActions() != 0 {
-				log.Panicf("Unexpected SKIP_ACTION for board with %d actions, MatchFileIdx=%d",
+				log.Panicf("Unexpected SkipAction for board with %d actions, MatchFileIdx=%d",
 					board.NumActions(), match.MatchFileIdx)
 			}
 		}
@@ -283,7 +283,7 @@ func runMatch(matchNum int) *Match {
 		var actionLabels []float32
 		if len(board.Derived.Actions) == 0 {
 			// Auto-play skip move.
-			action = SKIP_ACTION
+			action = SkipAction
 			board = board.Act(action)
 			lastWasSkip = true
 			if len(board.Derived.Actions) == 0 {

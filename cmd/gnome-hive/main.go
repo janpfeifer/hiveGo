@@ -132,7 +132,7 @@ func executeAction(action Action) {
 			log.Fatal("No moves avaialble to either players !?")
 		}
 		// Recurse to a skip action.
-		executeAction(SKIP_ACTION)
+		executeAction(SkipAction)
 		return
 	}
 	followAction()

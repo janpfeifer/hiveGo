@@ -9,6 +9,7 @@ import (
 	"github.com/janpfeifer/hiveGo/ai"
 	"github.com/janpfeifer/hiveGo/ai/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
+	"k8s.io/klog/v2"
 	"log"
 	"math"
 	"math/rand"
@@ -184,7 +185,7 @@ func (cn *cacheNode) Step(mcts *mctsSearcher, stats *matchStats, index int, log 
 		if index >= 0 {
 			action = cn.actions[index]
 		} else {
-			action = SKIP_ACTION
+			action = SkipAction
 		}
 		newCN = newCacheNode(mcts, stats, cn.board.Act(action), false)
 		cn.cacheNodes[cnIdx] = newCN
@@ -273,7 +274,7 @@ func (cn *cacheNode) FindBestScore(mcts *mctsSearcher) (
 	bestIdx int, bestScore float32, actionsLabels []float32) {
 	if len(cn.actions) <= 1 {
 		// There is either one or none actions. Index will be set to 0 (first action)
-		// or -1 (represents a SKIP_ACTION) respectively, and the score should be the
+		// or -1 (represents a SkipAction) respectively, and the score should be the
 		// negative of the score for the opponent at the next action.
 		bestIdx = len(cn.actions) - 1
 		bestScore = cn.score
@@ -328,7 +329,7 @@ func abs32(x float32) float32 { return float32(math.Abs(float64(x))) }
 func (cn *cacheNode) recursiveLogTraverse(actionIdx int, parts []string) ([]string, float32) {
 	if cn.parent != nil {
 		if actionIdx < 0 {
-			parts = append(parts, SKIP_ACTION.String())
+			parts = append(parts, SkipAction.String())
 		} else {
 			parts = append(parts, cn.actions[actionIdx].String())
 		}
@@ -542,7 +543,7 @@ func (mcts *mctsSearcher) searchWithStats(stats *matchStats, b *Board) (
 		}
 
 	} else {
-		action = SKIP_ACTION
+		action = SkipAction
 		board = cn.cacheNodes[0].board
 	}
 	if board == nil {
