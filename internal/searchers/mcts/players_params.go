@@ -9,7 +9,7 @@ import (
 func init() {
 	for _, key := range []string{"mcts", "c_puct", "max_time", "max_traverses",
 		"min_traverses", "max_score", "max_depth", "randomness"} {
-		players2.RegisterPlayerModule("mcts", key,
+		players2.RegisterModule("mcts", key,
 			NewParsingData, ParsePlayerParam, FinalizeParsing,
 			players2.SearcherType)
 	}
