@@ -51,6 +51,8 @@ const (
 	PlayerInvalid
 )
 
+//go:generate go run github.com/dmarkham/enumer@latest -type=PlayerNum -trimprefix=Player -values -text -json -yaml state.go
+
 var (
 	PieceLetters  = [LastPiece]string{"-", "A", "B", "G", "Q", "S"}
 	LetterToPiece = map[string]PieceType{"A": ANT, "B": BEETLE, "G": GRASSHOPPER, "Q": QUEEN, "S": SPIDER}
