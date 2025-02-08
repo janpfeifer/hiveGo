@@ -20,18 +20,18 @@ const (
 type Player interface {
 	// Play returns the action chosen, the next board position (after the action is taken)
 	// and optionally the current board scores predicted (this can be used for interactive training).
-	Play(board *Board, matchName string) (action Action, nextBoard *Board, score float32, actionsScores []float32)
+	Play(board *Board) (action Action, nextBoard *Board, score float32, actionsScores []float32)
 
 	// Finalize is called at the end of a match.
 	Finalize()
 }
 
-// Module implements a player constructor.
+// Module must implement NewPlayer called at the start of a match.
+// matchId is unique among matches, but the Module.NewPlayer may be called twice for the same matchId, for different players,
+// if self-playing during training.
+// matchName is used for logging and debugging.
 type Module interface {
-	// NewPlayer is called once per match.
-	// matchId is unique, but the Module.NewPlayer may be called twice for the same matchId, for different players,
-	// if self-playing during training.
-	NewPlayer(matchId uint64, playerNum PlayerNum, params map[string]string) (Player, error)
+	NewPlayer(matchId uint64, matchName string, playerNum PlayerNum, params map[string]string) (Player, error)
 }
 
 // moduleRegistration is a reference to the module and its name.
@@ -45,8 +45,8 @@ var (
 	keywordToModules = make(map[string]moduleRegistration)
 )
 
-// RegisterPlayerModule so it can be used by any of the front-ends to play HiveGo.
-func RegisterPlayerModule(name string, module Module) {
+// RegisterModule so it can be used by any of the front-ends to play HiveGo.
+func RegisterModule(name string, module Module) {
 	keywordToModules[name] = moduleRegistration{Name: name, Module: module}
 }
 
@@ -64,7 +64,7 @@ var (
 //		If empty, the default is given by DefaultPlayerConfig (usually "linear:ab,max_depth=2", if not changed by the program).
 //
 // More details on the config are dependent on the module used.
-func New(matchId uint64, playerNum PlayerNum, config string) (Player, error) {
+func New(matchId uint64, matchName string, playerNum PlayerNum, config string) (Player, error) {
 	if config == "" {
 		config = DefaultPlayerConfig
 	}
@@ -81,7 +81,7 @@ func New(matchId uint64, playerNum PlayerNum, config string) (Player, error) {
 	}
 
 	params := splitConfigString(config)
-	player, err := module.NewPlayer(matchId, playerNum, params)
+	player, err := module.NewPlayer(matchId, matchName, playerNum, params)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "failed to create AI player %q", moduleName)
 	}
@@ -151,7 +151,7 @@ func GetParamOr[T interface{ bool | int | float32 | float64 }](params map[string
 	return defaultValue, nil
 }
 
-// PopParamOr is like GetParamOr but it also deletes from the params map the retrieved parameter.
+// PopParamOr is like GetParamOr, but it also deletes from the params map the retrieved parameter.
 func PopParamOr[T interface{ bool | int | float32 | float64 }](params map[string]string, key string, defaultValue T) (T, error) {
 	value, err := GetParamOr(params, key, defaultValue)
 	if err != nil {
