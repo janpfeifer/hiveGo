@@ -170,7 +170,7 @@ func (b *Board) FindAction(action Action) int {
 }
 
 // FindActionDeep like FindAction finds the index to the given action. But it does a deep-comparison, so
-// the action may have been generated separatedly from the actions of the board -- for instance when loading
+// the action may have been generated separately from the actions of the board -- for instance when loading
 // a match.
 func (b *Board) FindActionDeep(action Action) int {
 	for ii, action2 := range b.Derived.Actions {

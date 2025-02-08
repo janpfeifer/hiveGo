@@ -50,7 +50,7 @@ func ParsePlayerParam(data interface{}, key, value string) {
 
 func init() {
 	for _, key := range []string{"model", "tf", "tf_cpu", "tf_session_pool_size"} {
-		players2.RegisterPlayerModule(
+		players2.RegisterModule(
 			"tf", key, NewParsingData, ParsePlayerParam, FinalizeParsing,
 			players2.ScorerType)
 	}

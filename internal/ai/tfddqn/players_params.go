@@ -37,7 +37,7 @@ func ParsePlayerParam(data interface{}, key, value string) {
 
 func init() {
 	for _, key := range []string{"model", "tfddqn"} {
-		players2.RegisterPlayerModule(
+		players2.RegisterModule(
 			"tfddqn", key, NewParsingData, ParsePlayerParam, FinalizeParsing,
 			players2.ScorerType)
 	}

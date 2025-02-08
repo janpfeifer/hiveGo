@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/janpfeifer/hiveGo/ai"
-	"github.com/janpfeifer/hiveGo/ai/features"
+	"github.com/janpfeifer/hiveGo/internal/ai"
+	"github.com/janpfeifer/hiveGo/internal/features"
+	"k8s.io/klog/v2"
 	"log"
 	"math"
 	"sync"
@@ -11,9 +12,9 @@ import (
 // Label matches with scores that reflect the final result.
 // Also adds to the boards information of how many actions for
 // the player till the end of the match, which is used to
-// calculate the weighting based on TD-lambe constant.
+// calculate the weighting based on TD-lambda constant.
 func labelWithEndScore(match *Match) {
-	_, endScore := ai.EndGameScore(match.FinalBoard())
+	_, endScore := ai.IsEndGameAndScore(match.FinalBoard())
 	var scores [2]float32
 	if match.FinalBoard().NextPlayer == 0 {
 		scores = [2]float32{endScore, -endScore}
