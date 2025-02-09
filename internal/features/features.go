@@ -75,7 +75,7 @@ type BoardSpec struct {
 
 var (
 	// BoardSpecs enumerates in order the features extracted by FeatureVector.
-	// The VecIndex attribute is properly set during the package initialization.
+	// The Index attribute is properly set during the package initialization.
 	// The  "Opp" prefix refers to the opponent version of the feature.
 	BoardSpecs = [IdNumFeatureIds]BoardSpec{
 		{IdNumOffboard, "NumOffboard", int(NumPieceTypes), 0, fNumOffBoard, 0},

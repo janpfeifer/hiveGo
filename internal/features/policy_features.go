@@ -119,7 +119,7 @@ func (f *ActionPositionFeatures) neighbourhoodFeatures(b *Board, action Action, 
 	}
 }
 
-func playerToValue(b *Board, player uint8) float32 {
+func playerToValue(b *Board, player PlayerNum) float32 {
 	if player == b.NextPlayer {
 		return 1
 	} else {

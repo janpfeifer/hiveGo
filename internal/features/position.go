@@ -41,6 +41,21 @@ const (
 	IdPositionLast
 )
 
+// PositionSpec includes the position feature name, dimension and index in the concatenation of features.
+type PositionSpec struct {
+	// Id of the position feature.
+	Id PositionId
+
+	// Dim is the number of values used to represent this feature.
+	Dim int
+
+	// Index refers to the starting index in the concatenated position features vector.
+	Index int
+
+	// Number of features (IdPositionLast) when this feature was created.
+	Version int
+}
+
 var (
 	// PositionSpecs lists the dimension of each positional feature, and later it is initialized
 	// the relative position in the positional features vector.
@@ -52,30 +67,28 @@ var (
 		{Id: IdPositionStackBottomPieceOwner, Dim: 1},
 		{Id: IdPositionStackBottomPiece, Dim: int(NumPieceTypes)},
 	}
+
+	// CurrentPositionFeaturesDim is the sum of the dimensions of all position features = sum(PsoitionSpecs.Dim).
+	// It is set during initialization.
+	CurrentPositionFeaturesDim int
 )
 
 func init() {
 	featureIdx := 0
 	for specIdx := range PositionSpecs {
-		PositionSpecs[specIdx].VecIndex = featureIdx
+		PositionSpecs[specIdx].Index = featureIdx
 		featureIdx += PositionSpecs[specIdx].Dim
 	}
 
 }
 
-// PositionSpec includes the position feature name, dimension and index in the concatenation of features.
-type PositionSpec struct {
-	// Id of the position feature.
-	Id PositionId
+func idxForPositionId(id PositionId) int {
+	return PositionSpecs[id].Index
+}
 
-	// Dim is the number of values used to represent this feature.
-	Dim int
-
-	// VecIndex refers to the starting index in the concatenated feature vector.
-	VecIndex int
-
-	// Number of features (IdPositionLast) when this feature was created.
-	Version int
+func featuresForPositionId(id PositionId, features []float32) []float32 {
+	idx := idxForPositionId(id)
+	return features[idx : idx+PositionSpecs[id].Dim]
 }
 
 var EmptyCellFeatures = make([]float32, IdPositionLast)
@@ -90,63 +103,71 @@ func PositionFeatures(b *Board, pos Pos) []float32 {
 
 func stackFeatures(b *Board, pos Pos, stack EncodedStack) (f []float32) {
 	f = make([]float32, IdPositionLast)
+	idx := func(id PositionId) int { return idxForPositionId(id) }
 	// If there is nothing there, all features related to the pieces are zeroed already.
 	if stack.HasPiece() {
 		stack, player, piece := stack.PopPiece()
-		f[IdPositionPlayerOwner] = playerToValue(b, player)
-		f[IdPositionPieceOneHot+int(piece-1)] = 1
+		f[idx(IdPositionPlayerOwner)] = playerToValue(b, player)
+		f[idx(IdPositionPieceOneHot)+int(piece-1)] = 1
 
 		// Stack information:
 		var stackPos int
 		for stackPos = 0; stack.HasPiece() && stackPos < 4; stackPos++ {
 			stack, player, piece = stack.PopPiece()
-			f[IdPositionStackedBeetlesOwner+stackPos] = playerToValue(b, player)
+			f[idx(IdPositionStackedBeetlesOwner)+stackPos] = playerToValue(b, player)
 		}
 		// PieceType at very bottom is stored separately, in the next field:
-		f[IdPositionStackedBeetlesOwner+stackPos-1] = 0
+		f[idx(IdPositionStackedBeetlesOwner)+stackPos-1] = 0
 
 		// Information about piece at the very bottom of stack -- in most cases the same as the top of the stack.
-		f[IdPositionStackBottomPieceOwner] = playerToValue(b, player)
-		f[IdPositionStackBottomPiece+int(piece-1)] = 1
+		f[idx(IdPositionStackBottomPieceOwner)] = playerToValue(b, player)
+		f[idx(IdPositionStackBottomPiece)+int(piece-1)] = 1
 
 		// Is piece removable?
 		if b.Derived.RemovablePositions.Has(pos) {
-			f[IsPositionIsPieceRemovable] = 1.0
+			f[idx(IsPositionIsPieceRemovable)] = 1.0
 		}
 	}
 	return
 }
 
 // Expects owner value + one hot encoding of piece.
-func pieceFeatureToStr(f []float32) string {
-	if f[0] == 0 {
+func pieceFeatureToStr(owner float32, piece []float32) string {
+	if owner == 0 {
 		return "(None)"
 	}
 	player := "Current"
-	if f[0] == -1 {
+	if owner == -1 {
 		player = "Opponent"
 	}
 	for ii := ANT; ii < LastPiece; ii++ {
-		if f[int(ii)] == 1 {
+		if piece[int(ii-ANT)] == 1 {
 			return fmt.Sprintf("%s(%s)", PieceNames[ii], player)
 		}
 	}
 	return fmt.Sprintf("NoPiece(%s)", player)
 }
 
-func PositionFeaturesToString(f []float32) string {
-	if len(f) != IdPositionLast {
+func PositionFeaturesToString(rawFeatures []float32) string {
+	if len(rawFeatures) != CurrentPositionFeaturesDim {
 		msg := fmt.Sprintf("Invalid Position Features: wanted dimension=%d, got dimension=%d",
-			IdPositionLast, len(f))
+			CurrentPositionFeaturesDim, len(rawFeatures))
 		klog.Error(msg)
 		return msg
 	}
 
-	return fmt.Sprintf("[Top: %s, Stack(%v), Bottom: %s / Removable=%g]",
-		pieceFeatureToStr(f[IdPositionPlayerOwner:]),
-		f[IdPositionStackedBeetlesOwner:IdPositionStackedBeetlesOwner+3],
-		pieceFeatureToStr(f[IdPositionStackBottomPieceOwner:]),
-		f[IsPositionIsPieceRemovable])
+	extract := func(id PositionId) []float32 {
+		return featuresForPositionId(id, rawFeatures)
+	}
+	return fmt.Sprintf("[Top: %s / Bettles(%v), Bottom: %s / Removable=%g]",
+		pieceFeatureToStr(
+			extract(IdPositionPlayerOwner)[0],
+			extract(IdPositionPieceOneHot)),
+		extract(IdPositionStackedBeetlesOwner),
+		pieceFeatureToStr(
+			extract(IdPositionStackBottomPieceOwner)[0],
+			extract(IdPositionStackBottomPiece)),
+		extract(IsPositionIsPieceRemovable))
 }
 
 func init() {
