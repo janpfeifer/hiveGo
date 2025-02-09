@@ -45,7 +45,7 @@ func getPosition(pos, center Pos, f *features2.ActionPositionFeatures) []float32
 		for ii := 0; ii < features2.POSITIONS_PER_SECTION; ii++ {
 			neighPos := neighbourhood[section][ii]
 			if relPos.Equal(neighPos) {
-				return f.Sections[section][ii*features2.FEATURES_PER_POSITION : (ii+1)*features2.FEATURES_PER_POSITION]
+				return f.Sections[section][ii*features2.IdPositionLast : (ii+1)*features2.IdPositionLast]
 			}
 		}
 	}

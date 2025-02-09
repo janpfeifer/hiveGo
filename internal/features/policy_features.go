@@ -86,9 +86,9 @@ func NewActionFeatures(b *Board, action Action, policyVersion int) (af ActionFea
 	} else {
 		af.Move = 0
 		// Zero out SourceFeatures.
-		af.SourceFeatures.Center = make([]float32, FEATURES_PER_POSITION)
+		af.SourceFeatures.Center = make([]float32, IdPositionLast)
 		for ii := 0; ii < 6; ii++ {
-			af.SourceFeatures.Sections[ii] = make([]float32, POSITIONS_PER_SECTION*FEATURES_PER_POSITION)
+			af.SourceFeatures.Sections[ii] = make([]float32, POSITIONS_PER_SECTION*IdPositionLast)
 		}
 	}
 	af.TargetFeatures.neighbourhoodFeatures(b, action, policyVersion, action.TargetPos, true)
@@ -105,7 +105,7 @@ func (f *ActionPositionFeatures) neighbourhoodFeatures(b *Board, action Action, 
 		neighbourhood = &X_ODD_NEIGHBOURS
 	}
 	for section := 0; section < 6; section++ {
-		f.Sections[section] = make([]float32, 0, POSITIONS_PER_SECTION*FEATURES_PER_POSITION)
+		f.Sections[section] = make([]float32, 0, POSITIONS_PER_SECTION*IdPositionLast)
 		for ii := 0; ii < POSITIONS_PER_SECTION; ii++ {
 			neighPos := Pos{pos.X() + neighbourhood[section][ii][0], pos.Y() + neighbourhood[section][ii][1]}
 			neighFeatures := positionActionFeatures(b, action, policyVersion, neighPos, execAction)

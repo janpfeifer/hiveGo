@@ -379,7 +379,7 @@ func init() {
 // contain the current board state -- use FullBoardDimensions.
 // Empty hexagons will be filled with zeroes.
 //
-// It returns a multi-D vector of shape `[height][width][FEATURES_PER_POSITION]`
+// It returns a multi-D vector of shape `[height][width][IdPositionLast]`
 // and the shift of X and Y from the original map:
 //
 //	original_x + shift_x = FullBoardFeatures_x
