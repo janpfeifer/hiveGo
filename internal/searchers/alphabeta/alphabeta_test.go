@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"github.com/janpfeifer/hiveGo/internal/ai/linear"
 	features2 "github.com/janpfeifer/hiveGo/internal/features"
+	"github.com/janpfeifer/hiveGo/internal/searchers/alphabeta"
 	. "github.com/janpfeifer/hiveGo/internal/state"
-	"reflect"
+	"github.com/stretchr/testify/assert"
 	"testing"
 
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
@@ -15,7 +16,7 @@ var _ = fmt.Printf
 
 type PieceLayout struct {
 	pos    Pos
-	player uint8
+	player PlayerNum
 	piece  PieceType
 }
 
@@ -63,11 +64,10 @@ func TestEndGameMove(t *testing.T) {
 	})
 	board.NextPlayer = 1
 	board.BuildDerived()
+	printBoard(board)
 
-	action, _, score := AlphaBeta(board, scorer, 2, false)
+	searcher := alphabeta.New(scorer).WithMaxDepth(1)
+	action, _, score, _ := searcher.Search(board)
 	want := Action{Move: true, Piece: GRASSHOPPER, SourcePos: Pos{-2, 2}, TargetPos: Pos{0, 1}}
-	if !reflect.DeepEqual(want, action) {
-		printBoard(board)
-		t.Errorf("Wanted %s, got %s -> score=%.2f\n", want, action, score)
-	}
+	assert.Equalf(t, want, action, "Wanted %s, got %s -> score=%.2f", want, action, score)
 }
