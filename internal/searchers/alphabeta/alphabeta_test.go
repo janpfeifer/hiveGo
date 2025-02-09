@@ -1,14 +1,14 @@
-package ab_test
+package alphabeta_test
 
 import (
 	"fmt"
-	"github.com/janpfeifer/hiveGo/ai/features"
+	"github.com/janpfeifer/hiveGo/internal/ai/linear"
 	features2 "github.com/janpfeifer/hiveGo/internal/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"reflect"
 	"testing"
 
-	"github.com/janpfeifer/hiveGo/ascii_ui"
+	"github.com/janpfeifer/hiveGo/internal/ui/cli"
 )
 
 var _ = fmt.Printf
@@ -19,7 +19,7 @@ type PieceLayout struct {
 	piece  PieceType
 }
 
-var scorer = features.TrainedBest
+var scorer = linear.TrainedBest
 
 func buildBoard(layout []PieceLayout) (b *Board) {
 	b = NewBoard()
@@ -43,7 +43,7 @@ func listMovesForPiece(b *Board, piece PieceType, pos Pos) (poss []Pos) {
 }
 
 func printBoard(b *Board) {
-	ui := ascii_ui.NewUI(true, false)
+	ui := cli.New(true, false)
 	ui.PrintBoard(b)
 	features2.PrettyPrintFeatures(features2.FeatureVector(b, features2.BoardFeaturesDim))
 }

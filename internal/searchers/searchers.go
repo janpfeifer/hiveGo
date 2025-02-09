@@ -18,6 +18,7 @@ type Searcher interface {
 	// and the expected score of taking that action.
 	//
 	// Optionally, it can also return the score for each of the actions available on the board.
+	// Some algorithms (e.g.: alpha-beta pruning) don't provide good approximations to those, so they return it nil.
 	Search(board *Board) (action Action, nextBoard *Board, score float32, actionsScores []float32)
 
 	// ScoreMatch will score the board at each board position, starting from the current one,
