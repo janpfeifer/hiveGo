@@ -19,7 +19,7 @@ type PieceLayout struct {
 	piece  PieceType
 }
 
-var scorer = linear.TrainedBest
+var scorer = linear.PreTrainedBest
 
 func buildBoard(layout []PieceLayout) (b *Board) {
 	b = NewBoard()

@@ -153,7 +153,7 @@ func newCacheNode(mcts *mctsSearcher, stats *matchStats, b *Board, root bool) *c
 	}
 
 	if *flag_mctsUseLinearScore {
-		newScore, _ := linear.TrainedBest.Score(b, false)
+		newScore, _ := linear.PreTrainedBest.Score(b, false)
 		cn.score = newScore
 	}
 	if root && mcts.randomness > 0 {

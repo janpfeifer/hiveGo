@@ -70,17 +70,11 @@ type LearnerScorer interface {
 	BatchBoardScorer
 
 	// Learn makes the model learn from the given boards and associated boardLabels.
-	//
-	// ActionLabels is given for models that implement PolicyScorer.
-	// For boards that have no valid actions, that is when `len(board.Derived.Actions) == 0`, it is set to nil.
-	//
-	// steps is the number of times to repeat the training. If set to 0, the Learn() function
-	// will only report the loss but not actually train.
-	//
-	// If perStepCallback is given, it is called after each step, except if steps==0.
-	//
 	// It returns the training loss.
-	Learn(boards []*Board, boardLabels []float32, steps int, perStepCallback func()) (loss float32)
+	Learn(boards []*Board, boardLabels []float32) (loss float32)
+
+	// Loss returns a measure of loss for the model -- whatever it is.
+	Loss(boards []*Board, boardLabels []float32) (loss float32)
 
 	// Save should save the model.
 	Save()

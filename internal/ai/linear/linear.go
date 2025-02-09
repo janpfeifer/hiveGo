@@ -1,15 +1,19 @@
+// Package linear implements a pure Go linear scorer that can be used to play as well as
+// training -- it defines its own gradient for that, and can be used for a simple SGD.
 package linear
 
 import (
 	"fmt"
+	"github.com/chewxy/math32"
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
-	"io/ioutil"
+	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
 	"log"
 	"math"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,116 +21,199 @@ import (
 
 // Scorer is a linear model (one weight per feature + bias) on the feature set.
 // It implements ai.BoardScorer.
-type Scorer []float32
+type Scorer struct {
+	weights []float32
 
-var _ ai.BoardScorer = Scorer(nil)
+	// LearningRate to use when training the linear model and L2Reg to use.
+	LearningRate, L2Reg float32
 
-func (w Scorer) UnlimitedScore(features []float32) float32 {
+	// GradientL2Clip clips the gradient to this l2 length before applying.
+	GradientL2Clip float32
+
+	// Linearize training.
+	muLearning sync.Mutex
+
+	// NumSteps to do gradient descent when Learn is called.
+	NumSteps int
+
+	// FileName where to save/load the model from.
+	FileName string
+	muSave   sync.Mutex
+}
+
+// NewWithWeights creates a new Scorer with the given weights.
+// Ownership of the weights is transferred.
+func NewWithWeights(weights ...float32) *Scorer {
+	return &Scorer{
+		weights:      weights,
+		LearningRate: 0.1,
+		L2Reg:        1e-3,
+	}
+}
+
+var (
+	// Assert Scorer is an ai.BoardScorer and an ai.BatchBoardScorer
+	_ ai.BoardScorer      = (*Scorer)(nil)
+	_ ai.BatchBoardScorer = (*Scorer)(nil)
+)
+
+func (s *Scorer) logitScore(features []float32) float32 {
 	// Sum start with bias.
-	sum := w[len(w)-1]
+	sum := s.weights[len(s.weights)-1]
 
 	// Dot product of weights and features.
-	if len(w)-1 != len(features) {
+	if len(s.weights)-1 != len(features) {
 		log.Panicf("Features dimension is %d, but weights dimension is %d (+1 bias)",
-			len(features), len(w)-1)
+			len(features), len(s.weights)-1)
 	}
 	for ii, feature := range features {
-		sum += feature * w[ii]
+		sum += feature * s.weights[ii]
 	}
 	return sum
 }
 
-func (w Scorer) ScoreFeatures(features []float32) float32 {
-	return ai.SquashScore(w.UnlimitedScore(features))
+// BoardScore implements ai.BoardScorer.
+func (s *Scorer) BoardScore(board *Board) float32 {
+	return s.ScoreFeatures(features.FeatureVector(board, s.Version()))
 }
 
-func (w Scorer) Score(b *Board) float32 {
-	features := features.FeatureVector(b, w.Version())
-	return SigmoidTo10(w.UnlimitedScore(features)), nil
+// ScoreFeatures is like Score, but it takes the raw features as input.
+func (s *Scorer) ScoreFeatures(rawFeatures []float32) float32 {
+	logit := s.logitScore(rawFeatures)
+	return ai.SquashScore(logit)
 }
 
-func (w Scorer) BatchScore(boards []*Board, scoreActions bool) (scores []float32, actionProbsBatch [][]float32) {
-	if scoreActions {
-		klog.Error("Scorer.BatchBoardScore() doesn't support scoreActions.")
-	}
+// BatchBoardScore implements ai.BatchBoardScorer.
+func (s *Scorer) BatchBoardScore(boards []*Board) (scores []float32) {
 	scores = make([]float32, len(boards))
-	actionProbsBatch = nil
 	for ii, board := range boards {
-		scores[ii], _ = w.Score(board, scoreActions)
+		scores[ii] = s.BoardScore(board)
 	}
 	return
 }
 
-func (w Scorer) String() string {
-	if len(w) != BoardFeaturesDim+1 {
-		return fmt.Sprintf("Model with %d features, BoardFeaturesDim=%d", len(w)-1, BoardFeaturesDim)
+// AsGoCode outputs the model as Go code describing the weights for each feature.
+func (s *Scorer) AsGoCode() string {
+	if len(s.weights) != features.BoardFeaturesDim+1 {
+		return fmt.Sprintf("model with %d weights+1 bias, BoardFeaturesDim=%d", len(s.weights)-1, features.BoardFeaturesDim)
 	}
-	parts := make([]string, len(w)+2*(len(w)))
-	for _, fDef := range BoardSpecs {
+	parts := make([]string, len(s.weights)+2*(len(s.weights)))
+	for _, fDef := range features.BoardSpecs {
 		parts = append(parts, fmt.Sprintf("\n\t// %s -> %d\n\t", fDef.Name, fDef.Dim))
-		for _, value := range w[fDef.VecIndex : fDef.VecIndex+fDef.Dim] {
+		for _, value := range s.weights[fDef.VecIndex : fDef.VecIndex+fDef.Dim] {
 			parts = append(parts, fmt.Sprintf("%.4f, ", value))
 		}
 		parts = append(parts, "\n")
 	}
 	parts = append(parts, fmt.Sprintf("\n\t// Bias -> 1\n\t"))
-	parts = append(parts, fmt.Sprintf("%.4f,\n", w[len(w)-1]))
+	parts = append(parts, fmt.Sprintf("%.4f,\n", s.weights[len(s.weights)-1]))
 	return strings.Join(parts, "")
 }
 
-var (
-	cacheLinearScorers = map[string]Scorer{}
-	muLinearModels     sync.Mutex
-)
+// l2RegularizationLoss is the regularization term for the loss.
+func (s *Scorer) l2RegularizationLoss() float32 {
+	if s.L2Reg == 0 {
+		return 0
+	}
+	sum := float32(0)
+	for _, param := range s.weights {
+		sum += param * param
+	}
+	return sum * s.L2Reg
+}
 
-func (w Scorer) Learn(boards []*Board, boardLabels []float32,
-	actionsLabels [][]float32, learningRate float32, steps int,
-	perStepCallback func()) (loss, boardLoss, actionsLoss float32) {
-	// Bulid features.
+// Learn implements ai.LearnerScorer, and trains model with the new boards and its labels.
+func (s *Scorer) Learn(boards []*Board, boardLabels []float32) (loss float32) {
+	s.muLearning.Lock()
+	defer s.muLearning.Unlock()
+
+	// Build features.
 	boardFeatures := make([][]float32, len(boards))
 	for boardIdx, board := range boards {
-		boardFeatures[boardIdx] = FeatureVector(board, w.Version())
+		boardFeatures[boardIdx] = features.FeatureVector(board, s.Version())
 	}
 
-	var totalLoss float32
-	for step := 0; step < steps || step == 0; step++ {
-		grad := make([]float32, len(w))
-		totalLoss = 0
-		for boardIdx, features := range boardFeatures {
-			// Loss = Sqr(label - score)
-			// dLoss/dw_i = 2*(label-score)*x_i
-			// dLoss/b = 2*(label-score)
-			score := w.UnlimitedScore(features)
-			loss := boardLabels[boardIdx] - score
-			loss = loss * loss
-			totalLoss += loss
-			c := learningRate * 2 * (boardLabels[boardIdx] - score)
-			for ii, feature := range features {
-				grad[ii] += c * feature
+	// Loop over steps.
+	N := float32(len(boardFeatures))
+	for range s.NumSteps {
+		grad := make([]float32, len(s.weights))
+		for boardIdx, inputs := range boardFeatures {
+			// MSE (MeanSquaredLoss):
+			//     x, x_i: input (features) and x term i
+			//     w, w_i: weights, and weight term i
+			//     b: bias term of the model
+			//     score: tanh(w*x+b)
+			//   Loss = (label - score)^2/N
+			//     dLoss/dw_i = (2*(score-label)*d(score)/dw_i)/N
+			//     dLoss/db = (2*(score-label)/N*d(score)/db)/N
+			//     d(score)/dw_i = (1-score^2)*x_i
+			//     d(score)/db = (1-score^2)
+			score := s.logitScore(inputs)
+			c := 2 * (score - boardLabels[boardIdx]) * (1 - score*score)
+			for i, x_i := range inputs {
+				// dLoss/dw_i
+				grad[i] += c * x_i
 			}
 			grad[len(grad)-1] += c
 		}
-		totalLoss /= float32(len(boards))
-		totalLoss = float32(math.Sqrt(float64(totalLoss)))
 
-		// Sum gradient and regularization.
-		if step < steps {
-			for ii := range grad {
-				grad[ii] /= float32(len(boards))
+		// Take the mean:
+		for ii := range grad {
+			grad[ii] /= N
+		}
+		if s.L2Reg > 0 {
+			// L2 regularization
+			for ii := range s.weights {
+				grad[ii] += 2 * s.weights[ii] * s.L2Reg
 			}
-			clip(grad, 0.1)
-			for ii := range grad {
-				w[ii] += grad[ii]
-			}
-			if perStepCallback != nil {
-				perStepCallback()
+		}
+
+		// Clip gradient.
+		clipL2(grad, s.GradientL2Clip)
+
+		// Apply gradient with the learning rate.
+		for ii := range grad {
+			signBefore := math32.Signbit(s.weights[ii])
+			s.weights[ii] -= s.LearningRate * grad[ii]
+			if math32.Signbit(s.weights[ii]) != signBefore {
+				// When crossing the 0 barrier, make the gradient stop at 0 first.
+				s.weights[ii] = 0
 			}
 		}
 	}
-	return totalLoss, totalLoss, 0
+	return s.lossFromFeatures(boardFeatures, boardLabels)
 }
 
-func length(vec []float32) float32 {
+// Loss returns the loss of the model given the labels.
+func (s *Scorer) Loss(boards []*Board, boardLabels []float32) (loss float32) {
+	// Build features.
+	boardFeatures := make([][]float32, len(boards))
+	for boardIdx, board := range boards {
+		boardFeatures[boardIdx] = features.FeatureVector(board, s.Version())
+	}
+	return s.lossFromFeatures(boardFeatures, boardLabels)
+}
+
+// lossFromFeatures calculates the loss after the boards have been converted to features (x).
+func (s *Scorer) lossFromFeatures(boardFeatures [][]float32, boardLabels []float32) (loss float32) {
+	for boardIdx, x := range boardFeatures {
+		// MSE (MeanSquaredLoss):
+		//     x, x_i: input (features) and x term i
+		//     w, w_i: weights, and weight term i
+		//     b: bias term of the model
+		//     score: tanh(w*x+b)
+		//   Loss = (label - score)^2/N + L2Reg(w) + L2Reg(b)
+		score := s.logitScore(x)
+		diff := boardLabels[boardIdx] - score
+		loss += diff * diff
+	}
+	N := float32(len(boardLabels))
+	loss /= N
+	loss += s.l2RegularizationLoss()
+	return
+}
+
+func l2Len(vec []float32) float32 {
 	total := float32(0.0)
 	for _, value := range vec {
 		total += value * value
@@ -134,235 +221,114 @@ func length(vec []float32) float32 {
 	return float32(math.Sqrt(float64(total)))
 }
 
-func clip(vec []float32, max float32) {
-	l := length(vec)
-	if l > max {
-		ratio := max / l
+// clipL2 clips the L2 length of the vector.
+func clipL2(vec []float32, max float32) {
+	l2 := l2Len(vec)
+	if l2 > max {
+		ratio := max / l2
 		for ii := range vec {
 			vec[ii] *= ratio
 		}
 	}
 }
 
-func check(err error) {
-	if err != nil {
-		log.Panicf("Failed: %v", err)
+// Version of the features this model operates: the convention is that the version is the same as the number of features.
+func (s *Scorer) Version() int {
+	return len(s.weights) - 1
+}
+
+// Save model to s.FileName.
+func (s *Scorer) Save() error {
+	s.muSave.Lock()
+	defer s.muSave.Unlock()
+
+	if s.FileName == "" {
+		klog.Errorf("Linear model not saved, because no file name was specified")
+		return nil
 	}
-}
 
-// Horrible hack, but ... adding the file name to the Scorer object
-// would take lots of refactoring.
-var LinearModelFileName string
-
-func (w Scorer) IsActionsClassifier() bool {
-	return false
-}
-
-func (w Scorer) Version() int {
-	return len(w) - 1
-}
-
-func (w Scorer) Save() {
-	muLinearModels.Lock()
-	defer muLinearModels.Unlock()
-
-	file := LinearModelFileName
+	// Rename existing file, if it exists.
+	file := s.FileName
 	if _, err := os.Stat(file); err == nil {
 		err = os.Rename(file, file+"~")
 		if err != nil {
-			log.Printf("Failed to rename '%s' to '%s~': %v", file, file, err)
+			return errors.Wrapf(err, "failed to rename %s to %s", s.FileName, s.FileName+"~")
 		}
+	} else if !os.IsNotExist(err) {
+		return errors.Wrapf(err, "failed to stat %s", s.FileName)
 	}
 
-	valuesStr := make([]string, len(w))
-	for ii, value := range w {
+	valuesStr := make([]string, len(s.weights))
+	for ii, value := range s.weights {
 		valuesStr[ii] = fmt.Sprintf("%g", value)
 	}
 	allValues := strings.Join(valuesStr, "\n")
 
-	err := ioutil.WriteFile(file, []byte(allValues), 0777)
-	check(err)
+	err := os.WriteFile(s.FileName, []byte(allValues), 0777)
+	if err != nil {
+		return errors.Wrapf(err, "failed to save %s", s.FileName)
+	}
+	return nil
 }
 
-func NewLinearScorerFromFile(file string) (w Scorer) {
-	muLinearModels.Lock()
-	defer muLinearModels.Unlock()
-
-	if file == "" {
-		return TrainedBest
-	}
-
-	if cached, ok := cacheLinearScorers[file]; ok {
-		klog.Infof("Using cache for model '%s'", file)
-		return cached
-	}
-	defer func() { cacheLinearScorers[file] = w }()
-
-	_, err := os.Stat(file)
-	if os.IsNotExist(err) {
-		// Make fresh copy of TrainedBest
-		w = make(Scorer, BoardFeaturesDim+1)
-		if TrainedBest.Version() != BoardFeaturesDim {
-			klog.Errorf("New model with %d features initialized with current best with %d, it may not make much sense ?", w.Version(), TrainedBest.Version())
-		}
-		copy(w, TrainedBest)
-		klog.V(1).Infof("New model has %d features", w.Version())
-		return
-	}
-
-	data, err := ioutil.ReadFile(file)
-	check(err)
-	valuesStr := strings.Split(string(data), "\n")
-	w = make(Scorer, len(valuesStr))
-
-	for ii := 0; ii < len(w); ii++ {
-		f64, err := strconv.ParseFloat(valuesStr[ii], 32)
-		w[ii] = float32(f64)
-		check(err)
-	}
-	return
-}
-
+// Cache of linear models read from disk.
 var (
-	// Values actually trained with Scorer.Learn.
-	TrainedV0 = Scorer{
-		// Pieces order: ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER
-		// IdNumOffboard
-		-0.43, 0.04, -0.52, -2.02, -0.64,
-		// IdOpponentNumOffboard
-		0.53, 0.29, 0.41, 1.71, 0.73,
-
-		// IdNumSurroundingQueen / IdOpponentNumSurroundingQueen
-		-3.15, 3.86,
-
-		// IdNumCanMove
-		0.75, 0.0, 0.57, 0.0, -0.07, 0.0, 1.14, 0.0, 0.07, 0.0,
-		// IdOpponentNumCanMove
-		0.05, 0.0, -0.17, 0.0, 0.13, 0.0, 0.26, 0.0, 0.02, 0.0,
-
-		// IdNumThreateningMoves
-		0., 0.,
-
-		// F_NUM_TO_DRAW
-		0.,
-
-		// IdNumSingle,
-		0., 0.,
-
-		// Bias: *Must always be last*
-		-0.79,
-	}
-
-	TrainedV1 = Scorer{
-		// Pieces order: ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER
-		// IdNumOffboard
-		0.04304, 0.03418, 0.04503, -1.863, 0.0392,
-		// IdOpponentNumOffboard
-		0.05537, 0.03768, 0.04703, 1.868, 0.03902,
-
-		// IdNumSurroundingQueen / IdOpponentNumSurroundingQueen
-		-3.112, 3.422,
-
-		// IdNumCanMove
-		0.6302, 0.0, 0.4997, 0.0, -0.1359, 0.0, 1.115, 0.0, 0.0436, 0.0,
-
-		// IdOpponentNumCanMove
-		-0.001016, 0.0, -0.2178, 0.0, 0.05738, 0.0, 0.2827, 0.0, -0.01102, 0.0,
-
-		// IdNumThreateningMoves
-		-0.1299, -0.04499,
-
-		// IdOpponentNumThreateningMoves
-		// 0.1299, 0.04499,
-
-		// F_NUM_TO_DRAW
-		0.00944,
-
-		// IdNumSingle,
-		0., 0.,
-
-		// Bias: *Must always be last*
-		-0.8161,
-	}
-
-	TrainedV2 = Scorer{
-		// NumOffboard -> 5
-		0.0446, 0.0340, 0.0287, -1.8639, 0.0321,
-
-		// OppNumOffboard -> 5
-		0.0532, 0.0373, 0.0572, 1.8688, 0.0432,
-
-		// IdNumSurroundingQueen -> 1
-		-3.0338,
-
-		// OppNumSurroundingQueen -> 1
-		3.3681,
-
-		// NumCanMove -> 10
-		0.5989, 0.0090, 0.4845, -0.0045, -0.1100, 0.0213, 1.0952, -0.0198, 0.0468, 0.0054,
-
-		// OppNumCanMove -> 10
-		0.0185, -0.0096, -0.2016, 0.0043, 0.0483, -0.0133, 0.2939, 0.0113, 0.0004, 0.0037,
-
-		// IdNumThreateningMoves -> 2
-		-0.0946, 0.0114,
-
-		// MovesToDraw -> 1
-		0.0033,
-
-		// IdNumSingle,
-		0., 0.,
-
-		// Bias -> 1
-		-0.8147,
-	}
-
-	TrainedV3 = Scorer{
-		// Pieces order: ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER
-		// NumOffboard -> 5
-		-0.1891, 0.0648, -0.0803, -1.8169, -0.0319,
-
-		// OppNumOffboard -> 5
-		0.2967, 0.0625, 0.2306, 2.2038, 0.1646,
-
-		// IdNumSurroundingQueen -> 1
-		-2.4521,
-
-		// OppNumSurroundingQueen -> 1
-		2.7604,
-
-		// NumCanMove -> 10
-		0.0065, 0.4391, 0.5519, -0.4833, -0.0156, 0.1361, 0.9591, -0.1592, 0.2405, 0.0343,
-
-		// OppNumCanMove -> 10
-		0.2158, -0.7518, -0.4865, 0.3333, 0.1677, -0.2764, -0.0134, -0.2725, 0.0145, 0.0184,
-
-		// IdNumThreateningMoves -> 2
-		0.0087, 0.0714,
-
-		// OppNumThreateningMoves -> 2
-		0.1979, 0.0486,
-
-		// MovesToDraw -> 1
-		-0.0074,
-
-		// NumSingle -> 2
-		-0.2442, 0.3755,
-
-		// QueenIsCovered -> 2
-		0, 0, // -10, 10,
-
-		// AverageDistanceToQueen
-		// Pieces order: ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER
-		0, -0.01, -0.01, 0, -0.01,
-
-		// OppAverageDistanceToQueen
-		// Pieces order: ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER
-		0, 0.001, 0.001, 0, 0.001,
-
-		// Bias -> 1
-		-0.7409,
-	}
-
-	TrainedBest = TrainedV3
+	cacheLinearScorers = map[string]*Scorer{}
+	muCache            sync.Mutex
 )
+
+// LoadOrCreate model from fileName or create a new one, bootstrapped from PreTrainedBest.
+// It stores the reference of the loaded or created model in a cache, that is reused if attempting to load
+// the same fileName.
+func LoadOrCreate(fileName string) (*Scorer, error) {
+	if fileName == "" {
+		return PreTrainedBest, nil
+	}
+
+	muCache.Lock()
+	defer muCache.Unlock()
+	if cached, ok := cacheLinearScorers[fileName]; ok {
+		klog.V(1).Infof("Using cache for model '%s'", fileName)
+		return cached, nil
+	}
+
+	_, err := os.Stat(fileName)
+	if os.IsNotExist(err) {
+		// Make fresh copy of PreTrainedBest
+		var weights []float32
+		if PreTrainedBest.Version() != features.BoardFeaturesDim {
+			klog.Errorf("Current linear.PreTrainedBest model uses only %d features, while new list of features "+
+				"uses %d features, returning new model zero-initialized", PreTrainedBest.Version(), features.BoardFeaturesDim)
+			weights = make([]float32, features.BoardFeaturesDim+1)
+		} else {
+			weights = slices.Clone(PreTrainedBest.weights)
+		}
+		s := NewWithWeights(weights...)
+		klog.V(1).Infof("New model created for %s has %d features", fileName, s.Version())
+		cacheLinearScorers[fileName] = s
+		return s, nil
+	}
+
+	data, err := os.ReadFile(fileName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "LoadOrCreate failed to read file %s", fileName)
+	}
+	valuesStr := strings.Split(string(data), "\n")
+	weights := make([]float32, 0, len(valuesStr))
+	for lineNum, valueStr := range valuesStr {
+		valueStr = strings.TrimSpace(valueStr)
+		if valueStr == "" || strings.HasPrefix(valueStr, "#") || strings.HasPrefix(valueStr, "//") {
+			// Skip empty lines and comments.
+			continue
+		}
+		f64, err := strconv.ParseFloat(valueStr, 32)
+		if err != nil {
+			return nil, errors.Wrapf(err, "LoadOrCreate failed to parse value in file %s, at line number #%d",
+				fileName, lineNum+1)
+		}
+		weights = append(weights, float32(f64))
+	}
+	s := NewWithWeights(weights...)
+	cacheLinearScorers[fileName] = s
+	return s, nil
+}
