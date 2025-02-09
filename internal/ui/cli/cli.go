@@ -35,10 +35,10 @@ type UI struct {
 }
 
 var (
-	placementParser = regexp.MustCompile(`^\s*([\w])[\s,]+(-?\d+)[\s,]+(-?\d+)[\s,]*$`)
+	placementParser = regexp.MustCompile(`^\s*(\w)[\s,]+(-?\d+)[\s,]+(-?\d+)[\s,]*$`)
 	moveParser      = regexp.MustCompile(`^\s*(-?\d+)[\s,]+(-?\d+)[\s,]+(-?\d+)[\s,]+(-?\d+)[\s,]*$`)
 
-	parsingErrorMsg = "Failed to read command 3 times"
+	parsingErrorMsg = "failed to read command 3 times"
 )
 
 func New(color bool, clearScreen bool) *UI {
@@ -64,7 +64,7 @@ func (ui *UI) CheckNoAvailableAction(board *Board) (*Board, bool) {
 }
 
 func (ui *UI) RunNextMove(board *Board) (*Board, error) {
-	for true {
+	for {
 		ui.Print(board)
 		action, err := ui.ReadCommand(board)
 		if err != nil && err.Error() == parsingErrorMsg {
@@ -81,7 +81,7 @@ func (ui *UI) RunNextMove(board *Board) (*Board, error) {
 }
 
 func (ui *UI) Run(board *Board) (*Board, error) {
-	for true {
+	for {
 		board, _ = ui.CheckNoAvailableAction(board)
 		if board.IsFinished() {
 			ui.PrintWinner(board)
@@ -93,13 +93,12 @@ func (ui *UI) Run(board *Board) (*Board, error) {
 			return board, err
 		}
 	}
-	return board, nil
 }
 
 func (ui *UI) PrintWinner(b *Board) {
 	d := b.Derived
 	if d.Wins[0] && d.Wins[1] {
-		reason := "Both queens were sorrounded"
+		reason := "Both queens were surrounded"
 		if d.Repeats >= 2 {
 			reason = "Last position repeated 3 times"
 		} else if b.MoveNumber > b.MaxMoves {
@@ -108,12 +107,12 @@ func (ui *UI) PrintWinner(b *Board) {
 		fmt.Printf("\n\n%s*** DRAW: %s! ***%s\n\n",
 			ui.blinkStart(), reason, ui.colorEnd())
 	} else {
-		player := uint8(0)
+		player := PlayerFirst
 		if d.Wins[1] {
-			player = 1
+			player = PlayerSecond
 		}
-		fmt.Printf("\n\n%s*** PLAYER %d WINS!! Congratulations! ***%s\n\n",
-			ui.colorStart(player, QUEEN), player, ui.colorEnd())
+		fmt.Printf("\n\n%s*** %s PLAYER WINS!! Congratulations! ***%s\n\n",
+			ui.colorStart(player, QUEEN), strings.ToUpper(player.String()), ui.colorEnd())
 	}
 }
 
@@ -228,7 +227,7 @@ func (ui *UI) PrintPlayer(board *Board) {
 }
 
 func (ui *UI) PrintAvailable(board *Board) {
-	for player := uint8(0); player < NumPlayers; player++ {
+	for _, player := range []PlayerNum{PlayerFirst, PlayerSecond} {
 		var pieces []string
 		for _, piece := range Pieces {
 			pieces = append(pieces, fmt.Sprintf("%s-%d", PieceLetters[piece],
@@ -275,7 +274,7 @@ func (ui *UI) printBoardLine(board *Board, y, line, minX, maxX int8) {
 }
 
 func (ui *UI) printStrip(board *Board, pos Pos,
-	player uint8, piece PieceType, stacked bool, line int8, lastX bool) {
+	player PlayerNum, piece PieceType, stacked bool, line int8, lastX bool) {
 	switch {
 	case line == 0:
 		fmt.Print(" /")
@@ -315,11 +314,11 @@ func (ui *UI) printStrip(board *Board, pos Pos,
 
 // colorStart returns the string to start a color appropriate for the given
 // player/piece pair.
-func (ui *UI) colorStart(player uint8, piece PieceType) string {
+func (ui *UI) colorStart(player PlayerNum, piece PieceType) string {
 	if !ui.color {
 		return ""
 	}
-	if player == 0 {
+	if player == PlayerFirst {
 		if piece == QUEEN {
 			return "\033[37;41;1m"
 		} else {
@@ -348,14 +347,14 @@ func (ui *UI) blinkStart() string {
 	return "\033[5m"
 }
 
-func (ui *UI) stackedPieces(player uint8, piece PieceType, stack EncodedStack, fit int) string {
+func (ui *UI) stackedPieces(player PlayerNum, piece PieceType, stack EncodedStack, fit int) string {
 	numPieces := int(stack.CountPieces())
 	totalLen := 2 + numPieces
 	marginLeft := (fit - totalLen) / 2
 	if marginLeft < 0 {
 		marginLeft = 0
 	}
-	marginRight := (fit - totalLen - marginLeft)
+	marginRight := fit - totalLen - marginLeft
 	if marginRight < 0 {
 		marginRight = 0
 	}
@@ -402,7 +401,7 @@ func (ui *UI) printPlacementActions(b *Board) {
 	}
 	piecesStr := make([]string, 0, len(Pieces))
 	var examplePiece PieceType
-	for p, _ := range pieces {
+	for p := range pieces {
 		piecesStr = append(piecesStr, PieceLetters[p])
 		if examplePiece == NoPiece {
 			examplePiece = p
@@ -417,7 +416,7 @@ func (ui *UI) printPlacementActions(b *Board) {
 		}
 	}
 	positions := make([]Pos, 0, len(positionsMap))
-	for pos, _ := range positionsMap {
+	for pos := range positionsMap {
 		positions = append(positions, pos)
 	}
 	PosSort(positions)
