@@ -63,3 +63,10 @@ func TestSet(t *testing.T) {
 	s4 := SetWith(-3)
 	assert.False(t, s.Equal(s4))
 }
+
+func TestSliceOrdering(t *testing.T) {
+	s := []float32{7, -3, 2}
+	assert.Equal(t, []int{1, 2, 0}, SliceOrdering(s, false))
+	s2 := []int64{0, 1, 2}
+	assert.Equal(t, []int{2, 1, 0}, SliceOrdering(s2, true))
+}

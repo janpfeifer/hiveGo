@@ -142,3 +142,23 @@ func (s Set[T]) Equal(s2 Set[T]) bool {
 	}
 	return true
 }
+
+// SliceOrdering return a slice of indices to s (the original slice) that points
+// to them in order -- without any changes to s.
+//
+// If reverse is set to true, it returns the reverse order instead.
+func SliceOrdering[S interface{ ~[]E }, E cmp.Ordered](s S, reverse bool) []int {
+	ordering := make([]int, len(s))
+	for i := range ordering {
+		ordering[i] = i
+	}
+	reverseMult := 1
+	if reverse {
+		reverseMult = -1
+	}
+	slices.SortFunc(ordering, func(a, b int) int {
+		result := cmp.Compare(s[a], s[b])
+		return result * reverseMult
+	})
+	return ordering
+}
