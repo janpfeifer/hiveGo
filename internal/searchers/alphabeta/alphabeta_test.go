@@ -7,6 +7,7 @@ import (
 	"github.com/janpfeifer/hiveGo/internal/searchers/alphabeta"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/stretchr/testify/assert"
+	"k8s.io/klog/v2"
 	"testing"
 
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
@@ -21,6 +22,10 @@ type PieceLayout struct {
 }
 
 var scorer = linear.PreTrainedBest
+
+func init() {
+	klog.InitFlags(nil)
+}
 
 func buildBoard(layout []PieceLayout) (b *Board) {
 	b = NewBoard()
