@@ -4,7 +4,6 @@ package linear
 
 import (
 	"fmt"
-	"github.com/chewxy/math32"
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/features"
 	. "github.com/janpfeifer/hiveGo/internal/state"
@@ -45,9 +44,10 @@ type Scorer struct {
 // Ownership of the weights is transferred.
 func NewWithWeights(weights ...float32) *Scorer {
 	return &Scorer{
-		weights:      weights,
-		LearningRate: 0.1,
-		L2Reg:        1e-3,
+		weights:        weights,
+		LearningRate:   0.01,
+		L2Reg:          1e-3,
+		GradientL2Clip: 10.0,
 	}
 }
 
@@ -123,6 +123,7 @@ func (s *Scorer) l2RegularizationLoss() float32 {
 }
 
 // Learn implements ai.LearnerScorer, and trains model with the new boards and its labels.
+// It returns the loss.
 func (s *Scorer) Learn(boards []*Board, boardLabels []float32) (loss float32) {
 	s.muLearning.Lock()
 	defer s.muLearning.Unlock()
@@ -132,56 +133,73 @@ func (s *Scorer) Learn(boards []*Board, boardLabels []float32) (loss float32) {
 	for boardIdx, board := range boards {
 		boardFeatures[boardIdx] = features.FeatureVector(board, s.Version())
 	}
+	return s.lockedLearnFromFeatures(boardFeatures, boardLabels)
+}
 
+// lockedLearnFromFeatures uses as input a batch of feature vectors (as opposed to the raw boards)
+// It assumes s.muLearning is already locked.
+func (s *Scorer) lockedLearnFromFeatures(boardFeatures [][]float32, boardLabels []float32) (loss float32) {
 	// Loop over steps.
-	N := float32(len(boardFeatures))
+	grad := make([]float32, len(s.weights))
 	for range s.NumSteps {
-		grad := make([]float32, len(s.weights))
-		for boardIdx, inputs := range boardFeatures {
-			// MSE (MeanSquaredLoss):
-			//     x, x_i: input (features) and x term i
-			//     w, w_i: weights, and weight term i
-			//     b: bias term of the model
-			//     score: tanh(w*x+b)
-			//   Loss = (label - score)^2/N
-			//     dLoss/dw_i = (2*(score-label)*d(score)/dw_i)/N
-			//     dLoss/db = (2*(score-label)/N*d(score)/db)/N
-			//     d(score)/dw_i = (1-score^2)*x_i
-			//     d(score)/db = (1-score^2)
-			score := s.logitScore(inputs)
-			c := 2 * (score - boardLabels[boardIdx]) * (1 - score*score)
-			for i, x_i := range inputs {
-				// dLoss/dw_i
-				grad[i] += c * x_i
-			}
-			grad[len(grad)-1] += c
-		}
-
-		// Take the mean:
-		for ii := range grad {
-			grad[ii] /= N
-		}
-		if s.L2Reg > 0 {
-			// L2 regularization
-			for ii := range s.weights {
-				grad[ii] += 2 * s.weights[ii] * s.L2Reg
-			}
-		}
+		s.calculateGradient(boardFeatures, boardLabels, grad)
 
 		// Clip gradient.
-		clipL2(grad, s.GradientL2Clip)
+		if s.GradientL2Clip > 0 {
+			clipL2(grad, s.GradientL2Clip)
+		}
 
 		// Apply gradient with the learning rate.
 		for ii := range grad {
-			signBefore := math32.Signbit(s.weights[ii])
+			//wasZero := grad[ii] == 0
+			//signBefore := math32.Signbit(s.weights[ii])
 			s.weights[ii] -= s.LearningRate * grad[ii]
-			if math32.Signbit(s.weights[ii]) != signBefore {
-				// When crossing the 0 barrier, make the gradient stop at 0 first.
-				s.weights[ii] = 0
-			}
+			//if !wasZero && math32.Signbit(s.weights[ii]) != signBefore {
+			//	// When crossing the 0 barrier, make the gradient stop at 0 first.
+			//	s.weights[ii] = 0
+			//}
 		}
 	}
 	return s.lossFromFeatures(boardFeatures, boardLabels)
+}
+
+// calculateGradient of the MSE (MeanSquaredError) loss:
+//
+//	  x, x_i: input (features) and x term i
+//	  w, w_i: weights, and weight term i
+//	  b: bias term of the model
+//	  score: tanh(w*x+b)
+//	Loss = (label - score)^2/N
+//	  dLoss/dw_i = (2*(score-label)*d(score)/dw_i)/N
+//	  dLoss/db = (2*(score-label)*d(score)/db)/N
+//	  d(score)/dw_i = (1-score^2)*x_i
+//	  d(score)/db = (1-score^2)
+func (s *Scorer) calculateGradient(inputs [][]float32, labels []float32, gradient []float32) {
+	for i := range gradient {
+		gradient[i] = 0
+	}
+	N := float32(len(inputs))
+	for exampleIdx, x := range inputs {
+		score := s.ScoreFeatures(x)
+		c := 2 * (score - labels[exampleIdx]) * (1 - score*score)
+		for i, x_i := range x {
+			// dLoss/dw_i
+			gradient[i] += c * x_i
+		}
+		// gradient of the bias term (the last)
+		gradient[len(gradient)-1] += c
+	}
+
+	// Take the mean:
+	for ii := range gradient {
+		gradient[ii] /= N
+	}
+	if s.L2Reg > 0 {
+		// L2 regularization
+		for ii := range s.weights {
+			gradient[ii] += 2 * s.weights[ii] * s.L2Reg
+		}
+	}
 }
 
 // Loss returns the loss of the model given the labels.
@@ -203,7 +221,7 @@ func (s *Scorer) lossFromFeatures(boardFeatures [][]float32, boardLabels []float
 		//     b: bias term of the model
 		//     score: tanh(w*x+b)
 		//   Loss = (label - score)^2/N + L2Reg(w) + L2Reg(b)
-		score := s.logitScore(x)
+		score := s.ScoreFeatures(x)
 		diff := boardLabels[boardIdx] - score
 		loss += diff * diff
 	}
@@ -222,13 +240,15 @@ func l2Len(vec []float32) float32 {
 }
 
 // clipL2 clips the L2 length of the vector.
-func clipL2(vec []float32, max float32) {
+func clipL2(vec []float32, maxLen float32) {
 	l2 := l2Len(vec)
-	if l2 > max {
-		ratio := max / l2
+	if l2 > maxLen {
+		ratio := maxLen / l2
+		fmt.Printf("\tclip: l2=%g, maxLen=%g, ratio=%g\n", l2, maxLen, ratio)
 		for ii := range vec {
 			vec[ii] *= ratio
 		}
+		fmt.Printf("\tvec=%v\n", vec)
 	}
 }
 
