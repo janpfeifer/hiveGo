@@ -120,16 +120,19 @@ func (ab *Searcher) WithMaxTime(maxTime time.Duration) *Searcher {
 	return ab
 }
 
-// Search implements the Searcher interface.
+// Search implements the searchers.Searcher interface.
 //
 // It returns actionLabels always nil, because it wouldn't be a good approximation for the non-best move.
 // This is because of the pruning aspect of the algorithm: bad moves are cut short, so alpha-beta pruning score
 // estimation for bad moves will not be a good one.
-func (ab *Searcher) Search(b *Board) (action Action, board *Board, score float32, actionsLabels []float32) {
+func (ab *Searcher) Search(board *Board) (bestAction Action, bestBoard *Board, bestScore float32, actionsLabels []float32) {
 	start := time.Now()
+	if board.Derived == nil {
+		board.BuildDerived()
+	}
 	actionsLabels = nil
 	// TODO: implement maxTime by interactively increasing the depth in the search, until the time expires.
-	action, board, score = ab.searchToMaxDepth(board, ab.maxDepth)
+	bestAction, bestBoard, bestScore = ab.searchToMaxDepth(board, ab.maxDepth)
 	elapsedTime := time.Since(start).Seconds()
 	if klog.V(3).Enabled() {
 		muLogBoard.Lock()
@@ -143,7 +146,7 @@ func (ab *Searcher) Search(b *Board) (action Action, board *Board, score float32
 		fmt.Println()
 		batchScores := ab.scorer.BatchBoardScore([]*Board{board})
 		fmt.Printf("Best action found: %s - shallow score=%.2f, αβ-score=%.2f\n\n",
-			action, batchScores[0], score)
+			bestAction, batchScores[0], bestScore)
 	}
 	if klog.V(2).Enabled() {
 		klog.Infof("Counts: %+v", ab.stats)
@@ -179,6 +182,7 @@ var muLogBoard sync.Mutex
 func (ab *Searcher) recursion(board *Board, depthLeft int, alpha, beta float32, addNoise bool) (
 	bestAction Action, bestBoard *Board, bestScore float32) {
 	isLeaf := depthLeft <= 1
+	fmt.Printf("depthLeft=%d, isLeaf=%v\n", depthLeft, isLeaf)
 
 	// Sub-actions and boards available at this state: in principle we would only need to score the leaf
 	// nodes, but we score intermediary nodes to guide the alpha-beta pruning search -- it prunes more
@@ -226,6 +230,11 @@ func (ab *Searcher) recursion(board *Board, depthLeft int, alpha, beta float32, 
 				}
 			}
 		}
+		// Pick best:
+		bestScore, bestActionIdx = pickBest(scores)
+		bestBoard = newBoards[bestActionIdx]
+		bestAction = actions[bestActionIdx]
+		return
 	}
 
 	// Find order from the best scoring first.
@@ -323,6 +332,31 @@ func executeAndScoreActions(board *Board, scorer ai.BatchBoardScorer) (newBoards
 				scores[ii] = -scored[scoredIdx]
 				scoredIdx++
 			}
+		}
+	}
+	return
+}
+
+// pickBest returns the best score and its index.
+// If there are ties, it picks randomly among the best indices.
+func pickBest(scores []float32) (bestScore float32, bestIdx int) {
+	numBestScores := 0
+	bestScore = float32(-math.MaxFloat32)
+	bestIdx = -1
+	for scoreIdx, score := range scores {
+		if score < bestScore {
+			continue
+		}
+		if score > bestScore {
+			bestScore = score
+			bestIdx = scoreIdx
+			numBestScores = 1
+			continue
+		}
+		// It's a tie, so we randomly keep the current one or pick the new one.
+		numBestScores++
+		if rand.Intn(numBestScores) == 0 {
+			bestIdx = scoreIdx
 		}
 	}
 	return
