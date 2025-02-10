@@ -76,7 +76,7 @@ type ActionFeatures struct {
 	SourceFeatures, TargetFeatures ActionPositionFeatures
 }
 
-// ActionFeatures build the features for one action. We do this one at a time so that
+// NewActionFeatures build the features for one action. We do this one at a time so that
 // they can be accumulated directly into a tensor (or whatever is the backend machine
 // learning)
 func NewActionFeatures(b *Board, action Action, policyVersion int) (af ActionFeatures) {
