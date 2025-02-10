@@ -55,8 +55,8 @@ func TestEndGameMove(t *testing.T) {
 		{Pos{-1, 0}, 1, BEETLE},
 		{Pos{1, 0}, 0, QUEEN},
 		{Pos{-1, 1}, 1, QUEEN},
-		{Pos{2, 1}, 0, SPIDER},
-		{Pos{-2, 2}, 1, GRASSHOPPER},
+		{Pos{2, -1}, 0, SPIDER},
+		{Pos{-2, 3}, 1, GRASSHOPPER},
 		{Pos{1, 1}, 0, SPIDER},
 		{Pos{-1, 2}, 1, SPIDER},
 		{Pos{2, 0}, 0, ANT},
@@ -68,6 +68,35 @@ func TestEndGameMove(t *testing.T) {
 
 	searcher := alphabeta.New(scorer).WithMaxDepth(1)
 	action, _, score, _ := searcher.Search(board)
-	want := Action{Move: true, Piece: GRASSHOPPER, SourcePos: Pos{-2, 2}, TargetPos: Pos{0, 1}}
+	want := Action{Move: true, Piece: GRASSHOPPER, SourcePos: Pos{-2, 3}, TargetPos: Pos{0, 1}}
+	assert.Equalf(t, want, action, "Wanted %s, got %s -> score=%.2f", want, action, score)
+}
+
+func TestTwoMovesMove(t *testing.T) {
+	board := buildBoard([]PieceLayout{
+		{Pos{0, 0}, 0, QUEEN},
+		{Pos{1, 0}, 0, ANT},
+		{Pos{2, 0}, 0, ANT},
+		{Pos{3, 0}, 0, ANT},
+		{Pos{4, 0}, 0, BEETLE},
+
+		{Pos{-1, 1}, 1, BEETLE},
+		{Pos{0, -1}, 1, SPIDER},
+		{Pos{-1, 0}, 1, SPIDER},
+		{Pos{0, 1}, 1, ANT},
+		{Pos{-2, 1}, 1, QUEEN},
+		{Pos{-2, 0}, 1, GRASSHOPPER},
+	})
+	board.NextPlayer = 1
+	board.SetAvailable(1, ANT, 0)
+	board.SetAvailable(1, BEETLE, 0)
+	board.SetAvailable(1, SPIDER, 0)
+	board.SetAvailable(1, GRASSHOPPER, 0)
+	board.BuildDerived()
+	printBoard(board)
+
+	searcher := alphabeta.New(scorer).WithMaxDepth(3)
+	action, _, score, _ := searcher.Search(board)
+	want := Action{Move: true, Piece: GRASSHOPPER, SourcePos: Pos{-2, 0}, TargetPos: Pos{-2, 2}}
 	assert.Equalf(t, want, action, "Wanted %s, got %s -> score=%.2f", want, action, score)
 }

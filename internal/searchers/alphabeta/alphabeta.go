@@ -182,7 +182,6 @@ var muLogBoard sync.Mutex
 func (ab *Searcher) recursion(board *Board, depthLeft int, alpha, beta float32, addNoise bool) (
 	bestAction Action, bestBoard *Board, bestScore float32) {
 	isLeaf := depthLeft <= 1
-	fmt.Printf("depthLeft=%d, isLeaf=%v\n", depthLeft, isLeaf)
 
 	// Sub-actions and boards available at this state: in principle we would only need to score the leaf
 	// nodes, but we score intermediary nodes to guide the alpha-beta pruning search -- it prunes more
@@ -329,7 +328,7 @@ func executeAndScoreActions(board *Board, scorer ai.BatchBoardScorer) (newBoards
 			if !newBoards[ii].IsFinished() {
 				// Score for board.NextPlayer, not newBoards[ii].NextPlayer, hence
 				// we take the inverse here.
-				scores[ii] = -scored[scoredIdx]
+				scores[ii] = -1 * 0.999 * scored[scoredIdx] // Evaluation score capped to +/- 0.999, to avoid mixing with actual game won/lost.
 				scoredIdx++
 			}
 		}
