@@ -66,6 +66,7 @@ func (ui *UI) CheckNoAvailableAction(board *Board) (*Board, bool) {
 func (ui *UI) RunNextMove(board *Board) (*Board, error) {
 	for {
 		ui.Print(board)
+		fmt.Println()
 		action, err := ui.ReadCommand(board)
 		if err != nil && err.Error() == parsingErrorMsg {
 			continue
@@ -112,27 +113,45 @@ func (ui *UI) PrintWinner(b *Board) {
 			player = PlayerSecond
 		}
 		fmt.Printf("\n\n%s*** %s PLAYER WINS!! Congratulations! ***%s\n\n",
-			ui.colorStart(player, QUEEN), strings.ToUpper(player.String()), ui.colorEnd())
+			ui.colorStart(player), strings.ToUpper(player.String()), ui.colorEnd())
 	}
 }
 
 func (ui *UI) ReadCommand(b *Board) (action Action, err error) {
+	// ANSI escape codes for:
+	// - \033[7m:  Reverse video (swap foreground and background)
+	// - \033[45m: Set background color to magenta (purple-ish)
+	// - \033[0m:  Reset all attributes to defaults
+	const (
+		inputAreaColor = "\033[30;45;2m"        // Purplish background
+		inputAreaReset = "\033[39;49;0m\033[0K" // Reset color and clear to the end-of-line.
+		inputWidth     = 14                     // Width of the input area
+	)
+
 	for numErrs := 0; numErrs < 3; numErrs++ {
-		fmt.Println()
+		fmt.Print("    ")
 		ui.PrintPlayer(b)
-		fmt.Print(": ")
+		fmt.Print(" action > ")
+
+		// Print "input area" in purple, and move the cursor back to the beginning of the input area.
+		fmt.Printf("%s%s", inputAreaColor, strings.Repeat(" ", inputWidth))
+		fmt.Printf("\033[%dD", inputWidth-1) // Left 1 char padding.
+
 		var text string
 		text, err = ui.reader.ReadString('\n')
+		fmt.Printf(inputAreaReset) // We don't want the purple color to leak.
 		if err != nil {
 			return
 		}
+		text = strings.TrimSpace(text)
+
 		matches := placementParser.FindStringSubmatch(strings.ToUpper(text))
 		if len(matches) == 4 {
 			// Placement action.
 			action.Move = false
 			action.SourcePos = Pos{0, 0}
 			if piece, ok := LetterToPiece[matches[1]]; !ok {
-				fmt.Printf("Sorry insect '%s' unknown, choose one of 'A', 'B', 'G', 'Q', 'S'\n",
+				fmt.Printf("    * Sorry insect %q unknown, choose one of 'A', 'B', 'G', 'Q', 'S'\n",
 					matches[1])
 				continue
 			} else {
@@ -141,7 +160,7 @@ func (ui *UI) ReadCommand(b *Board) (action Action, err error) {
 			failed := false
 			for ii := 0; ii < 2; ii++ {
 				if i64, err := strconv.ParseInt(matches[2+ii], 10, 8); err != nil {
-					fmt.Printf("Failed to parse location '%s' in '%s'\n", matches[2+ii], text)
+					fmt.Printf("    * Failed to parse location %q in %q\n", matches[2+ii], text)
 					failed = true
 					break
 				} else {
@@ -152,7 +171,7 @@ func (ui *UI) ReadCommand(b *Board) (action Action, err error) {
 				continue
 			}
 			if !b.IsValid(action) {
-				fmt.Printf("Placing %s in %s is not a valid placement.\n",
+				fmt.Printf("    * Placing %s in %s is not a valid placement.\n",
 					action.Piece, action.TargetPos)
 				continue
 			}
@@ -167,7 +186,7 @@ func (ui *UI) ReadCommand(b *Board) (action Action, err error) {
 			failed := false
 			for ii := 0; ii < 4; ii++ {
 				if i64, err := strconv.ParseInt(matches[1+ii], 10, 8); err != nil {
-					fmt.Printf("Failed to parse location '%s' in '%s'\n", matches[1+ii], text)
+					fmt.Printf("    * Failed to parse location %q in %q\n", matches[1+ii], text)
 					failed = true
 					break
 				} else {
@@ -193,7 +212,7 @@ func (ui *UI) ReadCommand(b *Board) (action Action, err error) {
 			err = nil
 			return
 		}
-		fmt.Printf("Failed to parse your input '%s', please try again.", text)
+		fmt.Printf("    * Failed to parse your input %q, please try again.\n", text)
 	}
 	err = errors.New(parsingErrorMsg)
 	return
@@ -217,24 +236,29 @@ func (ui *UI) Print(board *Board) {
 	ui.PrintAvailable(board)
 	fmt.Print("\n")
 	ui.PrintPlayer(board)
-	fmt.Print(" turn to play\n")
+	fmt.Print(" turn to play:\n")
 	ui.printActions(board)
-	fmt.Println()
 }
 
 func (ui *UI) PrintPlayer(board *Board) {
-	fmt.Printf("%sPlayer %d%s", ui.colorStart(board.NextPlayer, QUEEN), board.NextPlayer, ui.colorEnd())
+	fmt.Printf("%s%s Player%s", ui.colorStart(board.NextPlayer), board.NextPlayer, ui.colorEnd())
 }
 
 func (ui *UI) PrintAvailable(board *Board) {
 	for _, player := range []PlayerNum{PlayerFirst, PlayerSecond} {
 		var pieces []string
 		for _, piece := range Pieces {
-			pieces = append(pieces, fmt.Sprintf("%s-%d", PieceLetters[piece],
+			pieces = append(pieces, fmt.Sprintf("%s-%d", PieceNames[piece],
 				board.Available(player, piece)))
 		}
 		sort.Strings(pieces)
-		fmt.Printf("Player %d available: [%s]\n", player, strings.Join(pieces, ", "))
+		space := ""
+		if player == 0 {
+			space = " "
+		}
+		fmt.Printf("%s%s%s Player%s available: [%s]\n",
+			space, ui.colorStart(player), player, ui.colorEnd(),
+			strings.Join(pieces, ", "))
 	}
 }
 
@@ -295,7 +319,7 @@ func (ui *UI) printStrip(board *Board, pos Pos,
 			} else {
 				fmt.Print(" ")
 				if !stacked {
-					fmt.Print(ui.colorStart(player, piece) +
+					fmt.Print(ui.colorStartForPiece(player, piece) +
 						centerString(PieceLetters[piece], CharsPerColumn-2) +
 						ui.colorEnd())
 				} else {
@@ -312,9 +336,9 @@ func (ui *UI) printStrip(board *Board, pos Pos,
 	}
 }
 
-// colorStart returns the string to start a color appropriate for the given
+// colorStartForPiece returns the string to start a color appropriate for the given
 // player/piece pair.
-func (ui *UI) colorStart(player PlayerNum, piece PieceType) string {
+func (ui *UI) colorStartForPiece(player PlayerNum, piece PieceType) string {
 	if !ui.color {
 		return ""
 	}
@@ -331,6 +355,16 @@ func (ui *UI) colorStart(player PlayerNum, piece PieceType) string {
 			return "\033[30;42;1m"
 		}
 	}
+}
+
+func (ui *UI) colorStart(player PlayerNum) string {
+	if !ui.color {
+		return ""
+	}
+	if player == PlayerFirst {
+		return "\033[30;41;1m"
+	}
+	return "\033[30;42;1m"
 }
 
 func (ui *UI) colorEnd() string {
@@ -359,27 +393,26 @@ func (ui *UI) stackedPieces(player PlayerNum, piece PieceType, stack EncodedStac
 		marginRight = 0
 	}
 
-	str := ui.colorStart(player, piece)
+	str := ui.colorStartForPiece(player, piece)
 	str += strings.Repeat(" ", marginLeft)
 	str += PieceLetters[piece]
 	str += "("
 	str += ui.colorEnd()
 	for i := 1; i < numPieces; i++ {
 		stackedPlayer, stackedPiece := stack.PieceAt(uint8(i))
-		str += ui.colorStart(stackedPlayer, stackedPiece)
+		str += ui.colorStartForPiece(stackedPlayer, stackedPiece)
 		str += PieceLetters[stackedPiece]
 		str += ui.colorEnd()
 	}
-	str += ui.colorStart(player, piece)
+	str += ui.colorStartForPiece(player, piece)
 	str += ")" + strings.Repeat(" ", marginRight)
 	str += ui.colorEnd()
 	return str
 }
 
 func (ui *UI) printActions(b *Board) {
-	fmt.Print("Available actions:\n")
+	fmt.Print("- Available actions:\n")
 	ui.printPlacementActions(b)
-	fmt.Println()
 	ui.printMoveActions(b)
 }
 
@@ -387,6 +420,11 @@ func (ui *UI) printPlacementActions(b *Board) {
 	d := b.Derived
 	if len(d.PlacementPositions[b.NextPlayer]) == 0 {
 		return
+	}
+
+	player := b.NextPlayer
+	if b.Available(player, QUEEN) > 0 && b.MoveNumber >= 7 {
+		fmt.Println("  - After the 3rd player's move (> 6th board move), they have to put the Queen on board")
 	}
 
 	// Set of pieces that can be placed.
@@ -399,10 +437,10 @@ func (ui *UI) printPlacementActions(b *Board) {
 	if len(pieces) == 0 {
 		return
 	}
-	piecesStr := make([]string, 0, len(Pieces))
+	piecesStr := make([]string, 0, len(pieces))
 	var examplePiece PieceType
 	for p := range pieces {
-		piecesStr = append(piecesStr, PieceLetters[p])
+		piecesStr = append(piecesStr, PieceNames[p])
 		if examplePiece == NoPiece {
 			examplePiece = p
 		}
@@ -423,14 +461,15 @@ func (ui *UI) printPlacementActions(b *Board) {
 	examplePos := positions[0]
 
 	// Print the available pieces / positions, and an example.
-	fmt.Printf("  * place piece [%s] in one of the positions [%s]\n",
+	fmt.Printf("  - Place a piece [%s] in one of the positions [%s]\n",
 		strings.Join(piecesStr, ", "), strings.Join(PosStrings(positions), ", "))
 	fmt.Printf("    Example: type '%s %d %d' to place a %s in %s\n",
-		piecesStr[0], examplePos.X(), examplePos.Y(), examplePiece, examplePos)
+		PieceLetters[examplePiece], examplePos.X(), examplePos.Y(), examplePiece, examplePos)
 }
 
 func (ui *UI) printMoveActions(b *Board) {
 	d := b.Derived
+	player := b.NextPlayer
 
 	// List pieces that can be placed.
 	pieces := make(map[Pos][]Action)
@@ -441,6 +480,11 @@ func (ui *UI) printMoveActions(b *Board) {
 		}
 	}
 	if len(pieces) == 0 {
+		if b.Available(player, QUEEN) > 0 {
+			fmt.Println("  - Movement of pieces not allowed until the Queen is on the board.")
+		} else {
+			fmt.Println("  - All your pieces are blocked, no movement is possible.")
+		}
 		return
 	}
 
@@ -469,8 +513,8 @@ func (ui *UI) printMoveActions(b *Board) {
 			exampleSrcPos = srcPos
 			exampleTgtPos = tgtPoss[0]
 		}
-		fmt.Printf("  * Move %s at %s to one of the positions [%s]\n",
-			PieceLetters[piece], srcPos, strings.Join(PosStrings(tgtPoss), ", "))
+		fmt.Printf("  - Move %s at %s to one of the positions [%s]\n",
+			PieceNames[piece], srcPos, strings.Join(PosStrings(tgtPoss), ", "))
 	}
 	fmt.Printf("    Example: to move %s at %s to %s, type the source and target positions: '%d %d %d %d'",
 		PieceNames[examplePiece], exampleSrcPos, exampleTgtPos,
