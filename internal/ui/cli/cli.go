@@ -65,7 +65,7 @@ func (ui *UI) CheckNoAvailableAction(board *Board) (*Board, bool) {
 
 func (ui *UI) RunNextMove(board *Board) (*Board, error) {
 	for {
-		ui.Print(board)
+		ui.Print(board, true)
 		fmt.Println()
 		action, err := ui.ReadCommand(board)
 		if err != nil && err.Error() == parsingErrorMsg {
@@ -218,7 +218,7 @@ func (ui *UI) ReadCommand(b *Board) (action Action, err error) {
 	return
 }
 
-func (ui *UI) Print(board *Board) {
+func (ui *UI) Print(board *Board, includeAvailableActions bool) {
 	if board.Derived == nil {
 		log.Fatal("Called UI.Print(board), with board without Derived set.")
 	}
@@ -233,30 +233,50 @@ func (ui *UI) Print(board *Board) {
 
 	ui.PrintBoard(board)
 	fmt.Println()
-	ui.PrintAvailable(board)
-	fmt.Print("\n")
-	ui.PrintPlayer(board)
-	fmt.Print(" turn to play:\n")
-	ui.printActions(board)
+	ui.PrintAvailablePieces(board)
+
+	if !board.IsFinished() {
+		if includeAvailableActions {
+			fmt.Println()
+			ui.PrintPlayer(board)
+			fmt.Println(" turn to play")
+			ui.printActions(board)
+		} else {
+			fmt.Print("\tTurn to play: ")
+			ui.PrintPlayer(board)
+			fmt.Println()
+		}
+	}
 }
 
 func (ui *UI) PrintPlayer(board *Board) {
 	fmt.Printf("%s%s Player%s", ui.colorStart(board.NextPlayer), board.NextPlayer, ui.colorEnd())
 }
 
-func (ui *UI) PrintAvailable(board *Board) {
+// PrintSpacedPlayer is like PrintPlayer, but includes a left-space for the first player,
+// so they all use the same width.
+func (ui *UI) PrintSpacedPlayer(board *Board) {
+	if board.NextPlayer == PlayerFirst {
+		fmt.Print(" ")
+	}
+	ui.PrintPlayer(board)
+}
+
+func (ui *UI) PrintAvailablePieces(board *Board) {
 	for _, player := range []PlayerNum{PlayerFirst, PlayerSecond} {
-		var pieces []string
+		pieces := make([]string, 0, NumPieceTypes)
 		for _, piece := range Pieces {
-			pieces = append(pieces, fmt.Sprintf("%s-%d", PieceNames[piece],
-				board.Available(player, piece)))
+			numAvailable := board.Available(player, piece)
+			if numAvailable > 0 {
+				pieces = append(pieces, fmt.Sprintf("%s-%d", PieceNames[piece], numAvailable))
+			}
 		}
 		sort.Strings(pieces)
 		space := ""
 		if player == 0 {
 			space = " "
 		}
-		fmt.Printf("%s%s%s Player%s available: [%s]\n",
+		fmt.Printf("%s%s%s Player%s off-board: [%s]\n",
 			space, ui.colorStart(player), player, ui.colorEnd(),
 			strings.Join(pieces, ", "))
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"github.com/gomlx/exceptions"
@@ -12,6 +13,8 @@ import (
 	"k8s.io/klog/v2"
 	"math/rand/v2"
 	"strings"
+	"sync"
+	"time"
 )
 
 var (
@@ -22,9 +25,9 @@ var (
 	flagFirst     = flag.String("first", "", "Who plays first: human or ai. Default is random.")
 	flagAIConfig  = flag.String("config", "linear:ab", "AI configuration against which to play")
 	flagAIConfig2 = flag.String("config2", "linear:ab", "Second AI configuration, if playing AI vs AI with --watch")
-	flagAIWithUI  = flag.Bool("ai_ui", false, "Shows UI even for ai vs ai game.")
 	flagMaxMoves  = flag.Int(
 		"max_moves", DefaultMaxMoves, "Max moves before game is considered a draw.")
+	flagQuiet = flag.Bool("quiet", false, "Quiet mode for when watching AI play, only the actions and the last board position is printed.")
 
 	// aiPlayers: if nil, it's a human playing.
 	aiPlayers = [2]players.Player{nil, nil}
@@ -61,18 +64,24 @@ func main() {
 			board = newBoard
 		} else {
 			// AI plays.
-			if *flagAIWithUI {
-				ui.Print(board)
+			if *flagWatch && !*flagQuiet {
+				ui.Print(board, false)
+				fmt.Print("\tAction: ")
 			} else {
-				fmt.Println()
-				ui.PrintPlayer(board)
+				ui.PrintSpacedPlayer(board)
+				fmt.Print(": ")
 			}
+
+			s := NewSpinning()
 			action, newBoard, score, _ := aiPlayer.Play(board)
-			fmt.Printf("  Action for %s player: %s (score=%.3f)\n", board.NextPlayer, action, score)
+			s.Done()
+			fmt.Printf(" %s (score=%.3f)\n", action, score)
 			board = newBoard
 			fmt.Println()
 		}
 	}
+
+	ui.Print(board, false)
 	ui.PrintWinner(board)
 }
 
@@ -111,4 +120,39 @@ func createPlayers() {
 	otherPlayerNum := 1 - aiPlayerNum
 	aiPlayers[otherPlayerNum] = must.M1(players.New(matchId, matchName, otherPlayerNum, *flagAIConfig2))
 	return
+}
+
+type Spinning struct {
+	wg     sync.WaitGroup
+	cancel func()
+}
+
+func NewSpinning() *Spinning {
+	const spinningSeq = `|/-\`
+	s := &Spinning{}
+	var ctx context.Context
+	ctx, s.cancel = context.WithCancel(context.Background())
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		ticker := time.NewTicker(500 * time.Millisecond)
+		idx := 0
+		for {
+			fmt.Printf("%c\033[1D", spinningSeq[idx])
+			idx = (idx + 1) % len(spinningSeq)
+			select {
+			case <-ctx.Done():
+				fmt.Print("\033[1D")
+				return
+			case <-ticker.C:
+				// continue
+			}
+		}
+	}()
+	return s
+}
+
+func (s *Spinning) Done() {
+	s.cancel()
+	s.wg.Wait()
 }
