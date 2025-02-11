@@ -451,7 +451,6 @@ func (b *Board) Height() int {
 	return int(b.Derived.MaxY - b.Derived.MinY)
 }
 
-// TODO: write IterPieces instead of EnumeratePieces.
 func (b *Board) EnumeratePieces(cb func(player PlayerNum, piece PieceType, pos Pos, covered bool)) {
 	for pos, stack := range b.board {
 		covered := false

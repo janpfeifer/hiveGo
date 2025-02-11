@@ -19,8 +19,8 @@ var _ = fmt.Printf
 //	  later on. Presumably will be empty and therefore can't be considered as
 //	  an occupied neighbour.
 //	invalid: Set of positions not to consider, since they were already visited.
-func (b *Board) EmptyAndConnectedNeighbours(srcPos, originalPos Pos, invalid map[Pos]bool) (poss []Pos) {
-	poss = make([]Pos, 0, NumNeighbors)
+func (b *Board) EmptyAndConnectedNeighbours(srcPos, originalPos Pos, invalid map[Pos]bool) (positions []Pos) {
+	positions = make([]Pos, 0, NumNeighbors)
 
 	// Initialize neighbours and occupied predicate (assuming the piece will leave originalPos).
 	neighbours := srcPos.Neighbours()
@@ -30,8 +30,7 @@ func (b *Board) EmptyAndConnectedNeighbours(srcPos, originalPos Pos, invalid map
 	}
 
 	// Find valid connections.
-	for ii := 0; ii < NumNeighbors; ii++ {
-		tgtPos := neighbours[ii]
+	for ii, tgtPos := range neighbours {
 		if invalid[tgtPos] {
 			// Likely already visited.
 			continue
@@ -51,7 +50,7 @@ func (b *Board) EmptyAndConnectedNeighbours(srcPos, originalPos Pos, invalid map
 			// must be occupied.
 			continue
 		}
-		poss = append(poss, tgtPos)
+		positions = append(positions, tgtPos)
 	}
 	return
 }
@@ -143,19 +142,19 @@ func (b *Board) antMoves(srcPos Pos) (poss []Pos) {
 }
 
 // beetleMoves enumerates the valid moves for the Beetle located at the given position.
-func (b *Board) beetleMoves(srcPos Pos) (poss []Pos) {
+func (b *Board) beetleMoves(srcPos Pos) (positions []Pos) {
 	// If on top of a piece, it can move anywhere.
 	if _, _, stacked := b.PieceAt(srcPos); stacked {
 		return srcPos.Neighbours()
 	}
 
 	// It can move onto any other piece.
-	poss = b.OccupiedNeighbours(srcPos)
+	positions = b.OccupiedNeighbours(srcPos)
 
 	// And it moves like the queen: notice that if not moving from the top,
 	// it can't squeeze between pieces either.
 	for _, pos := range b.EmptyAndConnectedNeighbours(srcPos, srcPos, nil) {
-		poss = append(poss, pos)
+		positions = append(positions, pos)
 	}
 	return
 }

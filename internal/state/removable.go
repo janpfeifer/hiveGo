@@ -1,6 +1,7 @@
 package state
 
 import (
+	"github.com/gomlx/exceptions"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 )
 
@@ -26,6 +27,10 @@ type findArticulationPointsState struct {
 func (b *Board) RemovablePositions(rootPos ...Pos) generics.Set[Pos] {
 	if len(b.board) <= 1 {
 		return nil
+	}
+	numPiecesOnBoard := b.NumPiecesOnBoard()
+	if numPiecesOnBoard <= 0 {
+		exceptions.Panicf("NumPiecesOnBoard must be positive, got %d", numPiecesOnBoard)
 	}
 	ap := &findArticulationPointsState{
 		numVertices:    uint8(b.NumPiecesOnBoard()),
