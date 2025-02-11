@@ -57,7 +57,7 @@ var (
 func openForAppending(filename string) io.WriteCloser {
 	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Panicf("Failed to save file to '%s': %v", filename, err)
+		log.Panicf("Failed to save file to %q: %v", filename, err)
 	}
 	return file
 }

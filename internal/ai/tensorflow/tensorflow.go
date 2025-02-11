@@ -288,14 +288,14 @@ func (s *Scorer) setParam(key string, value float32) {
 	tfOut := t0opt(key)
 	if tfOut.Op != nil {
 		if pair, found := s.Params[key]; found {
-			klog.Infof("Tensor '%s' updated to %g", key, value)
+			klog.Infof("Tensor %q updated to %g", key, value)
 			pair.value = mustTensor(value)
 		} else {
-			klog.Infof("Tensor '%s' set to %g", key, value)
+			klog.Infof("Tensor %q set to %g", key, value)
 			s.Params[key] = &tfOutputTensor{tfOut, mustTensor(value)}
 		}
 	} else {
-		klog.Errorf("Tensor '%s' not found and cannot be set", key)
+		klog.Errorf("Tensor %q not found and cannot be set", key)
 	}
 }
 
@@ -429,7 +429,7 @@ func createSessionPool(graph *tf.Graph, size int, forceCPU bool) (sessions []*tf
 }
 
 func (s *Scorer) String() string {
-	return fmt.Sprintf("TensorFlow model in '%s'", s.Basename)
+	return fmt.Sprintf("TensorFlow model in %q", s.Basename)
 }
 
 func (s *Scorer) NextSession() (sess *tf.Session) {

@@ -308,7 +308,7 @@ func LoadOrCreate(fileName string) (*Scorer, error) {
 	muCache.Lock()
 	defer muCache.Unlock()
 	if cached, ok := cacheLinearScorers[fileName]; ok {
-		klog.V(1).Infof("Using cache for model '%s'", fileName)
+		klog.V(1).Infof("Using cache for model %q", fileName)
 		return cached, nil
 	}
 

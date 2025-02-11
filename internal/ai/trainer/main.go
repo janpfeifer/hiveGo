@@ -445,7 +445,7 @@ func temporaryName(filename string) string {
 func openWriterAndBackup(filename string) io.WriteCloser {
 	file, err := os.Create(temporaryName(filename))
 	if err != nil {
-		log.Panicf("Failed to create temporary save file '%s': %v", temporaryName(filename), err)
+		log.Panicf("Failed to create temporary save file %q: %v", temporaryName(filename), err)
 	}
 	return file
 }
@@ -454,12 +454,12 @@ func renameToFinal(filename string) {
 	if _, err := os.Stat(filename); err == nil {
 		err = os.Rename(filename, backupName(filename))
 		if err != nil {
-			log.Printf("Failed to rename '%s' to '%s': %v", filename, backupName(filename), err)
+			log.Printf("Failed to rename %q to %q: %v", filename, backupName(filename), err)
 		}
 	}
 	err := os.Rename(temporaryName(filename), filename)
 	if err != nil {
-		log.Printf("Failed to rename '%s' to '%s': %v", temporaryName(filename), filename, err)
+		log.Printf("Failed to rename %q to %q: %v", temporaryName(filename), filename, err)
 	}
 }
 
@@ -467,10 +467,10 @@ func renameToFinal(filename string) {
 func loadMatches(results chan<- *Match) {
 	filenames, err := filepath.Glob(*flagLoadMatches)
 	if err != nil {
-		log.Panicf("Invalid pattern '%s' for loading matches: %v", *flagLoadMatches, err)
+		log.Panicf("Invalid pattern %q for loading matches: %v", *flagLoadMatches, err)
 	}
 	if len(filenames) == 0 {
-		log.Panicf("Did not find any files matching '%s'", *flagLoadMatches)
+		log.Panicf("Did not find any files matching %q", *flagLoadMatches)
 	}
 
 	var matchesCount, matchesIdx, numWins int
@@ -480,7 +480,7 @@ LoopFilenames:
 		klog.V(1).Infof("Scanning file %s\n", filename)
 		file, err := os.Open(filename)
 		if err != nil {
-			log.Panicf("Cannot open '%s' for reading: %v", filename, err)
+			log.Panicf("Cannot open %q for reading: %v", filename, err)
 		}
 		dec := gob.NewDecoder(file)
 		for *flagNumMatches == 0 || matchesCount < *flagNumMatches {
@@ -618,14 +618,14 @@ func main() {
 
 	// Create AI players. If they are the same, reuse -- sharing same TF Session can be more
 	// efficient.
-	klog.Infof("Creating player 0 from '%s'", *flagPlayers[0])
+	klog.Infof("Creating player 0 from %q", *flagPlayers[0])
 	players[0] = players2.New(*flagPlayers[0], *flagNumMatches == 1)
 	if *flagPlayers[1] == *flagPlayers[0] {
 		players[1] = players[0]
 		isSamePlayer = true
 		klog.Infof("Player 1 is the same as player 0, reusing AI player object.")
 	} else {
-		klog.Infof("Creating player 1 from '%s'", *flagPlayers[1])
+		klog.Infof("Creating player 1 from %q", *flagPlayers[1])
 		players[1] = players2.New(*flagPlayers[1], *flagNumMatches == 1)
 	}
 
