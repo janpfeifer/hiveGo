@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/generics"
+	"github.com/janpfeifer/hiveGo/internal/parameters"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"k8s.io/klog/v2"
 	"math"
@@ -58,6 +59,19 @@ func New(scorer ai.BatchBoardScorer) *Searcher {
 
 // DefaultMaxDepth for search.
 const DefaultMaxDepth = 3
+
+// UseParams configures the alpha-beta pruning search with the parameters given.
+// It pops out the parameters used (see parameters.PopParamOr).
+func (ab *Searcher) UseParams(params parameters.Params) error {
+	maxDepth, err := parameters.PopParamOr(params, "max_depth", int(-1))
+	if err != nil {
+		return err
+	}
+	if maxDepth >= 0 {
+		ab.WithMaxDepth(maxDepth)
+	}
+	return nil
+}
 
 // WithMaxDepth sets a default max depth of search: the unit here are plies (ply singular). Each player
 // playing counts as one ply. See https://en.wikipedia.org/wiki/Ply_(game_theory).

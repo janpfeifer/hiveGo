@@ -3,6 +3,7 @@ package players
 import (
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/generics"
+	"github.com/janpfeifer/hiveGo/internal/parameters"
 	"github.com/janpfeifer/hiveGo/internal/searchers"
 	"github.com/janpfeifer/hiveGo/internal/searchers/alphabeta"
 	. "github.com/janpfeifer/hiveGo/internal/state"
@@ -42,11 +43,11 @@ func NewPlayerFromScorer(scorer ai.BoardScorer, matchId uint64, matchName string
 	player.Scorer = batchScorer
 
 	// Searcher:
-	isMCTS, err := PopParamOr(params, "mcts", false)
+	isMCTS, err := parameters.PopParamOr(params, "mcts", false)
 	if err != nil {
 		return nil, err
 	}
-	isAB, err := PopParamOr(params, "ab", !isMCTS)
+	isAB, err := parameters.PopParamOr(params, "ab", !isMCTS)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +56,12 @@ func NewPlayerFromScorer(scorer ai.BoardScorer, matchId uint64, matchName string
 			"\"mcts\" (Monte Carlo Tree Search) searcher")
 	}
 	if isAB {
-		player.Searcher = alphabeta.New(batchScorer)
+		ab := alphabeta.New(batchScorer)
+		err := ab.UseParams(params)
+		if err != nil {
+			return nil, err
+		}
+		player.Searcher = ab
 	} else {
 		return nil, errors.New("MCTS not connected yet.")
 	}
