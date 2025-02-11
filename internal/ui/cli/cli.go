@@ -50,7 +50,7 @@ func New(color bool, clearScreen bool) *UI {
 }
 
 func (ui *UI) CheckNoAvailableAction(board *Board) (*Board, bool) {
-	if len(board.Derived.Actions) > 0 {
+	if len(board.Derived.Actions) > 1 || board.Derived.Actions[0] != SkipAction {
 		return board, false
 	}
 
