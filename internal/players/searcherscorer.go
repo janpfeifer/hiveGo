@@ -4,6 +4,7 @@ import (
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	"github.com/janpfeifer/hiveGo/internal/searchers"
+	"github.com/janpfeifer/hiveGo/internal/searchers/alphabeta"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
@@ -25,7 +26,7 @@ import (
 //     hence more exploration. Default is 0.
 //
 // It returns a SearcherScorer, which implements the Player interface, but also has support for online learning.
-func NewPlayerFromScorer(scorer ai.BoardScorer, matchName string, matchId uint64, playerNum PlayerNum, params map[string]string) (*SearcherScorer, error) {
+func NewPlayerFromScorer(scorer ai.BoardScorer, matchId uint64, matchName string, playerNum PlayerNum, params map[string]string) (*SearcherScorer, error) {
 	// Shared parameters.
 	player := &SearcherScorer{
 		matchId:   matchId,
@@ -41,6 +42,23 @@ func NewPlayerFromScorer(scorer ai.BoardScorer, matchName string, matchId uint64
 	player.Scorer = batchScorer
 
 	// Searcher:
+	isMCTS, err := PopParamOr(params, "mcts", false)
+	if err != nil {
+		return nil, err
+	}
+	isAB, err := PopParamOr(params, "ab", !isMCTS)
+	if err != nil {
+		return nil, err
+	}
+	if isAB && isMCTS {
+		return nil, errors.New("you can only choose one of \"ab\" (alpha-beta pruning) or " +
+			"\"mcts\" (Monte Carlo Tree Search) searcher")
+	}
+	if isAB {
+		player.Searcher = alphabeta.New(batchScorer)
+	} else {
+		return nil, errors.New("MCTS not connected yet.")
+	}
 
 	// Check that all parameters were processed.
 	if len(params) > 0 {
