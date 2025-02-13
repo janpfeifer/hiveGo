@@ -1,7 +1,6 @@
 package state
 
 import (
-	"github.com/gomlx/exceptions"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 )
 
@@ -28,14 +27,11 @@ func (b *Board) RemovablePositions(rootPos ...Pos) generics.Set[Pos] {
 	if len(b.board) <= 1 {
 		return nil
 	}
-	numPiecesOnBoard := b.NumPiecesOnBoard()
-	if numPiecesOnBoard <= 0 {
-		exceptions.Panicf("NumPiecesOnBoard must be positive, got %d", numPiecesOnBoard)
-	}
+	numPiecesOnBoard := int(b.NumPiecesOnBoard())
 	ap := &findArticulationPointsState{
-		numVertices:    uint8(b.NumPiecesOnBoard()),
-		allEdgesTarget: make([]uint8, 0, NumNeighbors*b.NumPiecesOnBoard()),
-		edgesPerNode:   make([][2]uint8, b.NumPiecesOnBoard()),
+		numVertices:    uint8(numPiecesOnBoard),
+		allEdgesTarget: make([]uint8, 0, NumNeighbors*numPiecesOnBoard),
+		edgesPerNode:   make([][2]uint8, numPiecesOnBoard),
 	}
 
 	// Enumerate positions and create a reverse map.
