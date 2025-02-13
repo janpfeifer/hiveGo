@@ -4,9 +4,8 @@ import (
 	"encoding/gob"
 	"flag"
 	"fmt"
-	"github.com/janpfeifer/hiveGo/ai"
-	"github.com/janpfeifer/hiveGo/internal/ai/tensorflow"
-	players2 "github.com/janpfeifer/hiveGo/internal/players"
+	"github.com/janpfeifer/hiveGo/internal/ai"
+	"github.com/janpfeifer/hiveGo/internal/players"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
 	"github.com/pkg/errors"
@@ -18,10 +17,9 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"sync"
-
-	"github.com/janpfeifer/hiveGo/ai/tfddqn"
-	"github.com/janpfeifer/hiveGo/internal/search/ab"
-	"github.com/janpfeifer/hiveGo/internal/search/mcts"
+	// "github.com/janpfeifer/hiveGo/ai/tfddqn"
+	//ab "github.com/janpfeifer/hiveGo/internal/searchers/alphabeta"
+	//"github.com/janpfeifer/hiveGo/internal/searchers/mcts"
 )
 
 var _ = fmt.Printf
@@ -30,8 +28,8 @@ var (
 	flagCpuProfile = flag.String("cpu_profile", "", "write cpu profile to `file`")
 
 	flagPlayers = [2]*string{
-		flag.String("ai0", "", "Configuration string for ai playing as the starting player."),
-		flag.String("ai1", "", "Configuration string for ai playing as the second player."),
+		flag.String("ai0", "linear,ab", "Configuration string for ai playing as the starting player."),
+		flag.String("ai1", "linear,ab", "Configuration string for ai playing as the second player."),
 	}
 
 	flagMaxMoves = flag.Int(
@@ -67,7 +65,7 @@ var (
 	flagParallelism = flag.Int("parallelism", 0, "If > 0 ignore GOMAXPROCS and play "+
 		"these many matches simultaneously.")
 	flagMaxAutoBatch = flag.Int("max_auto_batch", 0, "If > 0 ignore at most do given value of "+
-		"auto-batch for tensorflow evaluations.")
+		"auto-batch for evaluations.")
 
 	flagContinuosRescoreAndTrain = flag.Bool("rescore_and_train", false, "If set, continuously rescore and train matches.")
 	flagRescoreAndTrainPoolSize  = flag.Int("rescore_and_train_pool_size", 10000,
@@ -76,12 +74,8 @@ var (
 		"After how many rescored matches/action to issue another learning mini-batch.")
 
 	// AI for the players. If their configuration is exactly the same, they will point to the same object.
-	players = [2]*players2.SearcherScorer{nil, nil}
+	aiPlayers [2]*players.SearcherScorer
 )
-
-func init() {
-	flag.BoolVar(&tensorflow.CpuOnly, "cpu", false, "Force to use CPU, even if GPU is available")
-}
 
 // Match holds the results and whether the players were swapped.
 // The first dimension of all slices is the move (ply) number.
@@ -118,22 +112,25 @@ func (m *Match) Encode(enc *gob.Encoder) error {
 	return SaveMatch(enc, m.Boards[0].MaxMoves, m.Actions, m.Scores, m.ActionsLabels)
 }
 
-// SelectRangeOfActions returns range of actions to be used, and the amount of samples
-// to use when training.
+// SelectRangeOfActions returns the range (in terms of move numbers in the match) of actions to be used,
+// and the amount of samples to use when training, based on the flags: *flagLastActions and *flagStartActions.
+//
+// So from=0 to=5 means it will use only the first 5 moves of the match.
+//
+// If *flagLastActions is true, it is taken from the end of the match.
 func (m *Match) SelectRangeOfActions() (from, to int, samplesPerAction []int) {
 	from = 0
 	to = len(m.Actions)
-	if *flagLastActions > 0 && *flagLastActions < len(m.Actions) {
-		from = len(m.Actions) - *flagLastActions
-	}
 	if *flagStartActions >= 0 {
 		from = *flagStartActions
 		if from > len(m.Actions) {
 			return -1, -1, nil
 		}
-		if *flagLastActions > 0 && from+*flagLastActions < to {
-			to = from + *flagLastActions
+		if *flagLastActions > 0 {
+			from = max(from, len(m.Actions)-*flagLastActions)
 		}
+	} else if *flagLastActions > 0 {
+		from = max(len(m.Actions)-*flagLastActions, 0)
 	}
 
 	// Sampling strategy:
@@ -177,8 +174,8 @@ func (m *Match) AppendLabeledExamplesForPlayers(le *LabeledExamples, includedPla
 		// No actions selected.
 		return
 	}
-	klog.V(2).Infof("Making LabeledExample, version=%d, included players %v",
-		players[0].Scorer.Version(), includedPlayers)
+	klog.V(2).Infof("Making LabeledExample, scorer=%s, included players %v",
+		aiPlayers[0].Scorer, includedPlayers)
 	for ii := from; ii < to; ii++ {
 		if includedPlayers[m.Boards[ii].NextPlayer] && !m.Boards[ii].IsFinished() &&
 			m.Boards[ii].NumActions() > 1 {
@@ -186,8 +183,8 @@ func (m *Match) AppendLabeledExamplesForPlayers(le *LabeledExamples, includedPla
 			if klog.V(3).Enabled() {
 				fmt.Println("")
 				stepUI.PrintBoard(m.Boards[ii])
-				score, actionsPred := players[0].Scorer.Score(m.Boards[ii], true)
-				fmt.Printf("Score: %g, ActionsPred: %v\n\n", score, actionsPred)
+				score := aiPlayers[0].Scorer.BoardScore(m.Boards[ii])
+				fmt.Printf("Score: %g\n\n", score)
 			}
 
 			for jj := 0; jj < samples[ii-from]; jj++ {
@@ -260,8 +257,8 @@ var (
 )
 
 func runMatch(matchNum int) *Match {
-	swapped := (matchNum%2 != 0)
-	matchName := fmt.Sprintf("%d (swap=%v)", matchNum, swapped)
+	swapped := matchNum%2 != 0
+	matchName := fmt.Sprintf("Match-%05d (swap=%v)", matchNum, swapped)
 	board := NewBoard()
 	board.MaxMoves = *flagMaxMoves
 	match := &Match{MatchNum: matchNum, Swapped: swapped, Boards: []*Board{board}}
@@ -269,13 +266,15 @@ func runMatch(matchNum int) *Match {
 	// Run match.
 	lastWasSkip := false
 	for !board.IsFinished() {
-		player := board.NextPlayer
+		playerNum := board.NextPlayer
 		if swapped {
-			player = 1 - player
+			playerNum = 1 - playerNum
 		}
-		klog.V(1).Infof(
-			"\n\nMatch %d: player %d at turn %d (#valid actions=%d)\n\n",
-			matchNum, player, board.MoveNumber, len(board.Derived.Actions))
+		if klog.V(1).Enabled() {
+			klog.Infof(
+				"\n\n%s: playerNum %d at turn %d (#valid actions=%d)\n\n",
+				matchName, playerNum, board.MoveNumber, len(board.Derived.Actions))
+		}
 		var action Action
 		score := float32(0)
 		var actionLabels []float32
@@ -285,11 +284,10 @@ func runMatch(matchNum int) *Match {
 			board = board.Act(action)
 			lastWasSkip = true
 			if len(board.Derived.Actions) == 0 {
-				log.Panicf("No moves to either side!?\n\n%v\n", board)
+				klog.Fatalf("No moves to either side!?\n\n%v\n", board)
 			}
 		} else {
-			action, board, score, actionLabels = players[player].Play(board,
-				matchName)
+			action, board, score, actionLabels = aiPlayers[playerNum].Play(board)
 			if lastWasSkip {
 				// Use inverse of this score for previous "NOOP" move.
 				match.Scores[len(match.Scores)-1] = -score
@@ -303,7 +301,7 @@ func runMatch(matchNum int) *Match {
 
 		if *flagPrintSteps {
 			muStepUI.Lock()
-			fmt.Printf("Match %d action taken: %s\n", match.MatchFileIdx, action)
+			fmt.Printf("%s action taken: %s\n", matchName, action)
 			stepUI.PrintBoard(board)
 			fmt.Println("")
 			muStepUI.Unlock()
@@ -312,7 +310,7 @@ func runMatch(matchNum int) *Match {
 
 	finalBoard := match.FinalBoard()
 	if !finalBoard.IsFinished() {
-		log.Panic("Match %d stopped before being finished!?", matchNum)
+		klog.Fatalf("%s stopped before being finished!?", matchName)
 	}
 
 	if klog.V(1).Enabled() {
@@ -347,11 +345,13 @@ func setAutoBatchSizes(batchSize int) {
 	if *flagMaxAutoBatch > 0 && batchSize > *flagMaxAutoBatch {
 		batchSize = *flagMaxAutoBatch
 	}
-	for _, player := range players {
-		if tfscorer, ok := player.Scorer.(*tensorflow.Scorer); ok {
-			tfscorer.SetBatchSize(batchSize)
+	/*
+		for _, player := range aiPlayers {
+			if tfscorer, ok := player.Scorer.(*tensorflow.Scorer); ok {
+				tfscorer.SetBatchSize(batchSize)
+			}
 		}
-	}
+	*/
 }
 
 var (
@@ -448,17 +448,18 @@ func openWriterAndBackup(filename string) io.WriteCloser {
 	return file
 }
 
-func renameToFinal(filename string) {
+func renameToFinal(filename string) error {
 	if _, err := os.Stat(filename); err == nil {
 		err = os.Rename(filename, backupName(filename))
 		if err != nil {
-			log.Printf("Failed to rename %q to %q: %v", filename, backupName(filename), err)
+			return errors.Wrapf(err, "failed backing up, while renaming %q to %q", filename, backupName(filename))
 		}
 	}
 	err := os.Rename(temporaryName(filename), filename)
 	if err != nil {
-		log.Printf("Failed to rename %q to %q: %v", temporaryName(filename), filename, err)
+		return errors.Wrapf(err, "failed renaming generate file to final name, while renaming %q to %q", temporaryName(filename), filename)
 	}
+	return nil
 }
 
 // Load matches, and automatically build boards.
@@ -527,13 +528,20 @@ func saveMatches(matches []*Match) error {
 	file := openWriterAndBackup(*flagSaveMatches)
 	enc := gob.NewEncoder(file)
 	for _, match := range matches {
-		match.Encode(enc)
+		err := match.Encode(enc)
+		if err != nil {
+			return errors.WithMessagef(err, "while encoding match %d", match.MatchNum)
+		}
 	}
 	err := file.Close()
 	if err != nil {
 		return errors.Wrapf(err, "failed to close saved matches in %q", *flagSaveMatches)
 	}
-	renameToFinal(*flagSaveMatches)
+	err = renameToFinal(*flagSaveMatches)
+	if err != nil {
+		return errors.WithMessagef(err, "while saving matches to %q", *flagSaveMatches)
+	}
+	return nil
 }
 
 // Report on matches as they are being played/generated.
@@ -616,15 +624,22 @@ func main() {
 
 	// Create AI players. If they are the same, reuse -- sharing same TF Session can be more
 	// efficient.
-	klog.Infof("Creating player 0 from %q", *flagPlayers[0])
-	players[0] = players2.New(*flagPlayers[0], *flagNumMatches == 1)
+	klog.V(1).Infof("Creating player 0 from %q", *flagPlayers[0])
+	var err error
+	aiPlayers[0], err = players.New(*flagPlayers[0])
+	if err != nil {
+		klog.Fatalf("Failed to create player 0: %+v", err)
+	}
 	if *flagPlayers[1] == *flagPlayers[0] {
-		players[1] = players[0]
+		aiPlayers[1] = aiPlayers[0]
 		isSamePlayer = true
-		klog.Infof("Player 1 is the same as player 0, reusing AI player object.")
+		klog.V(1).Infof("Player 1 is the same as player 0, reusing AI player object.")
 	} else {
-		klog.Infof("Creating player 1 from %q", *flagPlayers[1])
-		players[1] = players2.New(*flagPlayers[1], *flagNumMatches == 1)
+		klog.V(1).Infof("Creating player 1 from %q", *flagPlayers[1])
+		aiPlayers[1], err = players.New(*flagPlayers[1])
+		if err != nil {
+			klog.Fatalf("Failed to create player 1: %+v", err)
+		}
 	}
 
 	if *flag_continuosPlayAndTrain {
@@ -656,7 +671,10 @@ func main() {
 	}
 
 	if *flagSaveMatches != "" {
-		saveMatches(matches)
+		err = saveMatches(matches)
+		if err != nil {
+			klog.Fatalf("Failed to save matches in %s: %+v", *flagSaveMatches, err)
+		}
 	}
 	if *flagTrain {
 		trainFromMatches(matches)

@@ -60,7 +60,7 @@ func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 			if *flagDistill {
 				// Distillation: score boards.
 				// TODO: For the scores just use the immediate score. Not action labels.
-				newScores := distill(players[1].Scorer, match, from, to)
+				newScores := distill(aiPlayers[1].Scorer, match, from, to)
 				if len(newScores) > 0 {
 					maxScore := math.Abs(float64(newScores[0]))
 					for _, v := range newScores {
@@ -74,7 +74,7 @@ func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 			} else {
 				// from -> to refer to the actions. ScoreMatch scores the boards up to the action following
 				// the actions[to], hence one more than the number of actions.
-				newScores, actionsLabels := players[0].Searcher.ScoreMatch(
+				newScores, actionsLabels := aiPlayers[0].Searcher.ScoreMatch(
 					match.Boards[from], match.Actions[from:to])
 				copy(match.Scores[from:from+len(newScores)-1], newScores)
 				copy(match.ActionsLabels[from:from+len(actionsLabels)], actionsLabels)
@@ -124,12 +124,12 @@ func trainFromMatches(matches []*Match) {
 }
 
 func savePlayer0() {
-	if players[0].ModelPath != "" {
-		log.Printf("Saving to %s", players[0].ModelPath)
-		features.LinearModelFileName = players[0].ModelPath // Hack for linear models. TODO: fix.
-		players[0].Learner.Save()
+	if aiPlayers[0].ModelPath != "" {
+		log.Printf("Saving to %s", aiPlayers[0].ModelPath)
+		features.LinearModelFileName = aiPlayers[0].ModelPath // Hack for linear models. TODO: fix.
+		aiPlayers[0].Learner.Save()
 		if klog.V(1) {
-			klog.V(1).Infof("Saved %s to %s", players[0].Learner, players[0].ModelPath)
+			klog.V(1).Infof("Saved %s to %s", aiPlayers[0].Learner, aiPlayers[0].ModelPath)
 		}
 	}
 }
@@ -140,7 +140,7 @@ func trainFromExamples(leTrain, leValidation *LabeledExamples) {
 	epochs := int(*flagTrainLoops)
 	perEpochCallback := func() {
 		if leValidation.Len() > 0 {
-			loss, boardLoss, actionsLoss := players[0].Learner.Learn(
+			loss, boardLoss, actionsLoss := aiPlayers[0].Learner.Learn(
 				leValidation.boardExamples, leValidation.boardLabels, leValidation.actionsLabels,
 				learningRate, 0, nil)
 			log.Printf("  Validation losses: %.4g, %.4g, %.4g", loss, boardLoss, actionsLoss)
@@ -150,7 +150,7 @@ func trainFromExamples(leTrain, leValidation *LabeledExamples) {
 		}
 	}
 	log.Printf("Number of labeled examples: train=%d validation=%d", leTrain.Len(), leValidation.Len())
-	loss, boardLoss, actionsLoss := players[0].Learner.Learn(
+	loss, boardLoss, actionsLoss := aiPlayers[0].Learner.Learn(
 		leTrain.boardExamples, leTrain.boardLabels, leTrain.actionsLabels,
 		learningRate, epochs, perEpochCallback)
 	log.Printf("  Training losses after %dth traininig loops (epochs): %.4g, %.4g, %.4g",

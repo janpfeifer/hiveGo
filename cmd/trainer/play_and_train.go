@@ -194,7 +194,7 @@ func continuouslyRescorePlayer1(mInput <-chan *Match, mOutput chan<- *Match) {
 			}
 
 			// Rescore action.
-			newScores, actionsLabels := players[0].Searcher.ScoreMatch(board, match.Actions[idx:idx+1])
+			newScores, actionsLabels := aiPlayers[0].Searcher.ScoreMatch(board, match.Actions[idx:idx+1])
 
 			// Clone over new scores and labels for the particular action on the match.
 			match.Scores[idx] = newScores[0]

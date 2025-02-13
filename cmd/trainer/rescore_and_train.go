@@ -78,7 +78,7 @@ func rescoreMatchActions(matches []*Match, maInput <-chan MatchAction, maOutput 
 		match := matches[ma.matchNum]
 		from := int(ma.actionNum)
 		to := from + 1
-		newScores, actionsLabels := players[0].Searcher.ScoreMatch(
+		newScores, actionsLabels := aiPlayers[0].Searcher.ScoreMatch(
 			match.Boards[from], match.Actions[from:to])
 
 		// Clone over new scores and labels for the particular action on the match.
@@ -178,7 +178,7 @@ func continuousLearning(learnInput <-chan LabeledExamples) {
 		klog.V(3).Infof("Learn: count=%d", count)
 
 		// First learn with 0 steps: only evaluation without dropout.
-		loss, boardLoss, actionsLoss := players[0].Learner.Learn(
+		loss, boardLoss, actionsLoss := aiPlayers[0].Learner.Learn(
 			le.boardExamples, le.boardLabels,
 			le.actionsLabels, float32(*flagLearningRate),
 			0, nil)
@@ -186,13 +186,13 @@ func continuousLearning(learnInput <-chan LabeledExamples) {
 			loss, boardLoss, actionsLoss)
 
 		// Actually train.
-		_, _, _ = players[0].Learner.Learn(
+		_, _, _ = aiPlayers[0].Learner.Learn(
 			le.boardExamples, le.boardLabels,
 			le.actionsLabels, float32(*flagLearningRate),
 			*flagTrainLoops, nil)
 
 		// Evaluate (learn with 0 steps)on training data.
-		loss, boardLoss, actionsLoss = players[0].Learner.Learn(
+		loss, boardLoss, actionsLoss = aiPlayers[0].Learner.Learn(
 			le.boardExamples, le.boardLabels,
 			le.actionsLabels, float32(*flagLearningRate),
 			0, nil)
@@ -223,7 +223,7 @@ func decayAverageLoss(average, newValue, decay float32) float32 {
 // Returns tensorflow's GlobalStep for player 0, if using tensorflow,
 // or -1 if not.
 func p0GlobalStep() int64 {
-	if tf, ok := players[0].Learner.(*tensorflow.Scorer); ok && tf != nil {
+	if tf, ok := aiPlayers[0].Learner.(*tensorflow.Scorer); ok && tf != nil {
 		return tf.ReadGlobalStep()
 	}
 	return -1
