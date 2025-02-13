@@ -1,26 +1,22 @@
 // Package _default registers the default players that can be included in any
 // front-end for hiveGo.
 //
+// It should be imported only for its initialization, so like:
+//
+//	import _ "github.com/janpfeifer/hiveGo/internal/players/default"
+//
 // Currently, it includes a linear model + alpha-beta pruning.
 package _default
 
 import (
 	"github.com/janpfeifer/hiveGo/internal/ai/linear"
 	"github.com/janpfeifer/hiveGo/internal/players"
-	"github.com/janpfeifer/hiveGo/internal/state"
+	"github.com/janpfeifer/hiveGo/internal/searchers/alphabeta"
 )
 
 func init() {
-	players.RegisterModule("linear", &Linear{})
-}
+	// Register default scorers and searchers.
+	players.RegisteredScorers = append(players.RegisteredScorers, linear.NewFromParams)
+	players.RegisteredSearchers = append(players.RegisteredSearchers, alphabeta.NewFromParams)
 
-// Linear implements a
-type Linear struct{}
-
-// Assert Linear implements Module.
-var _ players.Module = (*Linear)(nil)
-
-// NewPlayer implements players.Module.
-func (l *Linear) NewPlayer(matchId uint64, matchName string, playerNum state.PlayerNum, params map[string]string) (players.Player, error) {
-	return players.NewPlayerFromScorer(linear.PreTrainedBest, matchId, matchName, playerNum, params)
 }

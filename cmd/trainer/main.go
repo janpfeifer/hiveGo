@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/janpfeifer/hiveGo/ai"
+	"github.com/janpfeifer/hiveGo/internal/ai/tensorflow"
 	players2 "github.com/janpfeifer/hiveGo/internal/players"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
@@ -18,10 +19,9 @@ import (
 	"runtime/pprof"
 	"sync"
 
-	_ "github.com/janpfeifer/hiveGo/ai/search/ab"
-	_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
-	"github.com/janpfeifer/hiveGo/ai/tensorflow"
-	_ "github.com/janpfeifer/hiveGo/ai/tfddqn"
+	"github.com/janpfeifer/hiveGo/ai/tfddqn"
+	"github.com/janpfeifer/hiveGo/internal/search/ab"
+	"github.com/janpfeifer/hiveGo/internal/search/mcts"
 )
 
 var _ = fmt.Printf
@@ -84,21 +84,21 @@ func init() {
 }
 
 // Match holds the results and whether the players were swapped.
+// The first dimension of all slices is the move (ply) number.
 type Match struct {
 	mu sync.Mutex
 
 	// Match number: only for printing.
 	MatchNum int
 
-	// Wether p0/p1 swapped positions in this match.
+	// Whether p0/p1 swapped positions in this match.
 	Swapped bool
 
 	// Match actions, alternating players.
 	Actions []Action
 
-	// Probability distributions over actions, to learn from.
-	// For AlphaBetaPruning these will be one-hot-encoding of the action taken. But
-	// for MCTS (alpha-zero algorithm) these may be different.
+	// Probability distributions over actions, to learn from. Only set for MCTS.
+	// For AlphaBetaPruning these are left nil.
 	ActionsLabels [][]float32
 
 	// All board states of the game: 1 more than the number of actions.
@@ -114,10 +114,8 @@ type Match struct {
 
 func (m *Match) FinalBoard() *Board { return m.Boards[len(m.Boards)-1] }
 
-func (m *Match) Encode(enc *gob.Encoder) {
-	if err := SaveMatch(enc, m.Boards[0].MaxMoves, m.Actions, m.Scores, m.ActionsLabels); err != nil {
-		log.Panicf("Failed to encode match: %v", err)
-	}
+func (m *Match) Encode(enc *gob.Encoder) error {
+	return SaveMatch(enc, m.Boards[0].MaxMoves, m.Actions, m.Scores, m.ActionsLabels)
 }
 
 // SelectRangeOfActions returns range of actions to be used, and the amount of samples
@@ -208,23 +206,23 @@ func (m *Match) AppendLabeledExamples(le *LabeledExamples) {
 
 // playActions fills the boards by playing one action at a time. The
 // initial board given must contain MaxMoves set.
-func (match *Match) playActions(initial *Board) {
+func (m *Match) playActions(initial *Board) {
 	initial.BuildDerived()
-	match.Boards = make([]*Board, 1, len(match.Actions)+1)
-	match.Boards[0] = initial
+	m.Boards = make([]*Board, 1, len(m.Actions)+1)
+	m.Boards[0] = initial
 	board := initial
-	for _, action := range match.Actions {
+	for _, action := range m.Actions {
 		board = board.Act(action)
-		match.Boards = append(match.Boards, board)
+		m.Boards = append(m.Boards, board)
 	}
 }
 
 // fillActionLabels will fill the ActionLabels attribute
 // with the one-hot-encoding of the action actually played.
-func (match *Match) fillActionLabelsWithActionTaken() {
-	match.ActionsLabels = make([][]float32, 0, len(match.Actions))
-	for moveIdx, actionTaken := range match.Actions {
-		board := match.Boards[moveIdx]
+func (m *Match) fillActionLabelsWithActionTaken() {
+	m.ActionsLabels = make([][]float32, 0, len(m.Actions))
+	for moveIdx, actionTaken := range m.Actions {
+		board := m.Boards[moveIdx]
 		var actionsLabels []float32
 		if !actionTaken.IsSkipAction() {
 			// When loading a match use one-hot encoding for labels.
@@ -233,10 +231,10 @@ func (match *Match) fillActionLabelsWithActionTaken() {
 		} else {
 			if board.NumActions() != 0 {
 				log.Panicf("Unexpected SkipAction for board with %d actions, MatchFileIdx=%d",
-					board.NumActions(), match.MatchFileIdx)
+					board.NumActions(), m.MatchFileIdx)
 			}
 		}
-		match.ActionsLabels = append(match.ActionsLabels, actionsLabels)
+		m.ActionsLabels = append(m.ActionsLabels, actionsLabels)
 	}
 }
 

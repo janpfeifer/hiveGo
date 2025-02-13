@@ -28,7 +28,9 @@ func NewFromConfigString(config string) map[string]string {
 }
 
 // PopParamOr is like GetParamOr, but it also deletes from the params map the retrieved parameter.
-func PopParamOr[T interface{ bool | int | float32 | float64 }](params Params, key string, defaultValue T) (T, error) {
+func PopParamOr[T interface {
+	bool | int | float32 | float64 | string
+}](params Params, key string, defaultValue T) (T, error) {
 	value, err := GetParamOr(params, key, defaultValue)
 	if err != nil {
 		return value, err
@@ -41,11 +43,17 @@ func PopParamOr[T interface{ bool | int | float32 | float64 }](params Params, ke
 // if not.
 //
 // For bool types, a key without a value is interpreted as true.
-func GetParamOr[T interface{ bool | int | float32 | float64 }](params Params, key string, defaultValue T) (T, error) {
+func GetParamOr[T interface {
+	bool | int | float32 | float64 | string
+}](params Params, key string, defaultValue T) (T, error) {
 	vAny := (any)(defaultValue)
 	var t T
 	toT := func(v any) T { return v.(T) }
 	switch vAny.(type) {
+	case string:
+		if value, exists := params[key]; exists && value != "" {
+			return toT(value), nil
+		}
 	case int:
 		if value, exists := params[key]; exists && value != "" {
 			parsedValue, err := strconv.Atoi(value)

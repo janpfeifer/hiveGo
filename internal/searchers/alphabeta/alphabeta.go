@@ -50,9 +50,13 @@ type Stats struct {
 // The one obligatory parameter is the scorer used for the search.
 //
 // See: wikipedia.org/wiki/Alpha-beta_pruning
-func New(scorer ai.BatchBoardScorer) *Searcher {
+func New(scorer ai.BoardScorer) *Searcher {
+	batchScorer, ok := scorer.(ai.BatchBoardScorer)
+	if !ok {
+		batchScorer = &ai.BatchBoardScorerWrapper{BoardScorer: scorer}
+	}
 	return &Searcher{
-		scorer:   scorer,
+		scorer:   batchScorer,
 		maxDepth: DefaultMaxDepth,
 	}
 }
@@ -60,17 +64,28 @@ func New(scorer ai.BatchBoardScorer) *Searcher {
 // DefaultMaxDepth for search.
 const DefaultMaxDepth = 3
 
-// UseParams configures the alpha-beta pruning search with the parameters given.
+// NewFromParams configures the alpha-beta pruning search with the parameters given if "ab" is set to true.
+// Otherwise, it returns nil (and no error).
+//
 // It pops out the parameters used (see parameters.PopParamOr).
-func (ab *Searcher) UseParams(params parameters.Params) error {
+func NewFromParams(scorer ai.BoardScorer, params parameters.Params) (searchers.Searcher, error) {
+	isAB, err := parameters.PopParamOr(params, "ab", false)
+	if err != nil {
+		return nil, err
+	}
+	if !isAB {
+		return nil, nil
+	}
+
+	ab := New(scorer)
 	maxDepth, err := parameters.PopParamOr(params, "max_depth", int(-1))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if maxDepth >= 0 {
 		ab.WithMaxDepth(maxDepth)
 	}
-	return nil
+	return ab, nil
 }
 
 // WithMaxDepth sets a default max depth of search: the unit here are plies (ply singular). Each player
