@@ -1,5 +1,11 @@
 package linear
 
+import (
+	"github.com/janpfeifer/hiveGo/internal/ai"
+	"github.com/janpfeifer/hiveGo/internal/parameters"
+	"github.com/pkg/errors"
+)
+
 // Embedded pre-trained linear models.
 
 var (
@@ -146,3 +152,36 @@ var (
 		-0.7409,
 	)
 )
+
+// NewFromParams returns the linear scorer if "linear" is set, otherwise it returns nil (and no error).
+// It returns an error if an unknown model or if it is a path to file, and it can't load or parse it.
+func NewFromParams(params parameters.Params) (ai.BoardScorer, error) {
+	if _, found := params["linear"]; !found {
+		return nil, nil
+	}
+	var s *Scorer
+	modelName, err := parameters.PopParamOr(params, "linear", "best")
+	if err != nil {
+		return nil, err
+	}
+	switch modelName {
+	case "best":
+		s = PreTrainedBest
+	case "v0":
+		s = PreTrainedV0
+	case "v1":
+		s = PreTrainedV1
+	case "v2":
+		s = PreTrainedV2
+	default:
+		// Attempt to load model from disk.
+		s, err = LoadOrCreate(modelName)
+		if err != nil {
+			err = errors.WithMessagef(err, "failed to load model \"linear=%s\"", modelName)
+			return nil, err
+		}
+	}
+
+	// Extra parameters...
+	return s, nil
+}

@@ -5,73 +5,11 @@ import (
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	"github.com/janpfeifer/hiveGo/internal/parameters"
 	"github.com/janpfeifer/hiveGo/internal/searchers"
-	"github.com/janpfeifer/hiveGo/internal/searchers/alphabeta"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
 	"strings"
 )
-
-// NewPlayerFromScorer creates a new AI player given a BoardScorer, that does alpha-beta-pruning or MCTS (Monte Carlo Tress Search).
-// If the scorer is an ai.BatchBoardScorer, that is used instead.
-//
-// Params:
-//
-//   - ab (bool): If to use Alpha-Beta pruning search algorithm. This is the default.
-//   - mcts (bool): Use MCTS (Monte Carlo Tree Search) algorith, the default is Alpha-Beta Pruning.
-//   - max_depth (int): Max depth of search, default is 2. If max_time is set, this parameter is ignored.
-//   - max_time (time.Duration): Max time duration in search, default is 0s, which means it is not time-limited but rather max_depth limited.
-//   - randomness (float): Adds a layer of randomness in the search: the first level choice is
-//     distributed according to a softmax of the scores of each move, divided by this value.
-//     So lower values (closer to 0) means less randomness, higher value means more randomness,
-//     hence more exploration. Default is 0.
-//
-// It returns a SearcherScorer, which implements the Player interface, but also has support for online learning.
-func NewPlayerFromScorer(scorer ai.BoardScorer, matchId uint64, matchName string, playerNum PlayerNum, params map[string]string) (*SearcherScorer, error) {
-	// Shared parameters.
-	player := &SearcherScorer{
-		matchId:   matchId,
-		matchName: matchName,
-		playerNum: playerNum,
-	}
-
-	// Batch scorer:
-	batchScorer, ok := scorer.(ai.BatchBoardScorer)
-	if !ok {
-		batchScorer = &ai.BatchBoardScorerWrapper{scorer}
-	}
-	player.Scorer = batchScorer
-
-	// Searcher:
-	isMCTS, err := parameters.PopParamOr(params, "mcts", false)
-	if err != nil {
-		return nil, err
-	}
-	isAB, err := parameters.PopParamOr(params, "ab", !isMCTS)
-	if err != nil {
-		return nil, err
-	}
-	if isAB && isMCTS {
-		return nil, errors.New("you can only choose one of \"ab\" (alpha-beta pruning) or " +
-			"\"mcts\" (Monte Carlo Tree Search) searcher")
-	}
-	if isAB {
-		ab := alphabeta.New(batchScorer)
-		err := ab.UseParams(params)
-		if err != nil {
-			return nil, err
-		}
-		player.Searcher = ab
-	} else {
-		return nil, errors.New("MCTS not connected yet.")
-	}
-
-	// Check that all parameters were processed.
-	if len(params) > 0 {
-		return nil, errors.Errorf("unknown AI parameters \"%s\" passed", strings.Join(generics.KeysSlice(params), "\", \""))
-	}
-	return player, nil
-}
 
 // SearcherScorer is a standard set up for an AI: a searcher and a scorer.
 // It implements the Player interface.
@@ -81,8 +19,86 @@ type SearcherScorer struct {
 	playerNum PlayerNum
 
 	Searcher searchers.Searcher
-	Scorer   ai.BatchBoardScorer
+	Scorer   ai.BoardScorer
 	Learner  ai.LearnerScorer
+}
+
+// New creates a new AI player given the configuration string.
+//
+// Args:
+//
+//   - config: a comma-separated list of parameters with optional values associated. At least a "scorer" (e.g. "linear")
+//     and a "searcher" (e.g. "ab" or "mcts") must be defined. If empty, the default is given by DefaultPlayerConfig.
+//     E.g.: "linear,ab,max_depth=2"
+//
+// Typical parameters:
+//
+//   - linear (string): Configure to use the linear scorer. Default value is "best", and other valid values are
+//     "v0", "v1", "v2" or a path to the linear model to be loaded.
+//   - ab (bool): If to use Alpha-Beta pruning search algorithm.
+//   - mcts (bool): Use MCTS (Monte Carlo Tree Search) algorithm.
+//   - max_depth (int): Max depth of search, default is 2. If max_time is set, this parameter is ignored.
+//   - max_time (time.Duration): Max time duration in search, default is 0s, which means it is not time-limited but rather max_depth limited.
+//   - randomness (float): Adds a layer of randomness in the search: the first level choice is
+//     distributed according to a softmax of the scores of each move, divided by this value.
+//     So lower values (closer to 0) means less randomness, higher value means more randomness,
+//     hence more exploration. Default is 0.
+//
+// More details on the config are dependent on the module used.
+func New(matchId uint64, matchName string, playerNum PlayerNum, config string) (*SearcherScorer, error) {
+	if config == "" {
+		config = DefaultPlayerConfig
+	}
+	params := parameters.NewFromConfigString(config)
+
+	player := &SearcherScorer{
+		matchId:   matchId,
+		matchName: matchName,
+		playerNum: playerNum,
+	}
+
+	if len(RegisteredScorers) == 0 {
+		return nil, errors.New("no registered scorers. Perhaps you need to import _ \"internal/player/default\" to your binary ?")
+	}
+	if len(RegisteredSearchers) == 0 {
+		return nil, errors.New("no registered searchers. Perhaps you need to import _ \"internal/player/default\" to your binary ?")
+	}
+
+	// Find scorer.
+	for _, builder := range RegisteredScorers {
+		s, err := builder(params)
+		if err != nil {
+			return nil, err
+		}
+		if player.Scorer != nil {
+			return nil, errors.Errorf("multiple scorers defined in parameters %q", config)
+		}
+		player.Scorer = s
+	}
+	if player.Scorer == nil {
+		return nil, errors.Errorf("no scorers defined in parameters %q", config)
+	}
+
+	// Find searcher.
+	for _, builder := range RegisteredSearchers {
+		s, err := builder(player.Scorer, params)
+		if err != nil {
+			return nil, err
+		}
+		if player.Searcher != nil {
+			return nil, errors.Errorf("multiple searchers defined in parameters %q", config)
+		}
+		player.Searcher = s
+	}
+	if player.Searcher == nil {
+		return nil, errors.Errorf("no searchers defined in parameters %q", config)
+	}
+
+	// Check that all parameters were processed.
+	if len(params) > 0 {
+		return nil, errors.Errorf("unknown AI parameters \"%s\" passed", strings.Join(generics.KeysSlice(params), "\", \""))
+	}
+	return player, nil
 }
 
 // Assert that SearchScorer is a Player.

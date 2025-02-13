@@ -23,8 +23,8 @@ var (
 	flagHotseat   = flag.Bool("hotseat", false, "Hotseat match: human vs human")
 	flagWatch     = flag.Bool("watch", false, "Watch mode: AI vs AI playing")
 	flagFirst     = flag.String("first", "", "Who plays first: human or ai. Default is random.")
-	flagAIConfig  = flag.String("config", "linear:ab", "AI configuration against which to play")
-	flagAIConfig2 = flag.String("config2", "linear:ab", "Second AI configuration, if playing AI vs AI with --watch")
+	flagAIConfig  = flag.String("config", "linear,ab", "AI configuration against which to play")
+	flagAIConfig2 = flag.String("config2", "linear,ab", "Second AI configuration, if playing AI vs AI with --watch")
 	flagMaxMoves  = flag.Int(
 		"max_moves", DefaultMaxMoves, "Max moves before game is considered a draw.")
 	flagQuiet = flag.Bool("quiet", false, "Quiet mode for when watching AI play, only the actions and the last board position is printed.")
