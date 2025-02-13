@@ -21,6 +21,8 @@ import (
 // Scorer is a linear model (one weight per feature + bias) on the feature set.
 // It implements ai.BoardScorer.
 type Scorer struct {
+	name string
+
 	weights []float32
 
 	// LearningRate to use when training the linear model and L2Reg to use.
@@ -44,6 +46,7 @@ type Scorer struct {
 // Ownership of the weights is transferred.
 func NewWithWeights(weights ...float32) *Scorer {
 	return &Scorer{
+		name:           "custom",
 		weights:        weights,
 		LearningRate:   0.01,
 		L2Reg:          1e-3,
@@ -56,6 +59,32 @@ var (
 	_ ai.BoardScorer      = (*Scorer)(nil)
 	_ ai.BatchBoardScorer = (*Scorer)(nil)
 )
+
+// String implements fmt.Stringer and ai.Scorer.
+func (s *Scorer) String() string {
+	var fileNameDesc string
+	if s.FileName != "" {
+		fileNameDesc = " (path=" + s.FileName + ")"
+	}
+	return fmt.Sprintf("Linear %q%s", s.name, fileNameDesc)
+}
+
+// Clone creates a deep copy of the Scorer.
+//
+// Notice s must not be locked.
+func (s *Scorer) Clone() *Scorer {
+	s2 := &Scorer{}
+	//goland:noinspection ALL
+	*s2 = *s
+	s2.weights = slices.Clone(s.weights)
+	return s2
+}
+
+// WithName sets the name of the Scorer and returns itself.
+func (s *Scorer) WithName(name string) *Scorer {
+	s.name = name
+	return s
+}
 
 func (s *Scorer) logitScore(features []float32) float32 {
 	// Sum start with bias.

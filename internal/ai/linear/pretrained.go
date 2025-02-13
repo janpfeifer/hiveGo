@@ -9,9 +9,6 @@ import (
 // Embedded pre-trained linear models.
 
 var (
-	// PreTrainedBest is an alias to the current best linear model.
-	PreTrainedBest = TrainedV3
-
 	// PreTrainedV0 weights were trained with Scorer.Learn.
 	PreTrainedV0 = NewWithWeights(
 		// Pieces order: ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER
@@ -39,7 +36,7 @@ var (
 
 		// Bias: *Must always be last*
 		-0.79,
-	)
+	).WithName("v0")
 
 	PreTrainedV1 = NewWithWeights(
 		// Pieces order: ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER
@@ -71,7 +68,7 @@ var (
 
 		// Bias: *Must always be last*
 		-0.8161,
-	)
+	).WithName("v1")
 
 	PreTrainedV2 = NewWithWeights(
 		// NumOffboard -> 5
@@ -103,9 +100,9 @@ var (
 
 		// Bias -> 1
 		-0.8147,
-	)
+	).WithName("v2")
 
-	TrainedV3 = NewWithWeights(
+	PreTrainedV3 = NewWithWeights(
 		// Pieces order: ANT, BEETLE, GRASSHOPPER, QUEEN, SPIDER
 		// NumOffboard -> 5
 		-0.1891, 0.0648, -0.0803, -1.8169, -0.0319,
@@ -150,7 +147,10 @@ var (
 
 		// Bias -> 1
 		-0.7409,
-	)
+	).WithName("v3")
+
+	// PreTrainedBest is an alias to the current best linear model.
+	PreTrainedBest = PreTrainedV3
 )
 
 // NewFromParams returns the linear scorer if "linear" is set, otherwise it returns nil (and no error).
@@ -173,6 +173,8 @@ func NewFromParams(params parameters.Params) (ai.BoardScorer, error) {
 		s = PreTrainedV1
 	case "v2":
 		s = PreTrainedV2
+	case "v3":
+		s = PreTrainedV3
 	default:
 		// Attempt to load model from disk.
 		s, err = LoadOrCreate(modelName)

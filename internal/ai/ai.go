@@ -27,6 +27,7 @@ func SquashScore(x float32) float32 {
 //	  some models may not return it.
 type BoardScorer interface {
 	BoardScore(board *Board) float32
+	String() string
 }
 
 // BatchBoardScorer is a BoardScorer that handles batches.
@@ -48,6 +49,10 @@ func (s BatchBoardScorerWrapper) BatchBoardScore(boards []*Board) (scores []floa
 		return s.BoardScore(board)
 	})
 	return
+}
+
+func (s BatchBoardScorerWrapper) String() string {
+	return s.BoardScorer.String()
 }
 
 // Assert BatchBoardScorerWrapper implements BatchBoardScorer
