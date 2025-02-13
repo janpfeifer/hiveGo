@@ -128,14 +128,14 @@ func createPlayers() {
 			exceptions.Panicf("invalid --first=%q, only valid values are \"human\" or \"ai\"", *flagFirst)
 		}
 	}
-	aiPlayers[aiPlayerNum] = must.M1(players.New(matchId, matchName, aiPlayerNum, *flagAIConfig))
+	aiPlayers[aiPlayerNum] = must.M1(players.New(*flagAIConfig))
 	if !*flagWatch {
 		return
 	}
 
 	// Create second AI
 	otherPlayerNum := 1 - aiPlayerNum
-	aiPlayers[otherPlayerNum] = must.M1(players.New(matchId, matchName, otherPlayerNum, *flagAIConfig2))
+	aiPlayers[otherPlayerNum] = must.M1(players.New(*flagAIConfig2))
 	return
 }
 

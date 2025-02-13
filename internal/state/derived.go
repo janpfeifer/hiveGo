@@ -72,7 +72,7 @@ func (a Action) IsSkipAction() bool {
 
 func (a Action) String() string {
 	if a.IsSkipAction() {
-		return "SkipAction"
+		return "Pass (no action)"
 	}
 	if a.Move {
 		return fmt.Sprintf("Move %s: %s->%s", PieceLetters[a.Piece], a.SourcePos, a.TargetPos)

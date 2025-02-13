@@ -14,10 +14,6 @@ import (
 // SearcherScorer is a standard set up for an AI: a searcher and a scorer.
 // It implements the Player interface.
 type SearcherScorer struct {
-	matchId   uint64
-	matchName string
-	playerNum PlayerNum
-
 	Searcher searchers.Searcher
 	Scorer   ai.BoardScorer
 	Learner  ai.LearnerScorer
@@ -45,17 +41,13 @@ type SearcherScorer struct {
 //     hence more exploration. Default is 0.
 //
 // More details on the config are dependent on the module used.
-func New(matchId uint64, matchName string, playerNum PlayerNum, config string) (*SearcherScorer, error) {
+func New(config string) (*SearcherScorer, error) {
 	if config == "" {
 		config = DefaultPlayerConfig
 	}
 	params := parameters.NewFromConfigString(config)
 
-	player := &SearcherScorer{
-		matchId:   matchId,
-		matchName: matchName,
-		playerNum: playerNum,
-	}
+	player := &SearcherScorer{}
 
 	if len(RegisteredScorers) == 0 {
 		return nil, errors.New("no registered scorers. Perhaps you need to import _ \"internal/player/default\" to your binary ?")
@@ -108,9 +100,9 @@ var _ Player = &SearcherScorer{}
 func (s *SearcherScorer) Play(b *Board) (
 	action Action, board *Board, score float32, actionsLabels []float32) {
 	action, board, score, actionsLabels = s.Searcher.Search(b)
-	if klog.V(1).Enabled() {
-		klog.Infof("Match %q (#%d), %s player, Move #%d (%s): AI playing %v, score=%.3f",
-			s.matchName, s.matchId, s.playerNum, b.MoveNumber, action, score)
+	if klog.V(2).Enabled() {
+		klog.Infof("Move #%d: AI (%s) playing %s, score=%.3f",
+			b.MoveNumber, s.Scorer, action, score)
 	}
 	return
 }
@@ -118,7 +110,7 @@ func (s *SearcherScorer) Play(b *Board) (
 // Finalize is called at the end of a match.
 func (s *SearcherScorer) Finalize() {
 	if klog.V(1).Enabled() {
-		klog.Infof("Player for match %q (#%d), %s player finalized", s.matchName, s.matchId, s.playerNum)
+		klog.Infof("Player (scorer=%s) finalized", s.Scorer)
 	}
 	s.Scorer = nil
 	s.Searcher = nil
