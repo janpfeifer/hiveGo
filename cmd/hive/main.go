@@ -12,8 +12,11 @@ import (
 	"github.com/janpfeifer/must"
 	"k8s.io/klog/v2"
 	"math/rand/v2"
+	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -33,6 +36,8 @@ var (
 	aiPlayers = [2]players.Player{nil, nil}
 	matchId   = uint64(0)
 	matchName = "The Match"
+
+	globalCtx = context.Background()
 )
 
 func main() {
@@ -40,6 +45,18 @@ func main() {
 	if *flagMaxMoves <= 0 {
 		klog.Fatalf("Invalid --max_moves=%d", *flagMaxMoves)
 	}
+
+	// Capture Control+C
+	var cancel func()
+	globalCtx, cancel = context.WithCancel(context.Background())
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		cancel()
+		fmt.Print("\033[?25h\033[39;49;0m\n") // Restore cursor and colors.
+		klog.Fatalf("Got interrupt, shutting down...")
+	}()
 
 	// Create players.
 	createPlayers()
@@ -127,22 +144,33 @@ type Spinning struct {
 	cancel func()
 }
 
+var (
+	//spinningSeq = []rune("`|/-\`")
+	//spinningSeq = []rune("🌑🌒🌓🌔🌕🌖🌗🌘") // `|/-\`
+	spinningSeq = []rune("🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛") // `|/-\`
+	spinningIdx int
+	spinningLen = len(spinningSeq)
+)
+
 func NewSpinning() *Spinning {
-	const spinningSeq = `|/-\`
 	s := &Spinning{}
 	var ctx context.Context
-	ctx, s.cancel = context.WithCancel(context.Background())
+	ctx, s.cancel = context.WithCancel(globalCtx)
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		ticker := time.NewTicker(500 * time.Millisecond)
-		idx := 0
+		fmt.Print("\033[?25l")       // Hide cursor.
+		defer fmt.Print("\033[?25h") // Restore cursor.
+
+		fmt.Print("  ")
 		for {
-			fmt.Printf("%c\033[1D", spinningSeq[idx])
-			idx = (idx + 1) % len(spinningSeq)
+			symbol := spinningSeq[spinningIdx]
+			fmt.Printf("\b\b%c", symbol)
+			spinningIdx = (spinningIdx + 1) % spinningLen
 			select {
 			case <-ctx.Done():
-				fmt.Print("\033[1D")
+				fmt.Print("\b\b")
 				return
 			case <-ticker.C:
 				// continue
