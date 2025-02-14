@@ -4,10 +4,9 @@ package main
 
 import (
 	. "github.com/janpfeifer/hiveGo/internal/state"
+	"k8s.io/klog/v2"
 	"math/rand"
 	"time"
-
-	"github.com/janpfeifer/hiveGo/ai/tensorflow"
 )
 
 // MatchAction holds indices to Match/Action to be rescored.
@@ -37,7 +36,7 @@ func rescoreAndTrain(matches []*Match) {
 	}
 
 	// Collect rescored matches and issue learning.
-	labeledExamplesChan := make(chan LabeledExamples, 2*parallelism)
+	labeledExamplesChan := make(chan LabeledBoards, 2*parallelism)
 	go collectMatchActionsAndIssueLearning(matches, rescoredMA, labeledExamplesChan)
 
 	// Continuously learn.
@@ -74,50 +73,52 @@ func sampleMatchActions(matches []*Match, maSampling chan<- MatchAction) {
 
 // rescoreMatchActions rescores each match/action, and outputs it.
 func rescoreMatchActions(matches []*Match, maInput <-chan MatchAction, maOutput chan<- MatchAction) {
-	for ma := range maInput {
-		match := matches[ma.matchNum]
-		from := int(ma.actionNum)
-		to := from + 1
-		newScores, actionsLabels := aiPlayers[0].Searcher.ScoreMatch(
-			match.Boards[from], match.Actions[from:to])
+	for matchAction := range maInput {
+		match := matches[matchAction.matchNum]
+		actionIdx := int(matchAction.actionNum)
+		//to := from + 1
+		//newScores, ActionsLabels := aiPlayers[0].Searcher.ScoreMatch(
+		//	match.Boards[from], match.Actions[from:to])
+		_, _, newScore, actionsLabels := aiPlayers[0].Play(match.Boards[actionIdx])
 
 		// Clone over new scores and labels for the particular action on the match.
 		match.mu.Lock()
 		if match.Scores == nil {
 			match.Scores = make([]float32, len(match.Boards))
 		}
-		if match.ActionsLabels == nil {
-			match.ActionsLabels = make([][]float32, len(match.Actions))
-		}
 
-		match.Scores[from] = newScores[0]
+		match.Scores[actionIdx] = newScore
 		if actionsLabels != nil {
-			match.ActionsLabels[from] = actionsLabels[0]
+			if match.ActionsLabels == nil {
+				match.ActionsLabels = make([][]float32, len(match.Actions))
+			}
+			match.ActionsLabels[actionIdx] = actionsLabels // ActionsLabels[0]
 		}
 		match.mu.Unlock()
 
-		maOutput <- ma
+		maOutput <- matchAction
 	}
 }
 
-func MakeLabeledExamples(batchSize int) LabeledExamples {
-	return LabeledExamples{
-		boardExamples: make([]*Board, 0, batchSize),
-		boardLabels:   make([]float32, 0, batchSize),
-		actionsLabels: make([][]float32, 0, batchSize),
+func MakeLabeledExamples(batchSize int) LabeledBoards {
+	return LabeledBoards{
+		Boards:        make([]*Board, 0, batchSize),
+		Labels:        make([]float32, 0, batchSize),
+		ActionsLabels: make([][]float32, 0, batchSize),
 	}
 }
 
-func (le *LabeledExamples) AppendMatchAction(matches []*Match, ma MatchAction) {
+func (le *LabeledBoards) AppendMatchAction(matches []*Match, ma MatchAction) {
 	match := matches[ma.matchNum]
-	le.boardExamples = append(le.boardExamples, match.Boards[ma.actionNum])
-	le.boardLabels = append(le.boardLabels, match.Scores[ma.actionNum])
-	le.actionsLabels = append(le.actionsLabels, match.ActionsLabels[ma.actionNum])
+	le.Boards = append(le.Boards, match.Boards[ma.actionNum])
+	le.Labels = append(le.Labels, match.Scores[ma.actionNum])
+	le.ActionsLabels = append(le.ActionsLabels, match.ActionsLabels[ma.actionNum])
 }
 
-func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchAction, learnOutput chan<- LabeledExamples) {
+func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchAction, learnOutput chan<- LabeledBoards) {
 	poolSize := *flagRescoreAndTrainPoolSize
-	batchSize := *tensorflow.Flag_learnBatchSize
+	//batchSize := *tensorflow.Flag_learnBatchSize
+	batchSize := aiPlayers[0].Learner.BatchSize()
 	issueFreq := *flagRescoreAndTrainIssueLearn
 
 	pool := make([]MatchAction, 0)
@@ -171,44 +172,51 @@ func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchA
 }
 
 // learnSelection continuously learns from the selected board data.
-func continuousLearning(learnInput <-chan LabeledExamples) {
-	var averageLoss, averageBoardLoss, averageActionsLoss float32
+func continuousLearning(learnInput <-chan LabeledBoards) {
+	//var averageLoss, averageBoardLoss, averageActionsLoss float32
+	var averageLoss float32
 	count := 0
 	for le := range learnInput {
 		klog.V(3).Infof("Learn: count=%d", count)
 
 		// First learn with 0 steps: only evaluation without dropout.
-		loss, boardLoss, actionsLoss := aiPlayers[0].Learner.Learn(
-			le.boardExamples, le.boardLabels,
-			le.actionsLabels, float32(*flagLearningRate),
-			0, nil)
-		klog.V(1).Infof("Evaluation loss: total=%g board=%g actions=%g",
-			loss, boardLoss, actionsLoss)
+		//loss, boardLoss, actionsLoss := aiPlayers[0].Learner.Learn(
+		//	le.Boards, le.Labels,
+		//	le.ActionsLabels, float32(*flagLearningRate),
+		//	0, nil)
+		//klog.V(1).Infof("Evaluation loss: total=%g board=%g actions=%g",
+		//	loss, boardLoss, actionsLoss)
+		loss := aiPlayers[0].Learner.Loss(le.Boards, le.Labels)
+		klog.V(1).Infof("Pre-training loss %.4g", loss)
 
 		// Actually train.
-		_, _, _ = aiPlayers[0].Learner.Learn(
-			le.boardExamples, le.boardLabels,
-			le.actionsLabels, float32(*flagLearningRate),
-			*flagTrainLoops, nil)
+		//_, _, _ = aiPlayers[0].Learner.Learn(
+		//	le.Boards, le.Labels,
+		//	le.ActionsLabels, float32(*flagLearningRate),
+		//	*flagTrainLoops, nil)
+		loss = aiPlayers[0].Learner.Loss(le.Boards, le.Labels)
+		klog.V(1).Infof("Post-training loss %.4g", loss)
 
 		// Evaluate (learn with 0 steps)on training data.
-		loss, boardLoss, actionsLoss = aiPlayers[0].Learner.Learn(
-			le.boardExamples, le.boardLabels,
-			le.actionsLabels, float32(*flagLearningRate),
-			0, nil)
-		klog.V(1).Infof("Training loss: total=%g board=%g actions=%g",
-			loss, boardLoss, actionsLoss)
+		//loss, boardLoss, actionsLoss = aiPlayers[0].Learner.Learn(
+		//	le.Boards, le.Labels,
+		//	le.ActionsLabels, float32(*flagLearningRate),
+		//	0, nil)
+		//klog.V(1).Infof("Training loss: total=%g board=%g actions=%g",
+		//	loss, boardLoss, actionsLoss)
 
 		decay := 1 - 1/float32(1+count)
 		if decay > maxAverageLossDecay {
 			decay = maxAverageLossDecay
 		}
 		averageLoss = decayAverageLoss(averageLoss, loss, decay)
-		averageBoardLoss = decayAverageLoss(averageBoardLoss, boardLoss, decay)
-		averageActionsLoss = decayAverageLoss(averageActionsLoss, actionsLoss, decay)
-		if klog.V(2) || count%100 == 0 {
-			klog.Infof("Average Losses (step=%d): total=%.4g board=%.4g actions=%.4g",
-				p0GlobalStep(), averageLoss, averageBoardLoss, averageActionsLoss)
+		//averageBoardLoss = decayAverageLoss(averageBoardLoss, boardLoss, decay)
+		//averageActionsLoss = decayAverageLoss(averageActionsLoss, actionsLoss, decay)
+		if klog.V(2).Enabled() || count%100 == 0 {
+			//klog.Infof("Average Losses (step=%d): total=%.4g board=%.4g actions=%.4g",
+			//	p0GlobalStep(), averageLoss, averageBoardLoss, averageActionsLoss)
+			klog.Infof("Average Losses (step=%d): loss=%.4g",
+				p0GlobalStep(), averageLoss)
 		}
 		count++
 	}
@@ -223,8 +231,8 @@ func decayAverageLoss(average, newValue, decay float32) float32 {
 // Returns tensorflow's GlobalStep for player 0, if using tensorflow,
 // or -1 if not.
 func p0GlobalStep() int64 {
-	if tf, ok := aiPlayers[0].Learner.(*tensorflow.Scorer); ok && tf != nil {
-		return tf.ReadGlobalStep()
-	}
+	//if tf, ok := aiPlayers[0].Learner.(*tensorflow.Scorer); ok && tf != nil {
+	//	return tf.ReadGlobalStep()
+	//}
 	return -1
 }

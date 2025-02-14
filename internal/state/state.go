@@ -582,9 +582,15 @@ func LoadMatch(dec *gob.Decoder) (initial *Board, actions []Action, scores []flo
 	return
 }
 
-// SaveMatch will "save" (encode) the match and scores for future reconstruction.
+// Encoder is any type of encoder -- implemented by gob.Encoder, json.Encoder
+type Encoder interface {
+	// Encode v or return an error.
+	Encode(v any) error
+}
+
+// EncodeMatch will "save" (encode) the match and scores for future reconstruction.
 // scores is optional.
-func SaveMatch(enc *gob.Encoder, MaxMoves int, actions []Action, scores []float32, actionsLabels [][]float32) error {
+func EncodeMatch(enc Encoder, MaxMoves int, actions []Action, scores []float32, actionsLabels [][]float32) error {
 	saveFileVersion := -1
 	if err := enc.Encode(saveFileVersion); err != nil {
 		return fmt.Errorf("failed to encode match's board: %v", err)

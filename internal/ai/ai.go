@@ -84,6 +84,11 @@ type LearnerScorer interface {
 	// Save should save the model.
 	Save()
 
+	// BatchSize returns the batch size used by the learner.
+	// If Learn is called with more examples than this, it will be split, and if smaller
+	// it will be padded (or something equivalent).
+	BatchSize() int
+
 	// String returns the model/learner name.
 	String() string
 }

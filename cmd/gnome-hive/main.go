@@ -142,7 +142,7 @@ func executeAction(action Action) {
 		file := openForAppending(*flagSaveMatch)
 		defer func() { _ = file.Close() }()
 		enc := gob.NewEncoder(file)
-		if err := SaveMatch(enc, initial.MaxMoves, actions, scores, nil); err != nil {
+		if err := EncodeMatch(enc, initial.MaxMoves, actions, scores, nil); err != nil {
 			klog.Errorf("Failed to save match to %s: %v", *flagSaveMatch, err)
 			klog.Errorf("Game continuing anyway...")
 		}

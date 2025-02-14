@@ -50,10 +50,10 @@ func New(config string) (*SearcherScorer, error) {
 	player := &SearcherScorer{}
 
 	if len(RegisteredScorers) == 0 {
-		return nil, errors.New("no registered scorers. Perhaps you need to import _ \"internal/player/default\" to your binary ?")
+		return nil, errors.New("no registered scorers. Perhaps you need to import _ \"github.com/janpfeifer/hiveGo/internal/player/default\" to your binary ?")
 	}
 	if len(RegisteredSearchers) == 0 {
-		return nil, errors.New("no registered searchers. Perhaps you need to import _ \"internal/player/default\" to your binary ?")
+		return nil, errors.New("no registered searchers. Perhaps you need to import _ \"github.com/janpfeifer/hiveGo/internal/player/default\" to your binary ?")
 	}
 
 	// Find scorer.

@@ -1,10 +1,9 @@
 package main
 
 import (
+	"github.com/gomlx/exceptions"
 	"github.com/janpfeifer/hiveGo/internal/ai"
-	"github.com/janpfeifer/hiveGo/internal/features"
 	"k8s.io/klog/v2"
-	"log"
 	"math"
 	"sync"
 )
@@ -60,7 +59,7 @@ func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 			if *flagDistill {
 				// Distillation: score boards.
 				// TODO: For the scores just use the immediate score. Not action labels.
-				newScores := distill(aiPlayers[1].Scorer, match, from, to)
+				newScores := directRescoreMatch(aiPlayers[1].Scorer, match, from, to)
 				if len(newScores) > 0 {
 					maxScore := math.Abs(float64(newScores[0]))
 					for _, v := range newScores {
@@ -71,16 +70,25 @@ func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 					klog.V(2).Infof("maxScore=%.2f", maxScore)
 					copy(match.Scores[from:from+len(newScores)], newScores)
 				}
+
 			} else {
 				// from -> to refer to the actions. ScoreMatch scores the boards up to the action following
 				// the actions[to], hence one more than the number of actions.
-				newScores, actionsLabels := aiPlayers[0].Searcher.ScoreMatch(
+				/* Old version with actions labels:
+				newScores, ActionsLabels := aiPlayers[0].Searcher.ScoreMatch(
 					match.Boards[from], match.Actions[from:to])
 				copy(match.Scores[from:from+len(newScores)-1], newScores)
-				copy(match.ActionsLabels[from:from+len(actionsLabels)], actionsLabels)
+				copy(match.ActionsLabels[from:from+len(ActionsLabels)], ActionsLabels)
+				*/
+				for actionIdx := from; actionIdx <= to; actionIdx++ {
+					_, _, score, _ := aiPlayers[0].Play(match.Boards[actionIdx])
+					match.Scores[actionIdx] = score
+				}
+
+				// Sanity check of ActionsLabels.
 				for ii := from; ii < len(match.Actions); ii++ {
 					if match.ActionsLabels[ii] != nil && len(match.ActionsLabels[ii]) != match.Boards[ii].NumActions() {
-						log.Panicf("Match %d: number of labels (%d) different than number of actions (%d) for move %d",
+						exceptions.Panicf("Match %d: number of labels (%d) different than number of actions (%d) for move %d",
 							match.MatchFileIdx, len(match.ActionsLabels[ii]), match.Boards[ii].NumActions(), ii)
 					}
 				}
@@ -106,8 +114,8 @@ func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 
 func trainFromMatches(matches []*Match) {
 	var (
-		leTrain      = &LabeledExamples{}
-		leValidation = &LabeledExamples{}
+		leTrain      = &LabeledBoards{}
+		leValidation = &LabeledBoards{}
 	)
 	for _, match := range matches {
 		if *flagLearnWithEndScore {
@@ -115,55 +123,59 @@ func trainFromMatches(matches []*Match) {
 		}
 		hashNum := match.FinalBoard().Derived.Hash
 		if int(hashNum%100) >= *flagTrainValidation {
-			match.AppendLabeledExamples(leTrain)
+			match.AppendToLabeledBoards(leTrain)
 		} else {
-			match.AppendLabeledExamples(leValidation)
+			match.AppendToLabeledBoards(leValidation)
 		}
 	}
 	trainFromExamples(leTrain, leValidation)
 }
 
 func savePlayer0() {
-	if aiPlayers[0].ModelPath != "" {
-		log.Printf("Saving to %s", aiPlayers[0].ModelPath)
-		features.LinearModelFileName = aiPlayers[0].ModelPath // Hack for linear models. TODO: fix.
+	if aiPlayers[0].Learner != nil {
+		klog.Infof("Saving %s", aiPlayers[0].Learner)
+		//features.LinearModelFileName = aiPlayers[0].Learner.ModelPath // Hack for linear models. TODO: fix.
 		aiPlayers[0].Learner.Save()
-		if klog.V(1) {
-			klog.V(1).Infof("Saved %s to %s", aiPlayers[0].Learner, aiPlayers[0].ModelPath)
-		}
 	}
 }
 
 // trainFromExamples: only player[0] is trained.
-func trainFromExamples(leTrain, leValidation *LabeledExamples) {
-	learningRate := float32(*flagLearningRate)
-	epochs := int(*flagTrainLoops)
-	perEpochCallback := func() {
-		if leValidation.Len() > 0 {
-			loss, boardLoss, actionsLoss := aiPlayers[0].Learner.Learn(
-				leValidation.boardExamples, leValidation.boardLabels, leValidation.actionsLabels,
-				learningRate, 0, nil)
-			log.Printf("  Validation losses: %.4g, %.4g, %.4g", loss, boardLoss, actionsLoss)
-		}
-		if epochs > 0 {
-			savePlayer0()
-		}
+func trainFromExamples(leTrain, leValidation *LabeledBoards) {
+	//klog.Infof("Number of labeled examples: train=%d validation=%d", leTrain.Len(), leValidation.Len())
+	//loss, boardLoss, actionsLoss := aiPlayers[0].Learner.Learn(
+	//	leTrain.Boards, leTrain.Labels, leTrain.ActionsLabels,
+	//	learningRate, epochs, perEpochCallback)
+	for epoch := range *flagTrainLoops {
+		trainLoss := aiPlayers[0].Learner.Loss(leTrain.Boards, leTrain.Labels)
+		validLoss := aiPlayers[0].Learner.Loss(leValidation.Boards, leValidation.Labels)
+		klog.Infof("  Epoch #%d losses: train=%.4g, validation=%.4g", epoch, trainLoss, validLoss)
 	}
-	log.Printf("Number of labeled examples: train=%d validation=%d", leTrain.Len(), leValidation.Len())
-	loss, boardLoss, actionsLoss := aiPlayers[0].Learner.Learn(
-		leTrain.boardExamples, leTrain.boardLabels, leTrain.actionsLabels,
-		learningRate, epochs, perEpochCallback)
-	log.Printf("  Training losses after %dth traininig loops (epochs): %.4g, %.4g, %.4g",
-		epochs, loss, boardLoss, actionsLoss)
 }
 
-// distill returns the score of the given board position, and no
-// action labels.
-func distill(scorer ai.BatchBoardScorer, match *Match, from, to int) (scores []float32) {
+// directRescoreMatch scores the moves [from, to) of the given match using scorer.
+// This can be used for distillation.
+//
+// It is "direct" because it doesn't use a searcher to do TD learning.
+func directRescoreMatch(scorer ai.BoardScorer, match *Match, from, to int) (scores []float32) {
 	boards := match.Boards[from:to]
 	if len(boards) == 0 {
 		return nil
 	}
-	scores, _ = scorer.BatchBoardScore(boards, false)
+	batchScorer, ok := scorer.(ai.BatchBoardScorer)
+	if ok {
+		return batchScorer.BatchBoardScore(boards)
+	}
+
+	// Parallel score board positions.
+	scores = make([]float32, len(boards))
+	wg := &sync.WaitGroup{}
+	for boardIdx, board := range boards {
+		wg.Add(1)
+		go func() {
+			scores[boardIdx] = scorer.BoardScore(board)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
 	return
 }

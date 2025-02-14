@@ -9,15 +9,11 @@ import (
 	_ "github.com/janpfeifer/hiveGo/internal/players/default"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
+	"github.com/janpfeifer/hiveGo/internal/ui/spinning"
 	"github.com/janpfeifer/must"
 	"k8s.io/klog/v2"
 	"math/rand/v2"
-	"os"
-	"os/signal"
 	"strings"
-	"sync"
-	"syscall"
-	"time"
 )
 
 var (
@@ -49,14 +45,8 @@ func main() {
 	// Capture Control+C
 	var cancel func()
 	globalCtx, cancel = context.WithCancel(context.Background())
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		cancel()
-		fmt.Print("\033[?25h\033[39;49;0m\n") // Restore cursor and colors.
-		klog.Fatalf("Got interrupt, shutting down...")
-	}()
+	spinning.SafeInterrupt(cancel)
+	defer cancel()
 
 	// Create players.
 	createPlayers()
@@ -89,7 +79,7 @@ func main() {
 				fmt.Print(": ")
 			}
 
-			s := NewSpinning()
+			s := spinning.New(globalCtx)
 			action, newBoard, score, _ := aiPlayer.Play(board)
 			s.Done()
 			fmt.Printf(" %s (score=%.3f)\n", action, score)
@@ -137,50 +127,4 @@ func createPlayers() {
 	otherPlayerNum := 1 - aiPlayerNum
 	aiPlayers[otherPlayerNum] = must.M1(players.New(*flagAIConfig2))
 	return
-}
-
-type Spinning struct {
-	wg     sync.WaitGroup
-	cancel func()
-}
-
-var (
-	//spinningSeq = []rune("`|/-\`")
-	//spinningSeq = []rune("🌑🌒🌓🌔🌕🌖🌗🌘") // `|/-\`
-	spinningSeq = []rune("🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛") // `|/-\`
-	spinningIdx int
-	spinningLen = len(spinningSeq)
-)
-
-func NewSpinning() *Spinning {
-	s := &Spinning{}
-	var ctx context.Context
-	ctx, s.cancel = context.WithCancel(globalCtx)
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		ticker := time.NewTicker(500 * time.Millisecond)
-		fmt.Print("\033[?25l")       // Hide cursor.
-		defer fmt.Print("\033[?25h") // Restore cursor.
-
-		fmt.Print("  ")
-		for {
-			symbol := spinningSeq[spinningIdx]
-			fmt.Printf("\b\b%c", symbol)
-			spinningIdx = (spinningIdx + 1) % spinningLen
-			select {
-			case <-ctx.Done():
-				fmt.Print("\b\b")
-				return
-			case <-ticker.C:
-				// continue
-			}
-		}
-	}()
-	return s
-}
-
-func (s *Spinning) Done() {
-	s.cancel()
-	s.wg.Wait()
 }

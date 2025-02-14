@@ -108,7 +108,7 @@ func main() {
 	enc := gob.NewEncoder(file)
 	count := 0
 	for match := range results {
-		must.M(SaveMatch(enc, match.MaxMoves, match.Actions, match.Scores, nil))
+		must.M(EncodeMatch(enc, match.MaxMoves, match.Actions, match.Scores, nil))
 		count++
 	}
 	must.M(file.Close())
