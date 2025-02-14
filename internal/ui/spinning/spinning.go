@@ -80,6 +80,9 @@ func New(ctx context.Context) *Spinning {
 }
 
 func (s *Spinning) Done() {
-	s.cancel()
+	if s.cancel != nil {
+		s.cancel()
+		s.cancel = nil
+	}
 	s.wg.Wait()
 }
