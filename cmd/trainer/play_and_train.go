@@ -146,7 +146,10 @@ func playAndTrain() {
 		globalStep := p0GlobalStep()
 		if globalStep == -1 || globalStep > lastSaveStep {
 			lastSaveStep = globalStep
-			savePlayer0()
+			err := savePlayer0()
+			if err != nil {
+				klog.Errorf("Error saving player 0: %v", err)
+			}
 		}
 	}
 }

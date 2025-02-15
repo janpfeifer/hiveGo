@@ -1,6 +1,7 @@
 package linear
 
 import (
+	"fmt"
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/parameters"
 	"github.com/pkg/errors"
@@ -221,8 +222,19 @@ func NewFromParams(params parameters.Params) (ai.BoardScorer, error) {
 			selected = scorer
 		}
 	}
+
+	var baseScorer *Scorer
+	baseScorerName, err := parameters.PopParamOr(params, "linear_from", "")
+	if baseScorerName != "" {
+		s, err := NewFromParams(parameters.NewFromConfigString(fmt.Sprintf("linear=%s", baseScorerName)))
+		if err != nil {
+			return nil, errors.WithMessagef(err, "failed to load base model \"linear_from=%s\"", baseScorerName)
+		}
+		baseScorer = s.(*Scorer)
+	}
+
 	if selected == nil {
-		selected, err = LoadOrCreate(modelName)
+		selected, err = LoadOrCreate(modelName, baseScorer)
 		if err != nil {
 			err = errors.WithMessagef(err, "failed to load model \"linear=%s\"", modelName)
 			return nil, err

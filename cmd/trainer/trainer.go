@@ -131,12 +131,13 @@ func trainFromMatches(matches []*Match) {
 	trainFromExamples(leTrain, leValidation)
 }
 
-func savePlayer0() {
+func savePlayer0() error {
 	if aiPlayers[0].Learner != nil {
 		klog.Infof("Saving %s", aiPlayers[0].Learner)
 		//features.LinearModelFileName = aiPlayers[0].Learner.ModelPath // Hack for linear models. TODO: fix.
-		aiPlayers[0].Learner.Save()
+		return aiPlayers[0].Learner.Save()
 	}
+	return nil
 }
 
 // trainFromExamples: only player[0] is trained.

@@ -34,6 +34,9 @@ type Scorer struct {
 	// Linearize training.
 	muLearning sync.Mutex
 
+	// batchSize recommended for calling Learn.
+	batchSize int
+
 	// NumSteps to do gradient descent when Learn is called.
 	NumSteps int
 
@@ -51,6 +54,7 @@ func NewWithWeights(weights ...float32) *Scorer {
 		LearningRate:   0.01,
 		L2Reg:          1e-3,
 		GradientL2Clip: 10.0,
+		batchSize:      100,
 	}
 }
 
@@ -58,6 +62,7 @@ var (
 	// Assert Scorer is an ai.BoardScorer and an ai.BatchBoardScorer
 	_ ai.BoardScorer      = (*Scorer)(nil)
 	_ ai.BatchBoardScorer = (*Scorer)(nil)
+	_ ai.LearnerScorer    = (*Scorer)(nil)
 )
 
 // String implements fmt.Stringer and ai.Scorer.
@@ -83,6 +88,12 @@ func (s *Scorer) Clone() *Scorer {
 // WithName sets the name of the Scorer and returns itself.
 func (s *Scorer) WithName(name string) *Scorer {
 	s.name = name
+	return s
+}
+
+// WithBatchSize sets the recommended batch size.
+func (s *Scorer) WithBachSize(batchSize int) *Scorer {
+	s.batchSize = batchSize
 	return s
 }
 
@@ -260,6 +271,11 @@ func (s *Scorer) lossFromFeatures(boardFeatures [][]float32, boardLabels []float
 	return
 }
 
+// BatchSize returns the recommended batch size an implements ai.LearnerScorer.
+func (s *Scorer) BatchSize() int {
+	return s.batchSize
+}
+
 func l2Len(vec []float32) float32 {
 	total := float32(0.0)
 	for _, value := range vec {
@@ -287,6 +303,7 @@ func (s *Scorer) Version() int {
 }
 
 // Save model to s.FileName.
+// It implements ai.LearnerScorer.
 func (s *Scorer) Save() error {
 	s.muSave.Lock()
 	defer s.muSave.Unlock()
@@ -329,7 +346,7 @@ var (
 // LoadOrCreate model from fileName or create a new one, bootstrapped from PreTrainedBest.
 // It stores the reference of the loaded or created model in a cache, that is reused if attempting to load
 // the same fileName.
-func LoadOrCreate(fileName string) (*Scorer, error) {
+func LoadOrCreate(fileName string, base *Scorer) (*Scorer, error) {
 	if fileName == "" {
 		return PreTrainedBest, nil
 	}
@@ -345,15 +362,15 @@ func LoadOrCreate(fileName string) (*Scorer, error) {
 	if os.IsNotExist(err) {
 		// Make fresh copy of PreTrainedBest
 		var weights []float32
-		if PreTrainedBest.Version() != features.BoardFeaturesDim {
-			klog.Errorf("Current linear.PreTrainedBest model uses only %d features, while new list of features "+
-				"uses %d features, returning new model zero-initialized", PreTrainedBest.Version(), features.BoardFeaturesDim)
+		if base == nil {
+			klog.Infof("Creating zero-initialized new linear model in %s using %d features", fileName, features.BoardFeaturesDim)
 			weights = make([]float32, features.BoardFeaturesDim+1)
 		} else {
-			weights = slices.Clone(PreTrainedBest.weights)
+			klog.Infof("Creating new linear model in %s copied from %s", fileName, base.name)
+			weights = slices.Clone(base.weights)
 		}
-		s := NewWithWeights(weights...)
-		klog.V(1).Infof("New model created for %s has %d features", fileName, s.Version())
+		s := NewWithWeights(weights...).WithName(fileName)
+		s.FileName = fileName
 		cacheLinearScorers[fileName] = s
 		return s, nil
 	}

@@ -3,6 +3,7 @@ package main
 // This file implements continuous rescore and train of a matches database.
 
 import (
+	"fmt"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"k8s.io/klog/v2"
 	"math/rand"
@@ -18,10 +19,10 @@ type MatchAction struct {
 // is updating the same model as used by the scorer, the model will constantly improve.
 //
 // Several flags control this process:
-// --rescore_and_train: triggers this process.
-// --rescore_pool_size: how many board positions to keep in pool. The larger the more times a
 //
-//	rescored board will be used for training. It must be larger than --tf_batch_size.
+//   - -rescore_and_train: triggers this process.
+//   - -rescore_pool_size: how many board positions to keep in pool. The larger the more times a rescored board
+//     will be used for training.
 func rescoreAndTrain(matches []*Match) {
 	parallelism := getParallelism()
 
@@ -42,6 +43,7 @@ func rescoreAndTrain(matches []*Match) {
 	// Continuously learn.
 	go continuousLearning(labeledExamplesChan)
 
+	// Infinite loop.
 	ticker := time.NewTicker(60 * time.Second)
 	lastSaveStep := p0GlobalStep()
 	for _ = range ticker.C {
@@ -50,7 +52,10 @@ func rescoreAndTrain(matches []*Match) {
 		globalStep := p0GlobalStep()
 		if globalStep == -1 || globalStep > lastSaveStep {
 			lastSaveStep = globalStep
-			savePlayer0()
+			err := savePlayer0()
+			if err != nil {
+				fmt.Printf("Error saving player 0: %v\n", err)
+			}
 		}
 	}
 }

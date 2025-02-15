@@ -82,7 +82,7 @@ type LearnerScorer interface {
 	Loss(boards []*Board, boardLabels []float32) (loss float32)
 
 	// Save should save the model.
-	Save()
+	Save() error
 
 	// BatchSize returns the batch size used by the learner.
 	// If Learn is called with more examples than this, it will be split, and if smaller
