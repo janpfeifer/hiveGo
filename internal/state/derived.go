@@ -37,7 +37,7 @@ type Derived struct {
 	// Information about both players.
 	NumPiecesOnBoard    [NumPlayers]uint8
 	NumSurroundingQueen [NumPlayers]uint8
-	PlacementPositions  [NumPlayers]map[Pos]bool
+	PlacementPositions  [NumPlayers]generics.Set[Pos]
 	Wins                [NumPlayers]bool  // If both players win, it is a draw.
 	QueenPos            [NumPlayers]Pos   // Only valid if queen is actually in the board.
 	Singles             [NumPlayers]uint8 // Count pieces that are at the tip (only one neighbour)
@@ -182,36 +182,47 @@ func (b *Board) FindActionDeep(action Action) int {
 	return -1
 }
 
+var InitialPos = Pos{0, 0}
+
 // placementPositions enumerate placement positions.
-func (b *Board) placementPositions(player PlayerNum) (placements map[Pos]bool) {
-	placements = make(map[Pos]bool)
+func (b *Board) placementPositions(player PlayerNum) (placements generics.Set[Pos]) {
+	placements = make(generics.Set[Pos])
 	if len(b.board) == 0 {
-		placements[Pos{0, 0}] = true
+		// On the first move, with an empty board, only 0,0 can be used for placing.
+		placements.Insert(InitialPos)
 		return
 	}
-	if len(b.board) == 1 && b.CountAt(Pos{0, 0}) == 1 {
-		for _, pos := range (Pos{0, 0}.Neighbours()) {
-			placements[pos] = true
+	if len(b.board) == 1 && b.CountAt(InitialPos) == 1 {
+		for pos := range InitialPos.NeighboursIter() {
+			placements.Insert(pos)
 		}
 		return
 	}
 
 	// Enumerate all empty positions next to friendly pieces.
-	candidates := make(map[Pos]bool)
+	candidates := generics.MakeSet[Pos]()
 	for pos, stacked := range b.board {
 		posPlayer, _ := stacked.Top()
 		if posPlayer != player {
 			continue
 		}
-		for _, nPos := range b.EmptyNeighbours(pos) {
-			candidates[nPos] = true
+		for emptyPos := range b.EmptyNeighboursIter(pos) {
+			candidates.Insert(emptyPos)
 		}
 	}
 
 	// Filter those down to only those that have no opponent neighbours.
-	for pos, _ := range candidates {
-		if len(b.OpponentNeighbours(pos)) == 0 {
-			placements[pos] = true
+	for pos := range candidates.Iter() {
+		hasOpponentNeighbours := false
+		for neighbourPos := range b.OccupiedNeighboursIter(pos) {
+			neighbourPlayer, _, _ := b.PieceAt(neighbourPos)
+			if neighbourPlayer != player {
+				hasOpponentNeighbours = true
+				break
+			}
+		}
+		if !hasOpponentNeighbours {
+			placements.Insert(pos)
 		}
 	}
 	return

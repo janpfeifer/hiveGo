@@ -103,7 +103,7 @@ func (s *Scorer) logitScore(features []float32) float32 {
 
 // BoardScore implements ai.BoardScorer.
 func (s *Scorer) BoardScore(board *Board) float32 {
-	return s.ScoreFeatures(features.FeatureVector(board, s.Version()))
+	return s.ScoreFeatures(features.ForBoard(board, s.Version()))
 }
 
 // ScoreFeatures is like Score, but it takes the raw features as input.
@@ -128,7 +128,7 @@ func (s *Scorer) AsGoCode() string {
 	}
 	parts := make([]string, len(s.weights)+2*(len(s.weights)))
 	for _, fDef := range features.BoardSpecs {
-		parts = append(parts, fmt.Sprintf("\n\t// %s -> %d\n\t", fDef.Name, fDef.Dim))
+		parts = append(parts, fmt.Sprintf("\n\t// %s -> %d\n\t", fDef, fDef.Dim))
 		for _, value := range s.weights[fDef.VecIndex : fDef.VecIndex+fDef.Dim] {
 			parts = append(parts, fmt.Sprintf("%.4f, ", value))
 		}
@@ -160,7 +160,7 @@ func (s *Scorer) Learn(boards []*Board, boardLabels []float32) (loss float32) {
 	// Build features.
 	boardFeatures := make([][]float32, len(boards))
 	for boardIdx, board := range boards {
-		boardFeatures[boardIdx] = features.FeatureVector(board, s.Version())
+		boardFeatures[boardIdx] = features.ForBoard(board, s.Version())
 	}
 	return s.lockedLearnFromFeatures(boardFeatures, boardLabels)
 }
@@ -236,7 +236,7 @@ func (s *Scorer) Loss(boards []*Board, boardLabels []float32) (loss float32) {
 	// Build features.
 	boardFeatures := make([][]float32, len(boards))
 	for boardIdx, board := range boards {
-		boardFeatures[boardIdx] = features.FeatureVector(board, s.Version())
+		boardFeatures[boardIdx] = features.ForBoard(board, s.Version())
 	}
 	return s.lossFromFeatures(boardFeatures, boardLabels)
 }

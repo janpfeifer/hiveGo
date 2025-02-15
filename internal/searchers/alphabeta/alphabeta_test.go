@@ -51,7 +51,7 @@ func listMovesForPiece(b *Board, piece PieceType, pos Pos) (poss []Pos) {
 func printBoard(b *Board) {
 	ui := cli.New(true, false)
 	ui.PrintBoard(b)
-	features2.PrettyPrintFeatures(features2.FeatureVector(b, features2.BoardFeaturesDim))
+	features2.PrettyPrint(features2.ForBoard(b, features2.BoardFeaturesDim))
 }
 
 func TestEndGameMove(t *testing.T) {

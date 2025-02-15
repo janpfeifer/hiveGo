@@ -143,6 +143,17 @@ func (s Set[T]) Equal(s2 Set[T]) bool {
 	return true
 }
 
+// Iter iterates over the elements in the set.
+func (s Set[T]) Iter() iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for k := range s {
+			if !yield(k) {
+				break
+			}
+		}
+	}
+}
+
 // SliceOrdering return a slice of indices to s (the original slice) that points
 // to them in order -- without any changes to s.
 //

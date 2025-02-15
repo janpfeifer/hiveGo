@@ -14,10 +14,6 @@ import (
 // See
 type BoardId uint8
 
-// FeatureSetter is the signature of a feature setter. f is the slice where to store the
-// results.
-type FeatureSetter func(b *Board, def *BoardSpec, f []float32)
-
 const (
 	// IdNumOffboard represents how many pieces of the player are offboard, per piece type.
 	IdNumOffboard BoardId = iota
@@ -55,15 +51,22 @@ const (
 	IdAverageDistanceToQueen
 	IdOpponentAverageDistanceToQueen
 
+	// IdNumPlacementPositions returns the number of positions where one can place
+	// a new piece. It is set to zero if there are no more available pieces.
+	// Two values: one for the next player, and one for its opponent.
+	IdNumPlacementPositions
+
 	// IdNumFeatureIds defined -- this must always be the last enum.
 	IdNumFeatureIds
 )
 
+//go:generate enumer -type=BoardId -trimprefix=Id -values -text -json -yaml features.go
+// //go:generate go tool enumer -type=BoardId -trimprefix=Id -values -text -json -yaml features.go
+
 // BoardSpec includes the board feature name, dimension and index in the concatenation of features.
 type BoardSpec struct {
-	Id   BoardId
-	Name string
-	Dim  int
+	Id  BoardId
+	Dim int
 
 	// VecIndex refers to the index in the concatenated feature vector.
 	VecIndex int
@@ -73,30 +76,35 @@ type BoardSpec struct {
 	Version int
 }
 
+// FeatureSetter is the signature of a feature setter. f is the slice where to store the
+// results.
+type FeatureSetter func(b *Board, def *BoardSpec, f []float32)
+
 var (
-	// BoardSpecs enumerates in order the features extracted by FeatureVector.
+	// BoardSpecs enumerates in order the features extracted by ForBoard.
 	// The Index attribute is properly set during the package initialization.
 	// The  "Opp" prefix refers to the opponent version of the feature.
 	BoardSpecs = [IdNumFeatureIds]BoardSpec{
-		{IdNumOffboard, "NumOffboard", int(NumPieceTypes), 0, fNumOffBoard, 0},
-		{IdOpponentNumOffboard, "OppNumOffboard", int(NumPieceTypes), 0, fNumOffBoard, 0},
+		{IdNumOffboard, int(NumPieceTypes), 0, fNumOffBoard, 0},
+		{IdOpponentNumOffboard, int(NumPieceTypes), 0, fNumOffBoard, 0},
 
-		{IdNumSurroundingQueen, "NumSurroundingQueen", 1, 0, fNumSurroundingQueen, 0},
-		{IdOpponentNumSurroundingQueen, "OppNumSurroundingQueen", 1, 0, fNumSurroundingQueen, 0},
+		{IdNumSurroundingQueen, 1, 0, fNumSurroundingQueen, 0},
+		{IdOpponentNumSurroundingQueen, 1, 0, fNumSurroundingQueen, 0},
 
-		{IdNumCanMove, "NumCanMove", 2 * int(NumPieceTypes), 0, fNumCanMove, 0},
-		{IdOpponentNumCanMove, "OppNumCanMove", 2 * int(NumPieceTypes), 0, fNumCanMove, 0},
+		{IdNumCanMove, 2 * int(NumPieceTypes), 0, fNumCanMove, 0},
+		{IdOpponentNumCanMove, 2 * int(NumPieceTypes), 0, fNumCanMove, 0},
 
-		{IdNumThreateningMoves, "NumThreateningMoves", 2, 0, fNumThreateningMoves, 0},
-		{IdOpponentNumThreateningMoves, "OppNumThreateningMoves", 2, 0, fNumThreateningMoves, 39},
+		{IdNumThreateningMoves, 2, 0, fNumThreateningMoves, 0},
+		{IdOpponentNumThreateningMoves, 2, 0, fNumThreateningMoves, 39},
 
-		{IdMovesToDraw, "MovesToDraw", 1, 0, fNumToDraw, 0},
-		{IdNumSingle, "NumSingle", 2, 0, fNumSingle, 0},
-		{IdQueenCovered, "QueenIsCovered", 2, 0, fQueenIsCovered, 41},
-		{IdAverageDistanceToQueen, "AverageDistanceToQueen",
+		{IdMovesToDraw, 1, 0, fNumToDraw, 0},
+		{IdNumSingle, 2, 0, fNumSingle, 0},
+		{IdQueenCovered, 2, 0, fQueenIsCovered, 41},
+		{IdAverageDistanceToQueen,
 			int(NumPieceTypes), 0, fAverageDistanceToQueen, 51},
-		{IdOpponentAverageDistanceToQueen, "OppAverageDistanceToQueen",
+		{IdOpponentAverageDistanceToQueen,
 			int(NumPieceTypes), 0, fAverageDistanceToQueen, 51},
+		{IdNumPlacementPositions, 2, 0, fNumPlacementPositions, 53},
 	}
 
 	// BoardFeaturesDim is the dimension of all board features concatenated, set during package
@@ -109,8 +117,8 @@ func init() {
 	BoardFeaturesDim = 0
 	for ii := range BoardSpecs {
 		if BoardSpecs[ii].Id != BoardId(ii) {
-			log.Fatalf("ai.BoardSpecs index %d for %s doesn't match constant.",
-				ii, BoardSpecs[ii].Name)
+			klog.Exitf("ai.BoardSpecs index %d for %s doesn't match constant.",
+				ii, BoardSpecs[ii].Id)
 		}
 		BoardSpecs[ii].VecIndex = BoardFeaturesDim
 		BoardFeaturesDim += BoardSpecs[ii].Dim
@@ -128,14 +136,14 @@ type LabeledExample struct {
 
 func MakeLabeledExample(board *Board, label float32, version int) LabeledExample {
 	return LabeledExample{
-		FeatureVector(board, version), label, nil, nil}
+		ForBoard(board, version), label, nil, nil}
 }
 
-// FeatureVector calculates the feature vector, of length BoardFeaturesDim, for the given
+// ForBoard calculates the feature vector, of length BoardFeaturesDim, for the given
 // board.
 // Models created at different times may use different subsets of features. This is
 // specified by providing the number of features expected by the model.
-func FeatureVector(b *Board, version int) (f []float32) {
+func ForBoard(b *Board, version int) (f []float32) {
 	if version > BoardFeaturesDim {
 		log.Panicf("Requested %d features, but only know about %d", version, BoardFeaturesDim)
 	}
@@ -162,14 +170,14 @@ func FeatureVector(b *Board, version int) (f []float32) {
 	return
 }
 
-func PrettyPrintFeatures(f []float32) {
+func PrettyPrint(f []float32) {
 	for ii := range BoardSpecs {
-		def := &BoardSpecs[ii]
-		fmt.Printf("\t%s: ", def.Name)
-		if def.Dim == 1 {
-			fmt.Printf("%.2f", f[def.VecIndex])
+		spec := &BoardSpecs[ii]
+		fmt.Printf("\t%s: ", spec.Id)
+		if spec.Dim == 1 {
+			fmt.Printf("%.2f", f[spec.VecIndex])
 		} else {
-			fmt.Printf("%v", f[def.VecIndex:def.VecIndex+def.Dim])
+			fmt.Printf("%v", f[spec.VecIndex:spec.VecIndex+spec.Dim])
 		}
 		fmt.Println()
 	}
@@ -350,6 +358,15 @@ func fAverageDistanceToQueen(b *Board, def *BoardSpec, f []float32) {
 	}
 	return
 
+}
+
+// fNumPlacementPositions sets the number of available placement positions for both players.
+// It is set to 0 if there are no more available pieces to place for a user.
+func fNumPlacementPositions(b *Board, def *BoardSpec, f []float32) {
+	for idx, playerNum := range []PlayerNum{b.NextPlayer, b.OpponentPlayer()} {
+		f[def.VecIndex+idx] = float32(len(b.Derived.PlacementPositions[playerNum]))
+	}
+	return
 }
 
 // FullBoardDimensions returns the minimal dimensions required to fit the board.

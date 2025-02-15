@@ -197,8 +197,8 @@ func TestAct(t *testing.T) {
 	}
 	board = buildBoard(layout, true)
 	board.BuildDerived()
-	if len(board.Derived.Actions) != 0 {
-		t.Errorf("Expected no action available, got %v", board.Derived.Actions)
+	if len(board.Derived.Actions) != 1 || board.Derived.Actions[0] != SkipAction {
+		t.Errorf("Expected SkipAction (pass action), got %v", board.Derived.Actions)
 	}
 }
 

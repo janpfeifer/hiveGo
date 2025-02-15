@@ -566,7 +566,7 @@ func (s *Scorer) buildFeatures(boards []*Board, scoreActions bool) (fc *flatFeat
 	// Generate features in Go slices.
 	actionIdx := 0
 	for boardIdx, board := range boards {
-		fc.boardFeatures[boardIdx] = features.FeatureVector(board, s.version)
+		fc.boardFeatures[boardIdx] = features.ForBoard(board, s.version)
 		if s.HasFullBoard() {
 			fc.fullBoardFeatures[boardIdx] = features.MakeFullBoardFeatures(board, batchWidth, batchHeight)
 		}

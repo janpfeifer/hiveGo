@@ -509,6 +509,11 @@ func (b *Board) EmptyNeighbours(pos Pos) (positions []Pos) {
 	return
 }
 
+// EmptyNeighboursIter iterates over the empty neighbours.
+func (b *Board) EmptyNeighboursIter(pos Pos) iter.Seq[Pos] {
+	return genericsIterFilter(pos.NeighboursIter(), func(p Pos) bool { return !b.HasPiece(p) })
+}
+
 func (b *Board) PlayerNeighbours(player PlayerNum, pos Pos) (positions []Pos) {
 	positions = pos.Neighbours()
 	positions = FilterPositionSlices(positions, func(p Pos) bool {

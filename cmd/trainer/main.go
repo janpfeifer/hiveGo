@@ -81,8 +81,9 @@ var (
 
 // main orchestrates playing, loading, rescoring, saving and training of matches.
 func main() {
+	klog.InitFlags(nil)
 	flag.Parse()
-
+ 
 	// Capture Control+C
 	var cancel func()
 	globalCtx, cancel = context.WithCancel(context.Background())

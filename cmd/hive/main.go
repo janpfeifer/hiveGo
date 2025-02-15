@@ -37,6 +37,7 @@ var (
 )
 
 func main() {
+	klog.InitFlags(nil)
 	flag.Parse()
 	if *flagMaxMoves <= 0 {
 		klog.Fatalf("Invalid --max_moves=%d", *flagMaxMoves)

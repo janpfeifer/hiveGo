@@ -32,7 +32,7 @@ type AutoBatchRequest struct {
 
 func (s *Scorer) newAutoBatchRequest(b *Board, scoreActions bool) (req *AutoBatchRequest) {
 	req = &AutoBatchRequest{
-		boardFeatures: features.FeatureVector(b, s.version),
+		boardFeatures: features.ForBoard(b, s.version),
 		done:          make(chan bool),
 	}
 	if s.HasFullBoard() {
