@@ -61,7 +61,7 @@ func (fc *flatFeaturesCollection) randomMiniBatches(batchSize int) (fcs []*flatF
 			fcs[batchNum] = batchFC
 		}
 
-		// Append board features.
+		// Add board features.
 		batchFCIdx := batchFC.Len()
 		batchFC.boardFeatures = append(batchFC.boardFeatures, fc.boardFeatures[srcIdx])
 		batchFC.boardMovesToEnd = append(batchFC.boardMovesToEnd, fc.boardMovesToEnd[srcIdx])
@@ -70,7 +70,7 @@ func (fc *flatFeaturesCollection) randomMiniBatches(batchSize int) (fcs []*flatF
 		}
 		batchFC.boardLabels = append(batchFC.boardLabels, fc.boardLabels[srcIdx])
 
-		// Append action features.
+		// Add action features.
 		srcActionStart := srcActionIdx
 		for ; srcActionIdx < fc.totalNumActions && fc.actionsBoardIndices[srcActionIdx] == int64(srcIdx); srcActionIdx++ {
 			batchFC.actionsBoardIndices = append(batchFC.actionsBoardIndices, int64(batchFCIdx))

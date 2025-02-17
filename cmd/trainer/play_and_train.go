@@ -3,6 +3,7 @@ package main
 // This file implements continuous play and train.
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	. "github.com/janpfeifer/hiveGo/internal/state"
@@ -14,14 +15,6 @@ import (
 var (
 	flagContinuosPlayAndTrain = flag.Bool("play_and_train",
 		false, "If set, continuously play and train matches.")
-	flagContinuosPlayAndTrainKeepPreviousBatch = flag.Bool("play_and_train_keep_previous_batch",
-		false, "If set, keep batch of matches for two learning cycles.")
-	flagContinuosPlayAndTrainBatchMatches = flag.Int(
-		"play_and_train_batch_matches",
-		10, "Number of matches to batch before learning.")
-
-	// flagBatchSize should be moved to the learner.
-	flagBatchSize = flag.Int("batch_size", 32, "Batch size to use in training.")
 )
 
 type IdGen struct {
@@ -73,7 +66,7 @@ func (ms *MatchStats) AddResult(match *Match) {
 		// Replace with new match.
 		ms.lastMatches[ms.TotalCount%NumMatchesToKeepForStats] = match
 	} else {
-		// Append new match.
+		// Add new match.
 		ms.lastMatches = append(ms.lastMatches, match)
 	}
 	ms.TotalCount++
@@ -94,70 +87,84 @@ func (ms *MatchStats) AddResult(match *Match) {
 // Players[0] is the one being trained, and also playing.
 // If Players[1] is the same as players[0], it is also
 // used for training, otherwise their moves are discarded.
-func playAndTrain() {
+//
+// If interrupted return nil. If something failed (like saving model), returns the error.
+func playAndTrain(ctx context.Context) error {
 	parallelism := getParallelism()
-	setAutoBatchSizesForParallelism(parallelism)
 	if isSamePlayer {
 		klog.Infof("Same player playing both sides, learning from both.")
 	}
 
 	// Generate played games.
-	matchChan := make(chan *Match, 5)
+	matchesChan := make(chan *Match, 5)
 	matchIdGen := &IdGen{}
 	matchStats := NewMatchStats()
 	for i := 0; i < parallelism; i++ {
-		go continuouslyPlay(matchIdGen, matchStats, matchChan)
+		go continuouslyPlay(ctx, matchIdGen, matchStats, matchesChan)
 	}
 
 	// Rescore player1's moves, for learning.
-	var rescoreMatchChan chan *Match
 	if !isSamePlayer && *flagRescore {
-		rescoreMatchChan = make(chan *Match, 5)
+		rescoreMatchesChan := make(chan *Match, 5)
 		for i := 0; i < parallelism; i++ {
-			go continuouslyRescorePlayer1(matchChan, rescoreMatchChan)
+			go continuouslyRescorePlayer1(ctx, matchesChan, rescoreMatchesChan)
 		}
-		// Swap matchChan and rescoreMatchChan, so that matchChan holds the
+		// Swap matchesChan and rescoreMatchesChan, so that matchesChan holds the
 		// correctly labeled matches.
-		matchChan, rescoreMatchChan = rescoreMatchChan, matchChan
+		matchesChan = rescoreMatchesChan
 	}
 
-	// Batch matches.
-	batchChan := make(chan []*Match, 2)
-	go batchMatches(matchChan, batchChan)
-
-	// Convert matches to labeled examples.
-	labeledExamplesChan := make(chan LabeledBoards, 5)
-	go continuousMatchesToLabeledExamples(batchChan, labeledExamplesChan)
-
 	// Continuously learn.
-	go continuousLearning(labeledExamplesChan)
+	trainedStepsChan := make(chan int, 5)
+	go continuousLearning(ctx, matchesChan, trainedStepsChan)
 
-	// Occasionally monitor queue sizes and save.
-	ticker := time.NewTicker(300 * time.Second)
-	lastSaveStep := p0GlobalStep()
-	for _ = range ticker.C {
-		if rescoreMatchChan == nil {
-			klog.V(1).Infof("Queues: matches=%d batches=%d learning=%d",
-				len(matchChan), len(batchChan), len(labeledExamplesChan))
-		} else {
-			klog.V(1).Infof("Queues: finishedMatches=%d rescoreMatches=%d batches=%d learning=%d",
-				len(rescoreMatchChan), len(matchChan), len(batchChan), len(labeledExamplesChan))
+	// Monitor queue sizes, save.
+	var stepNum int
+	var lastSave, lastReport time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			klog.Infof("playAndTrain(): continuous training interrupted (context cancelled): %v", ctx.Err())
+			return nil
+		case stepNum = <-trainedStepsChan:
+			// Proceed
 		}
-		globalStep := p0GlobalStep()
-		if globalStep == -1 || globalStep > lastSaveStep {
-			lastSaveStep = globalStep
-			err := savePlayer0()
-			if err != nil {
-				klog.Errorf("Error saving player 0: %v", err)
+
+		if time.Since(lastReport).Seconds() > 1 {
+			if klog.V(1).Enabled() {
+				klog.Infof("step=%d, matches queue=%d", len(matchesChan))
 			}
+			fmt.Printf("\rProgress: trained steps=%d\n", stepNum)
+			lastReport = time.Now()
+		}
+
+		if time.Since(lastSave).Seconds() > 60 {
+			if err := savePlayer0(); err != nil {
+				return err
+			}
+			klog.V(1).Infof("Saved model at step=%d", stepNum)
+			lastSave = time.Now()
 		}
 	}
 }
 
-func continuouslyPlay(matchIdGen *IdGen, matchStats *MatchStats, matchChan chan<- *Match) {
+func continuouslyPlay(ctx context.Context, matchIdGen *IdGen, matchStats *MatchStats, matchesChan chan<- *Match) {
+	// Defer clean exit, if interrupted.
+	defer func() {
+		klog.Infof("Continues playing interrupted: %v", ctx.Err())
+		close(matchesChan)
+	}()
 	for {
 		id := matchIdGen.NextId()
-		match := runMatch(id)
+		match := runMatch(ctx, id)
+		if ctx.Err() != nil {
+			klog.Infof("Match %d interrupted: context cancelled with %v", id, ctx.Err())
+			return
+		}
+		if match == nil {
+			klog.Errorf("runMatch() returned a nil Match!? Something went wrong.")
+			return
+		}
 		matchStats.AddResult(match)
 		msg := "draw"
 		if !match.FinalBoard().Draw() {
@@ -171,12 +178,23 @@ func continuouslyPlay(matchIdGen *IdGen, matchStats *MatchStats, matchChan chan<
 			"Last %d results: p0 win=%d, p1 win=%d, draw=%d",
 			id, msg, len(match.Actions), matchStats.TotalCount, NumMatchesToKeepForStats,
 			matchStats.Wins[0], matchStats.Wins[1], matchStats.Draws)
-		matchChan <- match
+		select {
+		case <-ctx.Done():
+			klog.Infof("Match %d interrupted: context cancelled with %v", id, ctx.Err())
+			return
+		case matchesChan <- match:
+			// Done.
+		}
 	}
 }
 
-func continuouslyRescorePlayer1(mInput <-chan *Match, mOutput chan<- *Match) {
-	for match := range mInput {
+// continuouslyRescorePlayer1 should be called concurrently, and it will indefinitely (or until ctx is cancelled)
+// read from matchesIn, rescore the player 1 with teh ai of the player 0, and send the updated match to matchesOut.
+func continuouslyRescorePlayer1(ctx context.Context, matchesIn <-chan *Match, matchesOut chan<- *Match) {
+	defer func() {
+		close(matchesOut)
+	}()
+	for match := range matchesIn {
 		klog.V(1).Infof("Match received for rescoring.")
 		// Pick only moves done by player 0 (or both if they are the same)
 		from, to, _ := match.SelectRangeOfActions()
@@ -212,27 +230,19 @@ func continuouslyRescorePlayer1(mInput <-chan *Match, mOutput chan<- *Match) {
 			//}
 		}
 		klog.V(1).Infof("Rescored match issued.")
-		mOutput <- match
-	}
-}
-
-func batchMatches(matchChan <-chan *Match, batchChan chan<- []*Match) {
-	batchSize := *flagContinuosPlayAndTrainBatchMatches
-	batch := make([]*Match, 0, batchSize)
-	for match := range matchChan {
-		batch = append(batch, match)
-		klog.V(1).Infof("Current batch: %d", len(batch))
-		if len(batch) == batchSize {
-			klog.V(1).Infof("Batch of %d matches issued.", len(batch))
-			batchChan <- batch
-			batch = make([]*Match, 0, batchSize)
+		select {
+		case <-ctx.Done():
+			klog.Errorf("Rescoring player 1 moves interrupted (context cancelled): %v", ctx.Err())
+			return
+		case matchesOut <- match:
+			// Done
 		}
 	}
 }
 
 // continuousMatchesToLabeledExamples takes batches, and send labeled examples for training.
 // It generate labeled examples from the latest 2 batches.
-func continuousMatchesToLabeledExamples(batchChan <-chan []*Match, labeledExamplesChan chan<- LabeledBoards) {
+func continuousMatchesToLabeledExamples(ctx context.Context, batchChan <-chan []*Match, labeledExamplesChan chan<- LabeledBoards) {
 	batchSize := *flagContinuosPlayAndTrainBatchMatches
 	var previousBatch []*Match
 	for batch := range batchChan {

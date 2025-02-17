@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/gob"
 	"fmt"
 	"github.com/janpfeifer/hiveGo/internal/ai"
@@ -105,15 +106,44 @@ type LabeledBoards struct {
 	Boards        []*Board
 	Labels        []float32
 	ActionsLabels [][]float32
+
+	// MaxSize configures the max number of boards to hold in LabeledBoards, if > 0.
+	// After it reaches the MaxSize new boards appended start rotating the position (replacing older ones).
+	MaxSize, CurrentIdx int
 }
 
-// Len returns the number of boards.
+// Len returns the number of board positions stored.
 func (le *LabeledBoards) Len() int {
 	return len(le.Boards)
 }
 
+// Add new board to LabeledBoards collection.
+// If LabeledBoards has a MaxSize configured, and it is full, it starts recycling its buffer to give space to new
+// board.
+func (le *LabeledBoards) Add(board *Board, label float32, actionsLabels []float32) {
+	if le.MaxSize == 0 || le.Len() < le.MaxSize {
+		// Add to the end.
+		le.Boards = append(le.Boards, board)
+		le.Labels = append(le.Labels, label)
+		if actionsLabels != nil {
+			le.ActionsLabels = append(le.ActionsLabels, actionsLabels)
+		}
+	} else {
+		// Start cycling current buffer.
+		le.CurrentIdx = le.CurrentIdx % le.MaxSize
+		le.Boards[le.CurrentIdx] = board
+		le.Labels[le.CurrentIdx] = label
+		if actionsLabels != nil {
+			le.ActionsLabels[le.CurrentIdx] = actionsLabels
+		}
+	}
+	le.CurrentIdx++
+}
+
 // AppendToLabeledBoardsForPlayers appends this match board positions for the selected player(s) to
 // the labeledBoards container.
+//
+// After it reaches the MaxSize new boards appended start rotating the position (replacing older ones).
 func (m *Match) AppendToLabeledBoardsForPlayers(labeledBoards *LabeledBoards, includedPlayers [2]bool) {
 	from, to, samples := m.SelectRangeOfActions()
 	if to == -1 {
@@ -135,9 +165,7 @@ func (m *Match) AppendToLabeledBoardsForPlayers(labeledBoards *LabeledBoards, in
 
 			for jj := 0; jj < samples[ii-from]; jj++ {
 				klog.V(2).Infof("Learning board scores: %v", m.Scores[ii])
-				labeledBoards.Boards = append(labeledBoards.Boards, m.Boards[ii])
-				labeledBoards.Labels = append(labeledBoards.Labels, m.Scores[ii])
-				labeledBoards.ActionsLabels = append(labeledBoards.ActionsLabels, m.ActionsLabels[ii])
+				labeledBoards.Add(m.Boards[ii], m.Scores[ii], m.ActionsLabels[ii])
 			}
 		}
 	}
@@ -146,6 +174,8 @@ func (m *Match) AppendToLabeledBoardsForPlayers(labeledBoards *LabeledBoards, in
 // AppendToLabeledBoards appends this match to the given labeledBoards container.
 //
 // This is a shortcut to AppendToLabeledBoardsForPlayers for both players.
+//
+// After labeledBoards reaches the MaxSize new boards appended start rotating the position (replacing older ones).
 func (m *Match) AppendToLabeledBoards(labeledBoards *LabeledBoards) {
 	m.AppendToLabeledBoardsForPlayers(labeledBoards, [2]bool{true, true})
 }
@@ -205,7 +235,9 @@ var (
 	muStepUI sync.Mutex
 )
 
-func runMatch(matchNum int) *Match {
+// runMatch from start to end, and return the collected moves and scores.
+// It returns nil is the ctx was cancelled at any point.
+func runMatch(ctx context.Context, matchNum int) *Match {
 	swapped := matchNum%2 != 0
 	matchName := fmt.Sprintf("Match-%05d (swap=%v)", matchNum, swapped)
 	board := NewBoard()
@@ -215,6 +247,9 @@ func runMatch(matchNum int) *Match {
 	// Run match.
 	lastWasSkip := false
 	for !board.IsFinished() {
+		if ctx.Err() != nil {
+			return nil
+		}
 		playerNum := board.NextPlayer
 		if swapped {
 			playerNum = 1 - playerNum
@@ -318,7 +353,15 @@ func setAutoBatchSizesForParallelism(parallelism int) {
 
 // runMatches run --num_matches number of matches, and write the resulting matches
 // to the given channel.
-func runMatches(results chan<- *Match) {
+func runMatches(ctx context.Context, matchesChan chan<- *Match) {
+	// Makes sure we close matchesChan at the end.
+	var matchCount, wins int
+	defer func() {
+		klog.V(1).Infof("Played %d matches, with %d wins", matchCount, wins)
+		close(matchesChan)
+	}()
+
+	// Process flags.
 	if *flagWinsOnly {
 		*flagWins = true
 	}
@@ -326,16 +369,16 @@ func runMatches(results chan<- *Match) {
 	if numMatchesToPlay == 0 {
 		numMatchesToPlay = 1
 	}
-	// Run at most GOMAXPROCS simultaneously.
+
+	// Run at most GOMAXPROCS (or --parallelism if set) simultaneously.
 	var wg sync.WaitGroup
 	parallelism := getParallelism()
-	setAutoBatchSizesForParallelism(parallelism)
 	klog.V(1).Infof("Parallelism for running matches=%d", parallelism)
 	semaphore := make(chan bool, parallelism)
 	done := false
-	wins := 0
-	matchCount := 0
 	doneCount := 0
+
+	// Start spinner and feedback about matches being played:
 	if *flagWins {
 		fmt.Printf("Running %d matches with wins ... ", numMatchesToPlay)
 	} else {
@@ -343,12 +386,27 @@ func runMatches(results chan<- *Match) {
 	}
 	spinner := spinning.New(globalCtx)
 	defer spinner.Done()
+
+	// Loop scheduling matches to play concurrently.
 	for ; !done; matchCount++ {
+		select {
+		case <-ctx.Done():
+			klog.V(1).Infof("Context cancelled, not starting any new matches: %v", ctx.Err())
+			break
+		case semaphore <- true:
+			// Start a new match.
+		}
 		wg.Add(1)
-		semaphore <- true
 		go func(matchNum int) {
 			defer wg.Done()
-			match := runMatch(matchNum)
+			match := runMatch(ctx, matchNum)
+			if ctx.Err() != nil {
+				klog.Infof("Match %d interrupted: context cancelled with %v", matchNum, ctx.Err())
+			}
+			if match == nil {
+				klog.Errorf("runMatch() returned a nil Match!? Something went wrong.")
+				return
+			}
 			if !match.FinalBoard().Draw() {
 				wins++
 				if *flagWins {
@@ -366,7 +424,7 @@ func runMatches(results chan<- *Match) {
 			if *flagWinsOnly && match.FinalBoard().Draw() {
 				return
 			}
-			results <- match
+			matchesChan <- match
 		}(matchCount)
 		if !*flagWins {
 			done = done || (matchCount+1 >= numMatchesToPlay)
@@ -374,18 +432,10 @@ func runMatches(results chan<- *Match) {
 		klog.V(1).Infof("Started match %d, done=%v (wins so far=%d)", matchCount, done, wins)
 	}
 
-	// Gradually decrease the batching level.
-	go func() {
-		for ii := parallelism; ii > 0; ii-- {
-			semaphore <- true
-			setAutoBatchSizesForParallelism(ii)
-		}
-	}()
+	// Wait matches to complete.
 	wg.Wait()
 	spinner.Done()
 	fmt.Println("done.")
-	klog.V(1).Infof("Played %d matches, with %d wins", matchCount, wins)
-	close(results)
 }
 
 func backupName(filename string) string {
@@ -420,26 +470,38 @@ func renameToFinal(filename string) error {
 }
 
 // Load matches, and automatically build boards.
-func loadMatches(results chan<- *Match) {
+func loadMatches(ctx context.Context, results chan<- *Match) {
+	// Makes sure we close the channel at exit, along with a report of loaded matches.
+	var matchesCount, matchesIdx, numWins int
+	defer func() {
+		klog.Infof("%d matches loaded (%d wins), %d used (not filtered out)", matchesIdx, numWins, matchesCount)
+		close(results)
+	}()
+
 	filenames, err := filepath.Glob(*flagLoadMatches)
 	if err != nil {
-		log.Panicf("Invalid pattern %q for loading matches: %v", *flagLoadMatches, err)
+		klog.Errorf("Invalid pattern %q for loading matches: %v", *flagLoadMatches, err)
+		return
 	}
 	if len(filenames) == 0 {
-		log.Panicf("Did not find any files matching %q", *flagLoadMatches)
+		klog.Errorf("Did not find any files matching %q", *flagLoadMatches)
+		return
 	}
-
-	var matchesCount, matchesIdx, numWins int
 
 LoopFilenames:
 	for _, filename := range filenames {
 		klog.V(1).Infof("Scanning file %s\n", filename)
 		file, err := os.Open(filename)
 		if err != nil {
-			log.Panicf("Cannot open %q for reading: %v", filename, err)
+			klog.Errorf("Cannot open %q for reading: %v", filename, err)
+			return
 		}
 		dec := gob.NewDecoder(file)
 		for *flagNumMatches == 0 || matchesCount < *flagNumMatches {
+			if ctx.Err() != nil {
+				klog.Infof("Processing interrupted (context cancelled): %v", ctx.Err())
+				return
+			}
 			match, err := MatchDecode(dec, matchesIdx)
 			matchesIdx++
 			if err == io.EOF {
@@ -474,8 +536,6 @@ LoopFilenames:
 			results <- match
 		}
 	}
-	klog.Infof("%d matches loaded (%d wins), %d used", matchesIdx, numWins, matchesCount)
-	close(results)
 }
 
 // Report on matches as they are being played/generated.

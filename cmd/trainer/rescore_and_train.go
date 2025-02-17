@@ -3,6 +3,7 @@ package main
 // This file implements continuous rescore and train of a matches database.
 
 import (
+	"context"
 	"fmt"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"k8s.io/klog/v2"
@@ -129,7 +130,7 @@ func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchA
 	pool := make([]MatchAction, 0)
 	count := 0
 	for ma := range maInput {
-		// Append new MatchAction or, if pool is full, start rotating them.
+		// Add new MatchAction or, if pool is full, start rotating them.
 		if len(pool) < poolSize {
 			pool = append(pool, ma)
 		} else {
@@ -176,12 +177,37 @@ func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchA
 	}
 }
 
-// learnSelection continuously learns from the selected board data.
-func continuousLearning(learnInput <-chan LabeledBoards) {
+// learnSelection continuously learns from new matches.
+//
+// It yields the current learningSteps executed so far in learningSteps -- if learningSteps is not read, it may
+// block the learning.
+//
+// If ctx is interrupted, learningSteps is closed and it exits.
+func continuousLearning(ctx context.Context, matchesChan <-chan *Match, learningSteps chan<- int) {
+	defer close(learningSteps) // Make sure we close learningSteps at exit.
+
 	//var averageLoss, averageBoardLoss, averageActionsLoss float32
 	var averageLoss float32
+	labeledBoards := LabeledBoards{
+		MaxSize: *flagTrainingBoardsBufferSize,
+	}
 	count := 0
-	for le := range learnInput {
+	for {
+		// Read next match or exit if no more matches or if ctx has been interrupted.
+		// TODO: create an iterator for this in generics.
+		select {
+		case <-ctx.Done():
+			return
+		case match, ok := <-matchesChan:
+			if !ok {
+				return
+			}
+		}
+
+		if labeledBoards.Len() < labeledBoards.MaxSize {
+			// Only filling up buffer before we start training.
+			continue
+		}
 		klog.V(3).Infof("Learn: count=%d", count)
 
 		// First learn with 0 steps: only evaluation without dropout.
@@ -219,25 +245,10 @@ func continuousLearning(learnInput <-chan LabeledBoards) {
 		//averageActionsLoss = decayAverageLoss(averageActionsLoss, actionsLoss, decay)
 		if klog.V(2).Enabled() || count%100 == 0 {
 			//klog.Infof("Average Losses (step=%d): total=%.4g board=%.4g actions=%.4g",
-			//	p0GlobalStep(), averageLoss, averageBoardLoss, averageActionsLoss)
-			klog.Infof("Average Losses (step=%d): loss=%.4g",
-				p0GlobalStep(), averageLoss)
-		}
-		count++
-	}
 }
 
 const maxAverageLossDecay = float32(0.95)
 
 func decayAverageLoss(average, newValue, decay float32) float32 {
 	return average*decay + (1-decay)*newValue
-}
-
-// Returns tensorflow's GlobalStep for player 0, if using tensorflow,
-// or -1 if not.
-func p0GlobalStep() int64 {
-	//if tf, ok := aiPlayers[0].Learner.(*tensorflow.Scorer); ok && tf != nil {
-	//	return tf.ReadGlobalStep()
-	//}
-	return -1
 }

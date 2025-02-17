@@ -86,6 +86,11 @@ func New(config string) (*SearcherScorer, error) {
 		return nil, errors.Errorf("no searchers defined in parameters %q", config)
 	}
 
+	// Check whether the scorer is also a learner.
+	if learner, ok := player.Scorer.(ai.LearnerScorer); ok {
+		player.Learner = learner
+	}
+
 	// Check that all parameters were processed.
 	if len(params) > 0 {
 		return nil, errors.Errorf("unknown AI parameters \"%s\" passed", strings.Join(generics.KeysSlice(params), "\", \""))

@@ -59,6 +59,8 @@ var (
 		"If set it will simply directRescoreMatch from --ai1 to --ai0, without searching for best moves.")
 	flagLearnWithEndScore = flag.Bool("learn_with_end_score",
 		true, "If true will use the final score to learn.")
+	flagTrainingBoardsBufferSize = flag.Int("train_buffer_size",
+		500, "Size of board positions to keep in a rotating buffer during training.")
 
 	flagParallelism = flag.Int("parallelism", 0, "If > 0 ignore GOMAXPROCS and play "+
 		"these many matches simultaneously.")
@@ -83,12 +85,12 @@ var (
 func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
- 
+
 	// Capture Control+C
-	var cancel func()
-	globalCtx, cancel = context.WithCancel(context.Background())
-	spinning.SafeInterrupt(cancel)
-	defer cancel()
+	var globalCancel func()
+	globalCtx, globalCancel = context.WithCancel(context.Background())
+	spinning.SafeInterrupt(globalCancel)
+	defer globalCancel()
 
 	if *flagCpuProfile != "" {
 		whenDone := createCPUProfile()
@@ -100,30 +102,36 @@ func main() {
 	}
 	createAIPlayers()
 
+	// Continuous play and train uses a separate flow:
 	if *flagContinuosPlayAndTrain {
-		playAndTrain()
+		err := playAndTrain(globalCtx)
+		if err != nil {
+			globalCancel()
+			klog.Errorf("Failed to continuous play and train: %+v", err)
+		}
 		return
 	}
 
-	// Run/load matches.
-	results := make(chan *Match)
+	// Run/load matches: the new or loaded matches will be fed into matchesChan.
+	// To interrupt at any time, cancel globalCtx (with globalCancel).
+	matchesChan := make(chan *Match)
 	if *flagLoadMatches != "" {
-		go loadMatches(results)
+		go loadMatches(globalCtx, matchesChan)
 	} else {
-		go runMatches(results)
+		go runMatches(globalCtx, matchesChan)
 	}
 	if *flagRescore {
 		rescored := make(chan *Match)
-		go rescoreMatches(results, rescored)
-		results = rescored
+		go rescoreMatches(matchesChan, rescored)
+		matchesChan = rescored
 	}
 
 	// Collect resulting matches, optionally reporting on them.
 	var matches []*Match
 	if !*flagRescore {
-		matches = reportMatches(results)
+		matches = reportMatches(matchesChan)
 	} else {
-		for match := range results {
+		for match := range matchesChan {
 			matches = append(matches, match)
 		}
 	}
