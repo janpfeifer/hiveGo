@@ -115,37 +115,7 @@ func playAndTrain(ctx context.Context) error {
 	}
 
 	// Continuously learn.
-	trainedStepsChan := make(chan int, 5)
-	go continuousLearning(ctx, matchesChan, trainedStepsChan)
-
-	// Monitor queue sizes, save.
-	var stepNum int
-	var lastSave, lastReport time.Time
-	for {
-		select {
-		case <-ctx.Done():
-			klog.Infof("playAndTrain(): continuous training interrupted (context cancelled): %v", ctx.Err())
-			return nil
-		case stepNum = <-trainedStepsChan:
-			// Proceed
-		}
-
-		if time.Since(lastReport).Seconds() > 1 {
-			if klog.V(1).Enabled() {
-				klog.Infof("step=%d, matches queue=%d", len(matchesChan))
-			}
-			fmt.Printf("\rProgress: trained steps=%d\n", stepNum)
-			lastReport = time.Now()
-		}
-
-		if time.Since(lastSave).Seconds() > 60 {
-			if err := savePlayer0(); err != nil {
-				return err
-			}
-			klog.V(1).Infof("Saved model at step=%d", stepNum)
-			lastSave = time.Now()
-		}
-	}
+	return continuousLearning(ctx, matchesChan)
 }
 
 func continuouslyPlay(ctx context.Context, matchIdGen *IdGen, matchStats *MatchStats, matchesChan chan<- *Match) {

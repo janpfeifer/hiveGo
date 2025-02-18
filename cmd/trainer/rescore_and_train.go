@@ -1,11 +1,12 @@
 package main
 
-// This file implements continuous rescore and train of a matches database.
+// This file implements continuous rescore and training of a database of matches.
 
 import (
 	"context"
 	"fmt"
 	. "github.com/janpfeifer/hiveGo/internal/state"
+	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
 	"math/rand"
 	"time"
@@ -24,7 +25,7 @@ type MatchAction struct {
 //   - -rescore_and_train: triggers this process.
 //   - -rescore_pool_size: how many board positions to keep in pool. The larger the more times a rescored board
 //     will be used for training.
-func rescoreAndTrain(matches []*Match) {
+func rescoreAndTrain(ctx context.Context, matches []*Match) error {
 	parallelism := getParallelism()
 
 	// Sample random match/action to rescore.
@@ -42,23 +43,7 @@ func rescoreAndTrain(matches []*Match) {
 	go collectMatchActionsAndIssueLearning(matches, rescoredMA, labeledExamplesChan)
 
 	// Continuously learn.
-	go continuousLearning(labeledExamplesChan)
-
-	// Infinite loop.
-	ticker := time.NewTicker(60 * time.Second)
-	lastSaveStep := p0GlobalStep()
-	for _ = range ticker.C {
-		klog.V(1).Infof("Queues: sampling=%d, rescoring=%d, learning=%d",
-			len(maSampling), len(rescoredMA), len(labeledExamplesChan))
-		globalStep := p0GlobalStep()
-		if globalStep == -1 || globalStep > lastSaveStep {
-			lastSaveStep = globalStep
-			err := savePlayer0()
-			if err != nil {
-				fmt.Printf("Error saving player 0: %v\n", err)
-			}
-		}
-	}
+	return continuousLearning(ctx, labeledExamplesChan)
 }
 
 // sampleMatchActions continuously sample random matches/actions
@@ -114,11 +99,11 @@ func MakeLabeledExamples(batchSize int) LabeledBoards {
 	}
 }
 
-func (le *LabeledBoards) AppendMatchAction(matches []*Match, ma MatchAction) {
+func (lb *LabeledBoards) AppendMatchAction(matches []*Match, ma MatchAction) {
 	match := matches[ma.matchNum]
-	le.Boards = append(le.Boards, match.Boards[ma.actionNum])
-	le.Labels = append(le.Labels, match.Scores[ma.actionNum])
-	le.ActionsLabels = append(le.ActionsLabels, match.ActionsLabels[ma.actionNum])
+	lb.Boards = append(lb.Boards, match.Boards[ma.actionNum])
+	lb.Labels = append(lb.Labels, match.Scores[ma.actionNum])
+	lb.ActionsLabels = append(lb.ActionsLabels, match.ActionsLabels[ma.actionNum])
 }
 
 func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchAction, learnOutput chan<- LabeledBoards) {
@@ -130,7 +115,7 @@ func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchA
 	pool := make([]MatchAction, 0)
 	count := 0
 	for ma := range maInput {
-		// Add new MatchAction or, if pool is full, start rotating them.
+		// AddBoard new MatchAction or, if pool is full, start rotating them.
 		if len(pool) < poolSize {
 			pool = append(pool, ma)
 		} else {
@@ -177,38 +162,58 @@ func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchA
 	}
 }
 
+const eraseToEndOfLine= "\033[K"
+
 // learnSelection continuously learns from new matches.
 //
 // It yields the current learningSteps executed so far in learningSteps -- if learningSteps is not read, it may
 // block the learning.
 //
 // If ctx is interrupted, learningSteps is closed and it exits.
-func continuousLearning(ctx context.Context, matchesChan <-chan *Match, learningSteps chan<- int) {
-	defer close(learningSteps) // Make sure we close learningSteps at exit.
-
+func continuousLearning(ctx context.Context, matchesChan <-chan *Match) error {
 	//var averageLoss, averageBoardLoss, averageActionsLoss float32
 	var averageLoss float32
 	labeledBoards := LabeledBoards{
 		MaxSize: *flagTrainingBoardsBufferSize,
 	}
-	count := 0
+
+	var countLearn, countMatches int
+	lastSave := time.Now()
+	var lastReport time.Time
+
+	reportProgressFn := func() {
+		fmt.Printf("\rProgress: #matches=%d, #steps=%d, ~loss=%.4g%s",
+			countMatches, countLearn, averageLoss, eraseToEndOfLine)
+	}
+	// Makes sure we update the progress before exiting (even in case of error).
+	defer func() {
+		reportProgressFn()
+		fmt.Println()
+	}()
+
 	for {
+		klog.V(3).Infof("Learn: #matches=%d, #learn=%d, ~loss=%.4g",
+			countMatches, countLearn, averageLoss)
+
 		// Read next match or exit if no more matches or if ctx has been interrupted.
 		// TODO: create an iterator for this in generics.
+		var match *Match
+		var ok bool
 		select {
 		case <-ctx.Done():
-			return
-		case match, ok := <-matchesChan:
+			return errors.WithMessagef(ctx.Err(), "execution interrupted")
+		case match, ok = <-matchesChan:
 			if !ok {
-				return
+				// End of matches.
+				return nil
 			}
 		}
+		countMatches++
 
 		if labeledBoards.Len() < labeledBoards.MaxSize {
 			// Only filling up buffer before we start training.
 			continue
 		}
-		klog.V(3).Infof("Learn: count=%d", count)
 
 		// First learn with 0 steps: only evaluation without dropout.
 		//loss, boardLoss, actionsLoss := aiPlayers[0].Learner.Learn(
@@ -217,7 +222,7 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match, learning
 		//	0, nil)
 		//klog.V(1).Infof("Evaluation loss: total=%g board=%g actions=%g",
 		//	loss, boardLoss, actionsLoss)
-		loss := aiPlayers[0].Learner.Loss(le.Boards, le.Labels)
+		loss := aiPlayers[0].Learner.Loss(labeledBoards.Boards, labeledBoards.Labels)
 		klog.V(1).Infof("Pre-training loss %.4g", loss)
 
 		// Actually train.
@@ -225,7 +230,8 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match, learning
 		//	le.Boards, le.Labels,
 		//	le.ActionsLabels, float32(*flagLearningRate),
 		//	*flagTrainLoops, nil)
-		loss = aiPlayers[0].Learner.Loss(le.Boards, le.Labels)
+		loss = aiPlayers[0].Learner.Loss(labeledBoards.Boards, labeledBoards.Labels)
+		countLearn++
 		klog.V(1).Infof("Post-training loss %.4g", loss)
 
 		// Evaluate (learn with 0 steps)on training data.
@@ -236,15 +242,28 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match, learning
 		//klog.V(1).Infof("Training loss: total=%g board=%g actions=%g",
 		//	loss, boardLoss, actionsLoss)
 
-		decay := 1 - 1/float32(1+count)
+		decay := 1 - 1/float32(1+countLearn)
 		if decay > maxAverageLossDecay {
 			decay = maxAverageLossDecay
 		}
 		averageLoss = decayAverageLoss(averageLoss, loss, decay)
 		//averageBoardLoss = decayAverageLoss(averageBoardLoss, boardLoss, decay)
 		//averageActionsLoss = decayAverageLoss(averageActionsLoss, actionsLoss, decay)
-		if klog.V(2).Enabled() || count%100 == 0 {
-			//klog.Infof("Average Losses (step=%d): total=%.4g board=%.4g actions=%.4g",
+
+		// Report progress:
+		if time.Since(lastReport).Seconds() > 1 {
+			lastReport = time.Now()
+		}
+
+			if time.Since(lastSave).Seconds() > 60 {
+				if err := savePlayer0(); err != nil {
+					return err
+				}
+				klog.V(1).Infof("Saved model at step=%d", stepNum)
+				lastSave = time.Now()
+			}
+		}
+	}
 }
 
 const maxAverageLossDecay = float32(0.95)

@@ -99,47 +99,6 @@ func (m *Match) SelectRangeOfActions() (from, to int, samplesPerAction []int) {
 	return
 }
 
-// LabeledBoards is a container of board positions and its labels (scores), used for training.
-//
-// ActionsLabels are optional. If set, they must match the number of actions of the corresponding board.
-type LabeledBoards struct {
-	Boards        []*Board
-	Labels        []float32
-	ActionsLabels [][]float32
-
-	// MaxSize configures the max number of boards to hold in LabeledBoards, if > 0.
-	// After it reaches the MaxSize new boards appended start rotating the position (replacing older ones).
-	MaxSize, CurrentIdx int
-}
-
-// Len returns the number of board positions stored.
-func (le *LabeledBoards) Len() int {
-	return len(le.Boards)
-}
-
-// Add new board to LabeledBoards collection.
-// If LabeledBoards has a MaxSize configured, and it is full, it starts recycling its buffer to give space to new
-// board.
-func (le *LabeledBoards) Add(board *Board, label float32, actionsLabels []float32) {
-	if le.MaxSize == 0 || le.Len() < le.MaxSize {
-		// Add to the end.
-		le.Boards = append(le.Boards, board)
-		le.Labels = append(le.Labels, label)
-		if actionsLabels != nil {
-			le.ActionsLabels = append(le.ActionsLabels, actionsLabels)
-		}
-	} else {
-		// Start cycling current buffer.
-		le.CurrentIdx = le.CurrentIdx % le.MaxSize
-		le.Boards[le.CurrentIdx] = board
-		le.Labels[le.CurrentIdx] = label
-		if actionsLabels != nil {
-			le.ActionsLabels[le.CurrentIdx] = actionsLabels
-		}
-	}
-	le.CurrentIdx++
-}
-
 // AppendToLabeledBoardsForPlayers appends this match board positions for the selected player(s) to
 // the labeledBoards container.
 //
@@ -165,7 +124,7 @@ func (m *Match) AppendToLabeledBoardsForPlayers(labeledBoards *LabeledBoards, in
 
 			for jj := 0; jj < samples[ii-from]; jj++ {
 				klog.V(2).Infof("Learning board scores: %v", m.Scores[ii])
-				labeledBoards.Add(m.Boards[ii], m.Scores[ii], m.ActionsLabels[ii])
+				labeledBoards.AddBoard(m.Boards[ii], m.Scores[ii], m.ActionsLabels[ii])
 			}
 		}
 	}
