@@ -29,19 +29,23 @@ var (
 	themeLen    = len(Theme)
 )
 
-// SafeInterrupt will capture SigInt (Ctrl+C) and SigTerm and call Reset to reset the terminal
-// before exiting.
-// It also synchronously calls the given onExit function, if given.
-func SafeInterrupt(onExit func()) {
+// SafeInterrupt will capture SigInt (Ctrl+C) and SigTerm and call the provided onInterrupt.
+// If the program haven't exited after gracePeriod, it will call Reset to reset the terminal
+// and exit.
+func SafeInterrupt(onInterrupt func(), gracePeriod time.Duration) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		<-sigChan
-		if onExit != nil {
-			onExit()
+		s := <-sigChan
+		klog.Errorf("Got interrupted (signal %q), shutting down... (%s)", s, gracePeriod)
+		if onInterrupt != nil {
+			go onInterrupt()
 		}
+
+		// Wait for gracePeriod before exiting.
+		time.Sleep(gracePeriod)
 		Reset()
-		klog.Fatalf("Got interrupt, shutting down...")
+		klog.Fatalf("Graceful shutting down %s period expired, exiting.", gracePeriod)
 	}()
 }
 

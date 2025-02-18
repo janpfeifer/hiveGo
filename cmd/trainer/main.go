@@ -14,6 +14,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"time"
 	// "github.com/janpfeifer/hiveGo/ai/tfddqn"
 	//ab "github.com/janpfeifer/hiveGo/internal/searchers/alphabeta"
 	//"github.com/janpfeifer/hiveGo/internal/searchers/mcts"
@@ -89,7 +90,7 @@ func main() {
 	// Capture Control+C
 	var globalCancel func()
 	globalCtx, globalCancel = context.WithCancel(context.Background())
-	spinning.SafeInterrupt(globalCancel)
+	spinning.SafeInterrupt(globalCancel, 5*time.Second)
 	defer globalCancel()
 
 	if *flagCpuProfile != "" {

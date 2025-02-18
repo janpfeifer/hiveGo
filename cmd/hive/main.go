@@ -14,6 +14,7 @@ import (
 	"k8s.io/klog/v2"
 	"math/rand/v2"
 	"strings"
+	"time"
 )
 
 var (
@@ -46,7 +47,7 @@ func main() {
 	// Capture Control+C
 	var cancel func()
 	globalCtx, cancel = context.WithCancel(context.Background())
-	spinning.SafeInterrupt(cancel)
+	spinning.SafeInterrupt(cancel, 3*time.Second)
 	defer cancel()
 
 	// Create players.
