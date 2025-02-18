@@ -1,12 +1,61 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"github.com/gomlx/exceptions"
 	"github.com/janpfeifer/hiveGo/internal/ai"
+	. "github.com/janpfeifer/hiveGo/internal/state"
+	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
 	"math"
 	"sync"
+	"time"
 )
+
+// This file implements the training once one has the training data (LabeledBoards).
+//
+// It also defines LabeledBoards, the container of with the boards and labels to train.
+
+// LabeledBoards is a container of board positions and its labels (scores), used for training.
+//
+// ActionsLabels are optional. If set, they must match the number of actions of the corresponding board.
+type LabeledBoards struct {
+	Boards        []*Board
+	Labels        []float32
+	ActionsLabels [][]float32
+
+	// MaxSize configures the max number of boards to hold in LabeledBoards, if > 0.
+	// After it reaches the MaxSize new boards appended start rotating the position (replacing older ones).
+	MaxSize, CurrentIdx int
+}
+
+// Len returns the number of board positions stored.
+func (lb *LabeledBoards) Len() int {
+	return len(lb.Boards)
+}
+
+// AddBoard and its labels to LabeledBoards collection.
+// If LabeledBoards has a MaxSize configured, and it is full, it starts recycling its buffer of boards.
+func (lb *LabeledBoards) AddBoard(board *Board, label float32, actionsLabels []float32) {
+	if lb.MaxSize == 0 || lb.Len() < lb.MaxSize {
+		// AddBoard to the end.
+		lb.Boards = append(lb.Boards, board)
+		lb.Labels = append(lb.Labels, label)
+		if actionsLabels != nil {
+			lb.ActionsLabels = append(lb.ActionsLabels, actionsLabels)
+		}
+	} else {
+		// Start cycling current buffer.
+		lb.CurrentIdx = lb.CurrentIdx % lb.MaxSize
+		lb.Boards[lb.CurrentIdx] = board
+		lb.Labels[lb.CurrentIdx] = label
+		if actionsLabels != nil {
+			lb.ActionsLabels[lb.CurrentIdx] = actionsLabels
+		}
+	}
+	lb.CurrentIdx++
+}
 
 // Label matches with scores that reflect the final result.
 // Also adds to the boards information of how many actions for
@@ -134,7 +183,6 @@ func trainFromMatches(matches []*Match) {
 func savePlayer0() error {
 	if aiPlayers[0].Learner != nil {
 		klog.Infof("Saving %s", aiPlayers[0].Learner)
-		//features.LinearModelFileName = aiPlayers[0].Learner.ModelPath // Hack for linear models. TODO: fix.
 		return aiPlayers[0].Learner.Save()
 	}
 	return nil
@@ -179,4 +227,119 @@ func directRescoreMatch(scorer ai.BoardScorer, match *Match, from, to int) (scor
 	}
 	wg.Wait()
 	return
+}
+
+const eraseToEndOfLine = "\033[K"
+
+// learnSelection continuously learns from new matches.
+//
+// It yields the current learningSteps executed so far in learningSteps -- if learningSteps is not read, it may
+// block the learning.
+//
+// If ctx is interrupted, learningSteps is closed and it exits.
+//
+// It uses the flag -train_buffer_size to specify the size of the rotating buffer to store matches.
+func continuousLearning(ctx context.Context, matchesChan <-chan *Match) error {
+	//var averageLoss, averageBoardLoss, averageActionsLoss float32
+	var averageLoss float32
+	labeledBoards := LabeledBoards{
+		MaxSize: *flagTrainingBoardsBufferSize,
+	}
+
+	var countLearn, countMatches int
+	lastSave := time.Now()
+	var lastReport time.Time
+
+	reportProgressFn := func() {
+		fmt.Printf("\rProgress: #matches=%d, #steps=%d, ~loss=%.4g%s",
+			countMatches, countLearn, averageLoss, eraseToEndOfLine)
+	}
+	// Makes sure we update the progress before exiting (even in case of error).
+	defer func() {
+		reportProgressFn()
+		fmt.Println()
+	}()
+
+	for {
+		klog.V(3).Infof("Learn: #matches=%d, #learn=%d, ~loss=%.4g",
+			countMatches, countLearn, averageLoss)
+
+		// Read next match or exit if no more matches or if ctx has been interrupted.
+		// TODO: create an iterator for this in generics.
+		var match *Match
+		var ok bool
+		select {
+		case <-ctx.Done():
+			return errors.WithMessagef(ctx.Err(), "execution interrupted")
+		case match, ok = <-matchesChan:
+			if !ok {
+				// End of matches.
+				return nil
+			}
+		}
+		countMatches++
+
+		match.AppendToLabeledBoards(&labeledBoards)
+		if labeledBoards.Len() < labeledBoards.MaxSize {
+			// Only filling up buffer before we start training.
+			continue
+		}
+
+		// First learn with 0 steps: only evaluation without dropout.
+		//loss, boardLoss, actionsLoss := aiPlayers[0].Learner.Learn(
+		//	le.Boards, le.Labels,
+		//	le.ActionsLabels, float32(*flagLearningRate),
+		//	0, nil)
+		//klog.V(1).Infof("Evaluation loss: total=%g board=%g actions=%g",
+		//	loss, boardLoss, actionsLoss)
+		loss := aiPlayers[0].Learner.Loss(labeledBoards.Boards, labeledBoards.Labels)
+		klog.V(1).Infof("Pre-training loss %.4g", loss)
+
+		// Actually train.
+		//_, _, _ = aiPlayers[0].Learner.Learn(
+		//	le.Boards, le.Labels,
+		//	le.ActionsLabels, float32(*flagLearningRate),
+		//	*flagTrainLoops, nil)
+		loss = aiPlayers[0].Learner.Loss(labeledBoards.Boards, labeledBoards.Labels)
+		countLearn++
+		klog.V(1).Infof("Post-training loss %.4g", loss)
+
+		// Evaluate (learn with 0 steps)on training data.
+		//loss, boardLoss, actionsLoss = aiPlayers[0].Learner.Learn(
+		//	le.Boards, le.Labels,
+		//	le.ActionsLabels, float32(*flagLearningRate),
+		//	0, nil)
+		//klog.V(1).Infof("Training loss: total=%g board=%g actions=%g",
+		//	loss, boardLoss, actionsLoss)
+
+		decay := 1 - 1/float32(1+countLearn)
+		if decay > maxAverageLossDecay {
+			decay = maxAverageLossDecay
+		}
+		averageLoss = decayAverageLoss(averageLoss, loss, decay)
+		//averageBoardLoss = decayAverageLoss(averageBoardLoss, boardLoss, decay)
+		//averageActionsLoss = decayAverageLoss(averageActionsLoss, actionsLoss, decay)
+
+		// Report progress:
+		if time.Since(lastReport).Seconds() > 1 {
+			reportProgressFn()
+			lastReport = time.Now()
+		}
+
+		if time.Since(lastSave).Seconds() > 60 {
+			fmt.Println()
+			if err := savePlayer0(); err != nil {
+				return err
+			}
+			klog.V(1).Infof("Saved model: #matches=%d, #steps=%d, ~loss=%.4g%s",
+				countMatches, countLearn, averageLoss, eraseToEndOfLine)
+			lastSave = time.Now()
+		}
+	}
+}
+
+const maxAverageLossDecay = float32(0.95)
+
+func decayAverageLoss(average, newValue, decay float32) float32 {
+	return average*decay + (1-decay)*newValue
 }

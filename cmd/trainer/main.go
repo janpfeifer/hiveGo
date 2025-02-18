@@ -56,8 +56,8 @@ var (
 	flagLearningRate    = flag.Float64("learning_rate", 1e-5, "Learning rate when learning")
 	flagRescore         = flag.Bool("rescore", false, "If to rescore matches.")
 	flagDiscount        = flag.Float64("discount", 0.99, "Discount multiplier when using \"future\" V_{target}(t) = discount*V(t+1) scores to current one. This should be ~ \\lambda^max_depth used by the AI.")
-	flagDistill         = flag.Bool("directRescoreMatch", false,
-		"If set it will simply directRescoreMatch from --ai1 to --ai0, without searching for best moves.")
+	flagDistill         = flag.Bool("distill", false,
+		"If set it will simply distill from --ai1 to --ai0, without searching for best moves.")
 	flagLearnWithEndScore = flag.Bool("learn_with_end_score",
 		true, "If true will use the final score to learn.")
 	flagTrainingBoardsBufferSize = flag.Int("train_buffer_size",
@@ -145,9 +145,15 @@ func main() {
 	}
 	if *flagTrain {
 		trainFromMatches(matches)
+		return
 	}
 	if *flagContinuosRescoreAndTrain {
-		rescoreAndTrain(matches)
+		err := rescoreAndTrain(globalCtx, matches)
+		if err != nil {
+			globalCancel()
+			klog.Fatalf("Failed to continuously rescore and train: %+v", err)
+		}
+		return
 	}
 }
 
@@ -169,7 +175,7 @@ func createAIPlayers() {
 	if err != nil {
 		klog.Fatalf("Failed to create player 0: %+v", err)
 	}
-	if *flagPlayers[1] == *flagPlayers[0] {
+	if *flagPlayers[1] == *flagPlayers[0] || *flagPlayers[1] == "same" {
 		aiPlayers[1] = aiPlayers[0]
 		isSamePlayer = true
 		klog.V(1).Infof("Player 1 is the same as player 0, reusing AI player object.")

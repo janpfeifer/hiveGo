@@ -8,8 +8,8 @@ import (
 	"fmt"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"k8s.io/klog/v2"
+	"slices"
 	"sync"
-	"time"
 )
 
 var (
@@ -105,9 +105,10 @@ func playAndTrain(ctx context.Context) error {
 
 	// Rescore player1's moves, for learning.
 	if !isSamePlayer && *flagRescore {
-		rescoreMatchesChan := make(chan *Match, 5)
+		rescoreMatchesChan := make(chan *Match, 2*parallelism)
+		klog.Infof("Rescoring player 1's moves for learning (parallelism=%d).", parallelism)
 		for i := 0; i < parallelism; i++ {
-			go continuouslyRescorePlayer1(ctx, matchesChan, rescoreMatchesChan)
+			go continuouslyRescoreMatches(ctx, matchesChan, rescoreMatchesChan, PlayerSecond)
 		}
 		// Swap matchesChan and rescoreMatchesChan, so that matchesChan holds the
 		// correctly labeled matches.
@@ -158,9 +159,12 @@ func continuouslyPlay(ctx context.Context, matchIdGen *IdGen, matchStats *MatchS
 	}
 }
 
-// continuouslyRescorePlayer1 should be called concurrently, and it will indefinitely (or until ctx is cancelled)
-// read from matchesIn, rescore the player 1 with teh ai of the player 0, and send the updated match to matchesOut.
-func continuouslyRescorePlayer1(ctx context.Context, matchesIn <-chan *Match, matchesOut chan<- *Match) {
+// continuouslyRescoreMatches should be called concurrently, and it will indefinitely (or until ctx is cancelled)
+// read from matchesIn, and rescore moves from the selected players (or both players if none is given).
+//
+// It automatically handles matches with swapped players (Match.Swapped), in which case the rescorePlayers are interpreted
+// in reverse.
+func continuouslyRescoreMatches(ctx context.Context, matchesIn <-chan *Match, matchesOut chan<- *Match, rescorePlayers ...PlayerNum) {
 	defer func() {
 		close(matchesOut)
 	}()
@@ -183,7 +187,7 @@ func continuouslyRescorePlayer1(ctx context.Context, matchesIn <-chan *Match, ma
 			if match.Swapped {
 				player = 1 - player
 			}
-			if player == 0 {
+			if len(rescorePlayers) != 0 && slices.Index(rescorePlayers, player) == -1 {
 				// No need to rescore.
 				continue
 			}
@@ -207,69 +211,5 @@ func continuouslyRescorePlayer1(ctx context.Context, matchesIn <-chan *Match, ma
 		case matchesOut <- match:
 			// Done
 		}
-	}
-}
-
-// continuousMatchesToLabeledExamples takes batches, and send labeled examples for training.
-// It generate labeled examples from the latest 2 batches.
-func continuousMatchesToLabeledExamples(ctx context.Context, batchChan <-chan []*Match, labeledExamplesChan chan<- LabeledBoards) {
-	batchSize := *flagContinuosPlayAndTrainBatchMatches
-	var previousBatch []*Match
-	for batch := range batchChan {
-		klog.V(1).Infof("Batch received.")
-
-		if *flagContinuosPlayAndTrainKeepPreviousBatch {
-			// Merge new batch into previous batch.
-			if previousBatch == nil {
-				klog.V(1).Infof("Storing batch until 2 are available.")
-				previousBatch = batch
-				continue
-			}
-
-			if len(previousBatch) > batchSize {
-				tmpBatch := make([]*Match, 0, 2*batchSize)
-				tmpBatch = append(tmpBatch,
-					previousBatch[len(previousBatch)-batchSize:]...)
-				tmpBatch = append(tmpBatch, batch...)
-				previousBatch = tmpBatch
-			} else {
-				previousBatch = append(previousBatch, batch...)
-			}
-			klog.V(1).Infof("Batch aggregated: generating labeled examples.")
-		} else {
-			previousBatch = batch
-		}
-
-		n := 0
-		for _, match := range previousBatch {
-			n += len(match.Actions) + 42
-		}
-		if !isSamePlayer && !*flagDistill && !*flagRescore {
-			n /= 2
-		}
-		le := LabeledBoards{
-			Boards:        make([]*Board, 0, n),
-			Labels:        make([]float32, 0, n),
-			ActionsLabels: make([][]float32, 0, n),
-		}
-		for _, match := range previousBatch {
-			if isSamePlayer || *flagDistill || *flagRescore {
-				// Include both players data.
-				if *flagLearnWithEndScore {
-					labelWithEndScore(match)
-				}
-				match.AppendToLabeledBoards(&le)
-			} else {
-				// Only include data from player training.
-				if match.Swapped {
-					match.AppendToLabeledBoardsForPlayers(&le, [2]bool{false, true})
-				} else {
-					match.AppendToLabeledBoardsForPlayers(&le, [2]bool{true, false})
-				}
-			}
-		}
-		klog.V(1).Infof("Labeled examples issued.")
-		labeledExamplesChan <- le
-		klog.V(3).Infof("Labels=%v", le.Labels)
 	}
 }
