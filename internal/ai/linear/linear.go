@@ -395,6 +395,7 @@ func LoadOrCreate(fileName string, base *Scorer) (*Scorer, error) {
 		weights = append(weights, float32(f64))
 	}
 	s := NewWithWeights(weights...)
+	s.FileName = fileName
 	cacheLinearScorers[fileName] = s
 	return s, nil
 }
