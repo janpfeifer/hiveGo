@@ -48,7 +48,7 @@ func NewWithWeights(weights ...float32) *Scorer {
 	return &Scorer{
 		name:           "custom",
 		weights:        weights,
-		LearningRate:   0.01,
+		LearningRate:   0.001,
 		L2Reg:          1e-4,
 		GradientL2Clip: 1.0,
 		batchSize:      100,
@@ -91,6 +91,12 @@ func (s *Scorer) WithName(name string) *Scorer {
 // WithBatchSize sets the recommended batch size.
 func (s *Scorer) WithBatchSize(batchSize int) *Scorer {
 	s.batchSize = batchSize
+	return s
+}
+
+// WithLearningRate sets the learning rate for the Scorer and returns itself.
+func (s *Scorer) WithLearningRate(learningRate float32) *Scorer {
+	s.LearningRate = learningRate
 	return s
 }
 

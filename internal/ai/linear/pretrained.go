@@ -241,6 +241,14 @@ func NewFromParams(params parameters.Params) (ai.BoardScorer, error) {
 		}
 	}
 
+	learningRate, err := parameters.PopParamOr(params, "learning_rate", float32(-1.0))
+	if err != nil {
+		return nil, err
+	}
+	if learningRate > 0 {
+		selected = selected.WithLearningRate(learningRate)
+	}
+
 	klog.V(1).Infof("Linear model %s with %d features\n", selected, selected.Version())
 	// TODO: add support for hyper-parameters from params.
 	return selected, nil
