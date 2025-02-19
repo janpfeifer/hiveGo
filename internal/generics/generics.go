@@ -3,6 +3,7 @@ package generics
 
 import (
 	"cmp"
+	"context"
 	"iter"
 	"maps"
 	"slices"
@@ -54,7 +55,7 @@ func SortedKeysAndValues[Map interface{ ~map[K]V }, K cmp.Ordered, V any](m Map)
 //
 // This is akin to accessing slice[0], it will panic if the map is empty.
 func MapAnyKey[Map interface{ ~map[K]V }, K comparable, V any](m Map) K {
-	for k, _ := range m {
+	for k := range m {
 		return k
 	}
 	panic("map is empty, no key exists")
@@ -172,4 +173,41 @@ func SliceOrdering[S interface{ ~[]E }, E cmp.Ordered](s S, reverse bool) []int 
 		return result * reverseMult
 	})
 	return ordering
+}
+
+// IterChanWithContext iterates over the channel until it is closed, or the context is cancelled.
+func IterChanWithContext[V any](ctx context.Context, ch <-chan V) iter.Seq[V] {
+	return func(yield func(V) bool) {
+		var v V
+		var ok bool
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case v, ok = <-ch:
+				if !ok {
+					// Channel closed.
+					return
+				}
+			}
+			if !yield(v) {
+				return
+			}
+		}
+	}
+}
+
+// WriteToChanWithContext synchronously writes v to ch or returns false if context was cancelled
+// while waiting.
+//
+// It returns true if the value was written or false if the context was interrupted.
+//
+// If ch is closed, it also will also panic.
+func WriteToChanWithContext[V any](ctx context.Context, ch chan<- V, v V) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case ch <- v:
+		return true
+	}
 }

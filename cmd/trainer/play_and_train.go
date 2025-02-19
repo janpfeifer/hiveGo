@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/janpfeifer/hiveGo/internal/generics"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"k8s.io/klog/v2"
 	"slices"
@@ -104,14 +105,22 @@ func playAndTrain(ctx context.Context) error {
 	}
 
 	// Rescore player1's moves, for learning.
-	if !isSamePlayer && *flagRescore {
+	if !isSamePlayer {
 		rescoreMatchesChan := make(chan *Match, 2*parallelism)
 		klog.Infof("Rescoring player 1's moves for learning (parallelism=%d).", parallelism)
-		for i := 0; i < parallelism; i++ {
+		for range parallelism {
 			go continuouslyRescoreMatches(ctx, matchesChan, rescoreMatchesChan, PlayerSecond)
 		}
 		// Swap matchesChan and rescoreMatchesChan, so that matchesChan holds the
 		// correctly labeled matches.
+		matchesChan = rescoreMatchesChan
+	}
+
+	// Rescore from end-game score.
+	if *flagTrainWithEndScore > 0 {
+		klog.Infof("End-game score rescoring with weight %g", *flagTrainWithEndScore)
+		rescoreMatchesChan := make(chan *Match, 2*parallelism)
+		go continuouslyRescoreWithEndScore(ctx, matchesChan, rescoreMatchesChan)
 		matchesChan = rescoreMatchesChan
 	}
 
@@ -165,10 +174,7 @@ func continuouslyPlay(ctx context.Context, matchIdGen *IdGen, matchStats *MatchS
 // It automatically handles matches with swapped players (Match.Swapped), in which case the rescorePlayers are interpreted
 // in reverse.
 func continuouslyRescoreMatches(ctx context.Context, matchesIn <-chan *Match, matchesOut chan<- *Match, rescorePlayers ...PlayerNum) {
-	defer func() {
-		close(matchesOut)
-	}()
-	for match := range matchesIn {
+	for match := range generics.IterChanWithContext(ctx, matchesIn) {
 		klog.V(1).Infof("Match received for rescoring.")
 		// Pick only moves done by player 0 (or both if they are the same)
 		from, to, _ := match.SelectRangeOfActions()
@@ -204,12 +210,9 @@ func continuouslyRescoreMatches(ctx context.Context, matchesIn <-chan *Match, ma
 			//}
 		}
 		klog.V(1).Infof("Rescored match issued.")
-		select {
-		case <-ctx.Done():
-			klog.Errorf("Rescoring player 1 moves interrupted (context cancelled): %v", ctx.Err())
+		if !generics.WriteToChanWithContext(ctx, matchesOut, match) {
+			// Context cancelled, we are done.
 			return
-		case matchesOut <- match:
-			// Done
 		}
 	}
 }

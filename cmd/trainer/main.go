@@ -53,15 +53,19 @@ var (
 	flagTrain           = flag.Bool("train", false, "Set to true to train with match data.")
 	flagTrainLoops      = flag.Int("train_loops", 1, "After acquiring data for all matches, how many times to loop the training over it.")
 	flagTrainValidation = flag.Int("train_validation", 0, "Percentage (int value) of matches used for validation (evaluation only).")
-	flagLearningRate    = flag.Float64("learning_rate", 1e-5, "Learning rate when learning")
 	flagRescore         = flag.Bool("rescore", false, "If to rescore matches.")
-	flagDiscount        = flag.Float64("discount", 0.99, "Discount multiplier when using \"future\" V_{target}(t) = discount*V(t+1) scores to current one. This should be ~ \\lambda^max_depth used by the AI.")
 	flagDistill         = flag.Bool("distill", false,
 		"If set it will simply distill from --ai1 to --ai0, without searching for best moves.")
-	flagLearnWithEndScore = flag.Bool("learn_with_end_score",
-		true, "If true will use the final score to learn.")
-	flagTrainingBoardsBufferSize = flag.Int("train_buffer_size",
+	flagTrainWithEndScore = flag.Float64("train_with_end_score",
+		0, "If > 0, it will use the final match score across all moves. "+
+			"Also known as Monte Carlo learning. Values between 0 and 1 are interpreted as weight "+
+			"of the final match score to use as label for each board position of the match.")
+	flagTrainBoardsBufferSize = flag.Int("train_buffer_size",
 		500, "Size of board positions to keep in a rotating buffer during training.")
+	flagTrainStepsPerMatch = flag.Int("train_steps_per_match",
+		0, "Number of steps of call to Learn() per match read/played. If set to 0 it will "+
+			"divide the --train_buffer_size by the learner batch size. Batches are created with random "+
+			"sampling with replacement strategy.")
 
 	flagParallelism = flag.Int("parallelism", 0, "If > 0 ignore GOMAXPROCS and play "+
 		"these many matches simultaneously.")

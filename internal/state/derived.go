@@ -438,9 +438,9 @@ func (b *Board) Winner() PlayerNum {
 		return PlayerInvalid
 	}
 	if b.Derived.Wins[0] {
-		return 0
+		return PlayerFirst
 	} else {
-		return 1
+		return PlayerSecond
 	}
 }
 

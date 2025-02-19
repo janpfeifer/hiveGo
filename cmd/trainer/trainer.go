@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"github.com/gomlx/exceptions"
 	"github.com/janpfeifer/hiveGo/internal/ai"
+	"github.com/janpfeifer/hiveGo/internal/generics"
 	. "github.com/janpfeifer/hiveGo/internal/state"
-	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
 	"math"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -55,25 +56,6 @@ func (lb *LabeledBoards) AddBoard(board *Board, label float32, actionsLabels []f
 		}
 	}
 	lb.CurrentIdx++
-}
-
-// Label matches with scores that reflect the final result.
-// Also adds to the boards information of how many actions for
-// the player till the end of the match, which is used to
-// calculate the weighting based on TD-lambda constant.
-func labelWithEndScore(match *Match) {
-	_, endScore := ai.IsEndGameAndScore(match.FinalBoard())
-	var scores [2]float32
-	if match.FinalBoard().NextPlayer == 0 {
-		scores = [2]float32{endScore, -endScore}
-	} else {
-		scores = [2]float32{-endScore, endScore}
-	}
-	numActions := len(match.Actions)
-	for ii := range match.Scores {
-		match.Boards[ii].Derived.PlayerMovesToEnd = int8((numActions-ii+1)/2 - 1)
-		match.Scores[ii] = scores[match.Boards[ii].NextPlayer]
-	}
 }
 
 // Rescore the matches according to player 0 -- during rescoring we are only trying to
@@ -167,9 +149,6 @@ func trainFromMatches(matches []*Match) {
 		leValidation = &LabeledBoards{}
 	)
 	for _, match := range matches {
-		if *flagLearnWithEndScore {
-			labelWithEndScore(match)
-		}
 		hashNum := match.FinalBoard().Derived.Hash
 		if int(hashNum%100) >= *flagTrainValidation {
 			match.AppendToLabeledBoards(leTrain)
@@ -243,16 +222,26 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match) error {
 	//var averageLoss, averageBoardLoss, averageActionsLoss float32
 	var averageLoss float32
 	labeledBoards := LabeledBoards{
-		MaxSize: *flagTrainingBoardsBufferSize,
+		MaxSize: *flagTrainBoardsBufferSize,
+	}
+	batchSize := aiPlayers[0].Learner.BatchSize()
+	numLearnSteps := *flagTrainStepsPerMatch
+	if numLearnSteps == 0 {
+		numLearnSteps = (*flagTrainBoardsBufferSize + batchSize - 1) / batchSize
 	}
 
 	var countLearn, countMatches int
+	var ratioWins, ratioLosses, ratioDraws float32
 	lastSave := time.Now()
 	var lastReport time.Time
 
 	reportProgressFn := func() {
-		fmt.Printf("\rProgress: #matches=%d, #steps=%d, ~loss=%.4g%s",
-			countMatches, countLearn, averageLoss, eraseToEndOfLine)
+		fmt.Printf("\rProgress: #matches=%d (~wins=%.1f%%, ~losses=%.1f%%, ~draws=%.1f%%), #steps=%d, ~loss=%.4g%s",
+			countMatches,
+			100*ratioWins,
+			100*ratioLosses,
+			100*ratioDraws,
+			countLearn, averageLoss, eraseToEndOfLine)
 	}
 	// Makes sure we update the progress before exiting (even in case of error).
 	defer func() {
@@ -260,24 +249,11 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match) error {
 		fmt.Println()
 	}()
 
-	for {
+	for match := range generics.IterChanWithContext(ctx, matchesChan) {
+		countMatches++
 		klog.V(3).Infof("Learn: #matches=%d, #learn=%d, ~loss=%.4g",
 			countMatches, countLearn, averageLoss)
-
-		// Read next match or exit if no more matches or if ctx has been interrupted.
-		// TODO: create an iterator for this in generics.
-		var match *Match
-		var ok bool
-		select {
-		case <-ctx.Done():
-			return errors.WithMessagef(ctx.Err(), "execution interrupted")
-		case match, ok = <-matchesChan:
-			if !ok {
-				// End of matches.
-				return nil
-			}
-		}
-		countMatches++
+		updateMovingAverages(match, countMatches, &ratioWins, &ratioLosses, &ratioDraws)
 
 		match.AppendToLabeledBoards(&labeledBoards)
 		if labeledBoards.Len() < labeledBoards.MaxSize {
@@ -292,16 +268,24 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match) error {
 		//	0, nil)
 		//klog.V(1).Infof("Evaluation loss: total=%g board=%g actions=%g",
 		//	loss, boardLoss, actionsLoss)
-		loss := aiPlayers[0].Learner.Loss(labeledBoards.Boards, labeledBoards.Labels)
-		klog.V(1).Infof("Pre-training loss %.4g", loss)
+		if klog.V(1).Enabled() {
+			preTrainLoss := aiPlayers[0].Learner.Loss(labeledBoards.Boards, labeledBoards.Labels)
+			klog.Infof("Pre-training loss %.4g", preTrainLoss)
+		}
 
-		// Actually train.
-		//_, _, _ = aiPlayers[0].Learner.Learn(
-		//	le.Boards, le.Labels,
-		//	le.ActionsLabels, float32(*flagLearningRate),
-		//	*flagTrainLoops, nil)
-		loss = aiPlayers[0].Learner.Loss(labeledBoards.Boards, labeledBoards.Labels)
-		countLearn++
+		boardsBatch := make([]*Board, batchSize)
+		labelsBatch := make([]float32, batchSize)
+		var loss float32
+		for range numLearnSteps {
+			// Sample batch: random with replacement:
+			for exampleIdx := range batchSize {
+				idx := rand.Intn(labeledBoards.Len())
+				boardsBatch[exampleIdx] = labeledBoards.Boards[idx]
+				labelsBatch[exampleIdx] = labeledBoards.Labels[idx]
+			}
+			loss = aiPlayers[0].Learner.Learn(boardsBatch, labelsBatch)
+			countLearn++
+		}
 		klog.V(1).Infof("Post-training loss %.4g", loss)
 
 		// Evaluate (learn with 0 steps)on training data.
@@ -312,13 +296,9 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match) error {
 		//klog.V(1).Infof("Training loss: total=%g board=%g actions=%g",
 		//	loss, boardLoss, actionsLoss)
 
-		decay := 1 - 1/float32(1+countLearn)
-		if decay > maxAverageLossDecay {
-			decay = maxAverageLossDecay
-		}
-		averageLoss = decayAverageLoss(averageLoss, loss, decay)
-		//averageBoardLoss = decayAverageLoss(averageBoardLoss, boardLoss, decay)
-		//averageActionsLoss = decayAverageLoss(averageActionsLoss, actionsLoss, decay)
+		averageLoss = movingAverage(averageLoss, loss, averageLossDecay, countLearn)
+		//averageBoardLoss = movingAverage(averageBoardLoss, boardLoss, decay)
+		//averageActionsLoss = movingAverage(averageActionsLoss, actionsLoss, decay)
 
 		// Report progress:
 		if time.Since(lastReport).Seconds() > 1 {
@@ -336,10 +316,71 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match) error {
 			lastSave = time.Now()
 		}
 	}
+	return nil
 }
 
-const maxAverageLossDecay = float32(0.95)
+const averageLossDecay = float32(0.95)
 
-func decayAverageLoss(average, newValue, decay float32) float32 {
+func movingAverage(average, newValue, decay float32, count int) float32 {
+	decay = min(1-1/float32(count), decay)
 	return average*decay + (1-decay)*newValue
+}
+
+const ratiosDecay = 0.99 // for moving averages.
+
+func updateMovingAverages(match *Match, count int, ratioWins, ratioLosses, ratioDraws *float32) {
+	winner := match.FinalBoard().Winner()
+	var valueDraw, valueWin, valueLose float32
+	if winner == PlayerInvalid {
+		valueDraw = 1
+	} else {
+		if match.Swapped {
+			winner = 1 - winner
+		}
+		switch winner {
+		case PlayerFirst:
+			valueWin = 1
+		case PlayerSecond:
+			valueLose = 1
+		default:
+			// Draw already accounted for.
+		}
+	}
+	// Update moving averages
+	*ratioDraws = movingAverage(*ratioDraws, valueDraw, ratiosDecay, count)
+	*ratioWins = movingAverage(*ratioWins, valueWin, ratiosDecay, count)
+	*ratioLosses = movingAverage(*ratioLosses, valueLose, ratiosDecay, count)
+}
+
+func continuouslyRescoreWithEndScore(ctx context.Context, matchesIn <-chan *Match, matchesOut chan<- *Match, rescorePlayers ...PlayerNum) {
+	defer func() {
+		close(matchesOut)
+	}()
+	weight := float32(max(*flagTrainWithEndScore, 1))
+	for match := range generics.IterChanWithContext(ctx, matchesIn) {
+		winner := match.FinalBoard().Winner()
+		var endScores [2]float32 // Scores for PlayerFirst and PlayerSecond.
+		switch winner {
+		case PlayerFirst:
+			endScores = [2]float32{ai.WinGameScore, -ai.WinGameScore}
+		case PlayerSecond:
+			endScores = [2]float32{-ai.WinGameScore, ai.WinGameScore}
+		default:
+			// Draw: leave scores at 0.
+		}
+		for idx := range match.Actions {
+			board := match.Boards[idx]
+			endScore := endScores[board.NextPlayer]
+			match.Scores[idx] = weight*endScore + (1-weight)*match.Scores[idx]
+		}
+
+		// Yield rescored match.
+		select {
+		case <-ctx.Done():
+			klog.Errorf("End-game rescoring interrupted (context cancelled): %v", ctx.Err())
+			return
+		case matchesOut <- match:
+			// Done
+		}
+	}
 }
