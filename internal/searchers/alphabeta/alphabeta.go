@@ -2,6 +2,8 @@ package alphabeta
 
 import (
 	"fmt"
+	"github.com/chewxy/math32"
+	"github.com/gomlx/exceptions"
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	"github.com/janpfeifer/hiveGo/internal/parameters"
@@ -20,6 +22,7 @@ import (
 // It is used by players.SearcherScorer, along with the scorer, to implement an AI player (players.Player interface).
 type Searcher struct {
 	maxDepth          int
+	discount          float32 // \lambda parameter in TD-lambda scoring: how future scores are discounted to current state.
 	maxTime           time.Duration
 	randomness        float32
 	maxMoveRandomness int
@@ -58,11 +61,17 @@ func New(scorer ai.BoardScorer) *Searcher {
 	return &Searcher{
 		scorer:   batchScorer,
 		maxDepth: DefaultMaxDepth,
+		discount: DefaultDiscount,
 	}
 }
 
-// DefaultMaxDepth for search.
-const DefaultMaxDepth = 3
+const (
+	// DefaultMaxDepth for search.
+	DefaultMaxDepth = 3
+
+	// DefaultDiscount for score of future states.
+	DefaultDiscount = 0.98
+)
 
 // NewFromParams configures the alpha-beta pruning search with the parameters given if "ab" is set to true.
 // Otherwise, it returns nil (and no error).
@@ -76,14 +85,22 @@ func NewFromParams(scorer ai.BoardScorer, params parameters.Params) (searchers.S
 	if !isAB {
 		return nil, nil
 	}
-
 	ab := New(scorer)
+
 	maxDepth, err := parameters.PopParamOr(params, "max_depth", int(-1))
 	if err != nil {
 		return nil, err
 	}
 	if maxDepth >= 0 {
 		ab.WithMaxDepth(maxDepth)
+	}
+
+	discount, err := parameters.PopParamOr(params, "discount", float32(-1))
+	if err != nil {
+		return nil, err
+	}
+	if discount >= 0 {
+		ab.WithDiscount(discount)
 	}
 	return ab, nil
 }
@@ -109,7 +126,7 @@ func (ab *Searcher) WithMaxDepth(maxDepth int) *Searcher {
 }
 
 // WithRandomness adds a gaussian noise scaled to randomness to the scores returned by the scorer.
-// Scores vary from -1 to 1 (+/- state.WinGameScore), so a value of 1.0 here would be a lot.
+// Scores vary from -1 to 1 (+/- ai.WinGameScore), so a value of 1.0 here would be a lot.
 //
 // This can be useful to make the AI play worse, to make it more fun.
 //
@@ -120,6 +137,24 @@ func (ab *Searcher) WithMaxDepth(maxDepth int) *Searcher {
 // See also WithMaxMoveRandomness.
 func (ab *Searcher) WithRandomness(randomness float32) *Searcher {
 	ab.randomness = randomness
+	return ab
+}
+
+// WithDiscount sets a discount factor for future moves in the alpha-beta evaluation.
+// A lower discount factor penalizes future moves more heavily, which could make the search favor
+// moves that have immediate benefits.
+//
+// Valid values for discount are in the range [0.0, 1.0]. A value of 1.0 means no discount is applied,
+// whereas smaller values disproportionately reduce the importance of deeper moves.
+//
+// This can be useful to model scenarios where long-term gains are less certain or desirable.
+//
+// Default is 1.0 (no discount applied).
+func (ab *Searcher) WithDiscount(discount float32) *Searcher {
+	if discount < 0.0 || discount > 1.0 {
+		exceptions.Panicf("invalid parameter WithDiscount(%.4g), discount must be between 0.0 and 1.0", discount)
+	}
+	ab.discount = discount
 	return ab
 }
 
@@ -226,6 +261,7 @@ func (ab *Searcher) recursion(board *Board, depthLeft int, alpha, beta float32, 
 
 	// If there is a winning move, the scorer was not used (no evals), and we take the winning move (or one of them at random),
 	// no need to explore deeper.
+	// Also, there are no discounts for guaranteed wins.
 	bestActionIdx := -1
 	winningMoves := 0
 	for actionIdx, score := range scores {
@@ -280,6 +316,12 @@ func (ab *Searcher) recursion(board *Board, depthLeft int, alpha, beta float32, 
 		if !newBoards[actionIdx].IsFinished() {
 			// Runs alphaBeta for opponent player, so the alpha/beta are reversed.
 			_, _, score := ab.recursion(newBoards[actionIdx], depthLeft-1, beta, alpha, addNoise)
+
+			// Apply discount to non-winning scores.
+			if math32.Abs(score) < ai.WinGameScore {
+				score *= ab.discount
+			}
+
 			// the score is the negative of the opponents score.
 			scores[actionIdx] = -score
 		}
