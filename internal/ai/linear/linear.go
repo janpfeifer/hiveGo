@@ -37,9 +37,6 @@ type Scorer struct {
 	// batchSize recommended for calling Learn.
 	batchSize int
 
-	// NumSteps to do gradient descent when Learn is called.
-	NumSteps int
-
 	// FileName where to save/load the model from.
 	FileName string
 	muSave   sync.Mutex
@@ -52,8 +49,8 @@ func NewWithWeights(weights ...float32) *Scorer {
 		name:           "custom",
 		weights:        weights,
 		LearningRate:   0.01,
-		L2Reg:          1e-3,
-		GradientL2Clip: 10.0,
+		L2Reg:          1e-4,
+		GradientL2Clip: 1.0,
 		batchSize:      100,
 	}
 }
@@ -92,7 +89,7 @@ func (s *Scorer) WithName(name string) *Scorer {
 }
 
 // WithBatchSize sets the recommended batch size.
-func (s *Scorer) WithBachSize(batchSize int) *Scorer {
+func (s *Scorer) WithBatchSize(batchSize int) *Scorer {
 	s.batchSize = batchSize
 	return s
 }
@@ -139,13 +136,13 @@ func (s *Scorer) AsGoCode() string {
 	}
 	parts := make([]string, len(s.weights)+2*(len(s.weights)))
 	for _, fDef := range features.BoardSpecs {
-		parts = append(parts, fmt.Sprintf("\n\t// %s -> %d\n\t", fDef, fDef.Dim))
+		parts = append(parts, fmt.Sprintf("\n\t// %s -> [%d]\n\t", fDef.Id, fDef.Dim))
 		for _, value := range s.weights[fDef.VecIndex : fDef.VecIndex+fDef.Dim] {
 			parts = append(parts, fmt.Sprintf("%.4f, ", value))
 		}
 		parts = append(parts, "\n")
 	}
-	parts = append(parts, fmt.Sprintf("\n\t// Bias -> 1\n\t"))
+	parts = append(parts, fmt.Sprintf("\n\t// Bias -> [1]\n\t"))
 	parts = append(parts, fmt.Sprintf("%.4f,\n", s.weights[len(s.weights)-1]))
 	return strings.Join(parts, "")
 }
@@ -165,6 +162,7 @@ func (s *Scorer) l2RegularizationLoss() float32 {
 // Learn implements ai.LearnerScorer, and trains model with the new boards and its labels.
 // It returns the loss.
 func (s *Scorer) Learn(boards []*Board, boardLabels []float32) (loss float32) {
+	//fmt.Printf("Learn(%d boards)\n", len(boards))
 	s.muLearning.Lock()
 	defer s.muLearning.Unlock()
 
@@ -181,24 +179,23 @@ func (s *Scorer) Learn(boards []*Board, boardLabels []float32) (loss float32) {
 func (s *Scorer) lockedLearnFromFeatures(boardFeatures [][]float32, boardLabels []float32) (loss float32) {
 	// Loop over steps.
 	grad := make([]float32, len(s.weights))
-	for range s.NumSteps {
-		s.calculateGradient(boardFeatures, boardLabels, grad)
+	s.calculateGradient(boardFeatures, boardLabels, grad)
 
-		// Clip gradient.
-		if s.GradientL2Clip > 0 {
-			clipL2(grad, s.GradientL2Clip)
-		}
+	// Clip gradient.
+	if s.GradientL2Clip > 0 {
+		clipL2(grad, s.GradientL2Clip)
+	}
+	//fmt.Printf("\tL2(grad) = %.4f\n", l2Len(grad))
 
-		// Apply gradient with the learning rate.
-		for ii := range grad {
-			//wasZero := grad[ii] == 0
-			//signBefore := math32.Signbit(s.weights[ii])
-			s.weights[ii] -= s.LearningRate * grad[ii]
-			//if !wasZero && math32.Signbit(s.weights[ii]) != signBefore {
-			//	// When crossing the 0 barrier, make the gradient stop at 0 first.
-			//	s.weights[ii] = 0
-			//}
-		}
+	// Apply gradient with the learning rate.
+	for ii := range grad {
+		//wasZero := grad[ii] == 0
+		//signBefore := math32.Signbit(s.weights[ii])
+		s.weights[ii] -= s.LearningRate * grad[ii]
+		//if !wasZero && math32.Signbit(s.weights[ii]) != signBefore {
+		//	// When crossing the 0 barrier, make the gradient stop at 0 first.
+		//	s.weights[ii] = 0
+		//}
 	}
 	return s.lossFromFeatures(boardFeatures, boardLabels)
 }
@@ -271,7 +268,7 @@ func (s *Scorer) lossFromFeatures(boardFeatures [][]float32, boardLabels []float
 	return
 }
 
-// BatchSize returns the recommended batch size an implements ai.LearnerScorer.
+// BatchSize returns the recommended batch size and implements ai.LearnerScorer.
 func (s *Scorer) BatchSize() int {
 	return s.batchSize
 }
@@ -289,11 +286,11 @@ func clipL2(vec []float32, maxLen float32) {
 	l2 := l2Len(vec)
 	if l2 > maxLen {
 		ratio := maxLen / l2
-		fmt.Printf("\tclip: l2=%g, maxLen=%g, ratio=%g\n", l2, maxLen, ratio)
+		//fmt.Printf("\tclip: l2=%g, maxLen=%g, ratio=%g\n", l2, maxLen, ratio)
 		for ii := range vec {
 			vec[ii] *= ratio
 		}
-		fmt.Printf("\tvec=%v\n", vec)
+		//fmt.Printf("\tvec=%v\n", vec)
 	}
 }
 

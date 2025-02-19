@@ -53,7 +53,6 @@ func TestLearn(t *testing.T) {
 
 	// The model being trained:
 	got := NewWithWeights(0, 0, 0, 0)
-	got.NumSteps = 1
 	got.LearningRate = 0.01
 	got.L2Reg = 0
 
