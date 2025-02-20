@@ -363,7 +363,7 @@ func runMatches(ctx context.Context, matchesChan chan<- *Match) {
 				klog.Infof("Match %d interrupted: context cancelled with %v", matchNum, ctx.Err())
 			}
 			if match == nil {
-				klog.Errorf("runMatch() returned a nil Match!? Something went wrong.")
+				// Context interrupted, quick.
 				return
 			}
 			if !match.FinalBoard().Draw() {
