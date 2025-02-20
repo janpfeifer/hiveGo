@@ -81,7 +81,7 @@ type LearnerScorer interface {
 	// Loss returns a measure of loss for the model -- whatever it is.
 	Loss(boards []*Board, boardLabels []float32) (loss float32)
 
-	// Save should save the model.
+	// Save the model being learned -- or create a new checkpoint.
 	Save() error
 
 	// BatchSize returns the batch size used by the learner.

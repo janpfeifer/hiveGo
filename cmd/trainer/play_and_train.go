@@ -129,7 +129,7 @@ func playAndTrain(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	klog.Infof("Saving on exit", aiPlayers[0].Scorer)
+	klog.Infof("Saving on exit: %s", aiPlayers[0].Scorer)
 	return aiPlayers[0].Learner.Save()
 }
 

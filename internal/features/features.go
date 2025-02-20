@@ -60,8 +60,7 @@ const (
 	IdNumFeatureIds
 )
 
-//go:generate enumer -type=BoardId -trimprefix=Id -values -text -json -yaml features.go
-// //go:generate go tool enumer -type=BoardId -trimprefix=Id -values -text -json -yaml features.go
+//go:generate go tool enumer -type=BoardId -trimprefix=Id -values -text -json -yaml features.go
 
 // BoardSpec includes the board feature name, dimension and index in the concatenation of features.
 type BoardSpec struct {

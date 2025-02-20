@@ -40,7 +40,15 @@ type ScorerBuilder func(params parameters.Params) (ai.BoardScorer, error)
 type SearcherBuilder func(scorer ai.BoardScorer, params parameters.Params) (searchers.Searcher, error)
 
 var (
-	RegisteredScorers   []ScorerBuilder
+	// RegisteredScorers are called in sequence to check if they apply to the params given.
+	// They should either return nil if the params don't refer to them, or the ai.BoardScorer built.
+	//
+	// If the scorer returned also implements an ai.LearnerScorer, it can be used by the trainer
+	// tool.
+	RegisteredScorers []ScorerBuilder
+
+	// RegisteredSearchers are called in sequence to check if they apply to the params given.
+	// They should either return nil if the params don't refer to them, or the searchers.Searcher built.
 	RegisteredSearchers []SearcherBuilder
 )
 
