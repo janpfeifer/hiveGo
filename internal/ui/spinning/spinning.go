@@ -37,6 +37,7 @@ func SafeInterrupt(onInterrupt func(), gracePeriod time.Duration) {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		s := <-sigChan
+		fmt.Println()
 		klog.Errorf("Got interrupted (signal %q), shutting down... (%s)", s, gracePeriod)
 		if onInterrupt != nil {
 			go onInterrupt()

@@ -125,7 +125,12 @@ func playAndTrain(ctx context.Context) error {
 	}
 
 	// Continuously learn.
-	return continuousLearning(ctx, matchesChan)
+	err := continuousLearning(ctx, matchesChan)
+	if err != nil {
+		return err
+	}
+	klog.Infof("Saving on exit", aiPlayers[0].Scorer)
+	return aiPlayers[0].Learner.Save()
 }
 
 func continuouslyPlay(ctx context.Context, matchIdGen *IdGen, matchStats *MatchStats, matchesChan chan<- *Match) {

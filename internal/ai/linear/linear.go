@@ -3,6 +3,7 @@
 package linear
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/features"
@@ -140,17 +141,16 @@ func (s *Scorer) AsGoCode() string {
 	if len(s.weights) != features.BoardFeaturesDim+1 {
 		return fmt.Sprintf("model with %d weights+1 bias, BoardFeaturesDim=%d", len(s.weights)-1, features.BoardFeaturesDim)
 	}
-	parts := make([]string, len(s.weights)+2*(len(s.weights)))
+	buf := bytes.NewBuffer(make([]byte, 0, 16*1024))
 	for _, fDef := range features.BoardSpecs {
-		parts = append(parts, fmt.Sprintf("\n\t// %s -> [%d]\n\t", fDef.Id, fDef.Dim))
+		_, _ = fmt.Fprintf(buf, "\t// %s -> [%d]\n\t", fDef.Id, fDef.Dim)
 		for _, value := range s.weights[fDef.VecIndex : fDef.VecIndex+fDef.Dim] {
-			parts = append(parts, fmt.Sprintf("%.4f, ", value))
+			_, _ = fmt.Fprintf(buf, "%.4f, ", value)
 		}
-		parts = append(parts, "\n")
+		_, _ = fmt.Fprintf(buf, "\n\n")
 	}
-	parts = append(parts, fmt.Sprintf("\n\t// Bias -> [1]\n\t"))
-	parts = append(parts, fmt.Sprintf("%.4f,\n", s.weights[len(s.weights)-1]))
-	return strings.Join(parts, "")
+	_, _ = fmt.Fprintf(buf, "\t// Bias -> [1]\n\t%.4f,\n", s.weights[len(s.weights)-1])
+	return buf.String()
 }
 
 // l2RegularizationLoss is the regularization term for the loss.
@@ -327,13 +327,7 @@ func (s *Scorer) Save() error {
 		return errors.Wrapf(err, "failed to stat %s", s.FileName)
 	}
 
-	valuesStr := make([]string, len(s.weights))
-	for ii, value := range s.weights {
-		valuesStr[ii] = fmt.Sprintf("%g", value)
-	}
-	allValues := strings.Join(valuesStr, "\n")
-
-	err := os.WriteFile(s.FileName, []byte(allValues), 0777)
+	err := os.WriteFile(s.FileName, []byte(s.AsGoCode()), 0777)
 	if err != nil {
 		return errors.Wrapf(err, "failed to save %s", s.FileName)
 	}
@@ -382,20 +376,27 @@ func LoadOrCreate(fileName string, base *Scorer) (*Scorer, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "LoadOrCreate failed to read file %s", fileName)
 	}
-	valuesStr := strings.Split(string(data), "\n")
-	weights := make([]float32, 0, len(valuesStr))
-	for lineNum, valueStr := range valuesStr {
-		valueStr = strings.TrimSpace(valueStr)
-		if valueStr == "" || strings.HasPrefix(valueStr, "#") || strings.HasPrefix(valueStr, "//") {
+	lines := strings.Split(string(data), "\n")
+	weights := make([]float32, 0, len(lines))
+	for lineNum, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "//") {
 			// Skip empty lines and comments.
 			continue
 		}
-		f64, err := strconv.ParseFloat(valueStr, 32)
-		if err != nil {
-			return nil, errors.Wrapf(err, "LoadOrCreate failed to parse value in file %s, at line number #%d",
-				fileName, lineNum+1)
+		values := strings.Split(line, ",")
+		for _, value := range values {
+			value := strings.TrimSpace(value)
+			if len(value) == 0 {
+				continue
+			}
+			f64, err := strconv.ParseFloat(value, 32)
+			if err != nil {
+				return nil, errors.Wrapf(err, "LoadOrCreate failed to parse value %q in file %s, at line number #%d",
+					value, fileName, lineNum+1)
+			}
+			weights = append(weights, float32(f64))
 		}
-		weights = append(weights, float32(f64))
 	}
 	s := NewWithWeights(weights...)
 	s.FileName = fileName
