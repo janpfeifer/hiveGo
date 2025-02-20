@@ -2,12 +2,12 @@ package gomlx
 
 import (
 	"fmt"
-	mlContext "github.com/gomlx/gomlx/ml/context"
+	"github.com/gomlx/gomlx/ml/context"
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/parameters"
 	"github.com/janpfeifer/hiveGo/internal/players"
 	"github.com/janpfeifer/hiveGo/internal/state"
-	"k8s.io/klog/v2"
+	"github.com/pkg/errors"
 	"sync"
 )
 
@@ -23,12 +23,15 @@ const (
 // Scorer implements a generic GoMLX scorer for the Hive game.
 // It implements ai.BoardScorer, ai.BatchBoardScorer and ai.LearnerScorer.
 //
-// Underlying it will be powered by one of the model types.
+// It is just a wrapper around on of the models implemented.
 type Scorer struct {
 	Type ModelType
 
+	// model used by the Scorer.
+	model Model
+
 	// modelCtx holds the model variables and hyperparameters.
-	modelCtx *mlContext.Context
+	modelCtx *context.Context
 
 	// Hyperparameters cached values: they should also be set in modelCtx.
 	batchSize int
@@ -67,7 +70,22 @@ func New(params parameters.Params) (*Scorer, error) {
 		if filePath == notSpecified {
 			continue
 		}
-		klog.Infof("GoMLX model %q: %s", key, filePath)
+
+		// Create model and context.
+		s := &Scorer{Type: modelType}
+		switch modelType {
+		case ModelFNN:
+			s.model = &FNN{}
+		default:
+			return nil, errors.Errorf("model type %s defined but not implemented", modelType)
+		}
+		s.modelCtx = s.model.CreateContext()
+
+		// Create checkpoint, and load it if it exists.
+
+		// Overwrite hyperparameters from given params.
+
+		return s, nil
 	}
 	return nil, nil
 }
