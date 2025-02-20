@@ -1,3 +1,6 @@
+go.work
+go.work.sum
+
 *~
 cpu.prof
 v?.*
