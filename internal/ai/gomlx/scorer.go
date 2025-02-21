@@ -176,8 +176,10 @@ func (s *Scorer) BatchBoardScore(boards []*state.Board) []float32 {
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
 		return graph.DonateTensorBuffer(t, backend())
 	})
-	scores := s.scoreExec.Call(donatedInputs...)[0]
-	return scores.Value().([]float32)
+	scoresT := s.scoreExec.Call(donatedInputs...)[0]
+	scores := scoresT.Value().([]float32)
+	// Remove any padding:
+	return scores[:len(boards)]
 }
 
 // Learn implements ai.LearnerScorer, and trains model with the new boards and its labels.
