@@ -34,9 +34,6 @@ type Scorer struct {
 	// model used by the Scorer.
 	model Model
 
-	// modelCtx holds the model variables and hyperparameters.
-	modelCtx *context.Context
-
 	// checkpoint handler, if model is being saved/loaded to/from disk.
 	checkpoint *checkpoints.Handler
 
@@ -81,11 +78,10 @@ func New(params parameters.Params) (*Scorer, error) {
 		s := &Scorer{Type: modelType}
 		switch modelType {
 		case ModelFNN:
-			s.model = &FNN{}
+			s.model = NewFNN()
 		default:
 			return nil, errors.Errorf("model type %s defined but not implemented", modelType)
 		}
-		s.modelCtx = s.model.CreateContext()
 
 		// Help if requested.
 		if slices.Index([]string{"help", "--help", "-help", "-h"}, filePath) != -1 {
@@ -178,7 +174,7 @@ func (s *Scorer) BatchSize() int {
 func (s *Scorer) writeHyperparametersHelp() {
 	buf := &bytes.Buffer{}
 	_, _ = fmt.Fprintf(buf, "Model %s parameters:\n", s.Type)
-	s.modelCtx.EnumerateParams(func(scope, key string, value any) {
+	s.model.Context().EnumerateParams(func(scope, key string, value any) {
 		if scope != context.RootScope {
 			return
 		}
@@ -189,7 +185,7 @@ func (s *Scorer) writeHyperparametersHelp() {
 
 // extractParams and write them as context hyperparameters
 func (s *Scorer) extractParams(params parameters.Params) error {
-	ctx := s.modelCtx
+	ctx := s.model.Context()
 	var err error
 	ctx.EnumerateParams(func(scope, key string, valueAny any) {
 		if err != nil {
@@ -241,7 +237,7 @@ func (s *Scorer) extractParams(params parameters.Params) error {
 func (s *Scorer) createCheckpoint(filePath string) error {
 	var err error
 	s.checkpoint, err = checkpoints.
-		Build(s.modelCtx).
+		Build(s.model.Context()).
 		Dir(filePath).
 		Immediate().
 		Done()
