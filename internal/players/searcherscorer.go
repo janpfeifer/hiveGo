@@ -1,6 +1,7 @@
 package players
 
 import (
+	"fmt"
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	"github.com/janpfeifer/hiveGo/internal/parameters"
@@ -114,6 +115,10 @@ func (s *SearcherScorer) Play(b *Board) (
 			b.MoveNumber, s.Scorer, action, score)
 	}
 	return
+}
+
+func (s *SearcherScorer) String() string {
+	return fmt.Sprintf("%s (searcher=%s)", s.Scorer, s.Searcher)
 }
 
 // Finalize is called at the end of a match.

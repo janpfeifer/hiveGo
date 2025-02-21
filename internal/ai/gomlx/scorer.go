@@ -157,12 +157,12 @@ func init() {
 // String implements fmt.Stringer and ai.Scorer.
 func (s *Scorer) String() string {
 	if s == nil {
-		return "<nil>"
+		return "<nil>[GoMLX]"
 	}
 	if s.checkpoint == nil {
-		return s.Type.String()
+		return fmt.Sprintf("%s[GoMLX]", s.Type)
 	}
-	return fmt.Sprintf("%s (%s)", s.Type, s.checkpoint.String())
+	return fmt.Sprintf("%s[GoMLX]@%s", s.Type, s.checkpoint.Dir())
 }
 
 // BoardScore implements ai.BoardScorer.

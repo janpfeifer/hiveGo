@@ -75,10 +75,10 @@ func main() {
 			// AI plays.
 			if *flagWatch && !*flagQuiet {
 				ui.Print(board, false)
-				fmt.Print("\tAction: ")
+				fmt.Printf("\t%s action: ", aiPlayer)
 			} else {
+				fmt.Printf("AI: %s\n", aiPlayer)
 				ui.PrintSpacedPlayer(board)
-				fmt.Print(": ")
 			}
 
 			s := spinning.New(globalCtx)

@@ -22,6 +22,9 @@ type Player interface {
 	// and optionally the current board scores predicted (this can be used for interactive training).
 	Play(board *Board) (action Action, nextBoard *Board, score float32, actionsScores []float32)
 
+	// String returns the player name.
+	String() string
+
 	// Finalize is called at the end of a match.
 	Finalize()
 }

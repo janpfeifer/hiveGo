@@ -65,6 +65,11 @@ func New(scorer ai.BoardScorer) *Searcher {
 	}
 }
 
+// String returns the searcher name.
+func (s *Searcher) String() string {
+	return "alpha-beta"
+}
+
 const (
 	// DefaultMaxDepth for search.
 	DefaultMaxDepth = 3
