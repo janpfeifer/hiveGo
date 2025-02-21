@@ -3,9 +3,13 @@ package gomlx
 import (
 	"bytes"
 	"fmt"
+	"github.com/gomlx/gomlx/backends"
+	"github.com/gomlx/gomlx/graph"
 	"github.com/gomlx/gomlx/ml/context"
 	"github.com/gomlx/gomlx/ml/context/checkpoints"
+	"github.com/gomlx/gomlx/types/tensors"
 	"github.com/janpfeifer/hiveGo/internal/ai"
+	"github.com/janpfeifer/hiveGo/internal/generics"
 	"github.com/janpfeifer/hiveGo/internal/parameters"
 	"github.com/janpfeifer/hiveGo/internal/players"
 	"github.com/janpfeifer/hiveGo/internal/state"
@@ -34,6 +38,9 @@ type Scorer struct {
 	// model used by the Scorer.
 	model Model
 
+	// Executors.
+	scoreExec, lossExec *context.Exec
+
 	// checkpoint handler, if model is being saved/loaded to/from disk.
 	checkpoint *checkpoints.Handler
 
@@ -52,6 +59,11 @@ var (
 	_ ai.BoardScorer      = (*Scorer)(nil)
 	_ ai.BatchBoardScorer = (*Scorer)(nil)
 	_ ai.LearnerScorer    = (*Scorer)(nil)
+)
+
+var (
+	// Backend is a singleton, the same for all players.
+	backend = sync.OnceValue(func() backends.Backend { return backends.New() })
 )
 
 const notSpecified = "#<not_specified>"
@@ -103,6 +115,19 @@ func New(params parameters.Params) (*Scorer, error) {
 			return nil, err
 		}
 
+		// Setup scoreExec executor.
+		s.scoreExec = context.NewExec(backend(), s.model.Context(), s.model.ForwardGraph)
+		s.lossExec = context.NewExec(backend(), s.model.Context(),
+			func(ctx *context.Context, inputsAndLabels []*graph.Node) *graph.Node {
+				inputs := inputsAndLabels[:len(inputsAndLabels)-1]
+				labels := inputsAndLabels[len(inputsAndLabels)-1]
+				loss := s.model.LossGraph(ctx, inputs, labels)
+				if !loss.IsScalar() {
+					// Some losses may return one value per example of the batch.
+					loss = graph.ReduceAllMean(loss)
+				}
+				return loss
+			})
 		return s, nil
 	}
 	return nil, nil
@@ -133,21 +158,21 @@ func (s *Scorer) String() string {
 
 // BoardScore implements ai.BoardScorer.
 func (s *Scorer) BoardScore(board *state.Board) float32 {
-	return 0.0
-	//return s.ScoreFeatures(features.ForBoard(board, s.Version()))
+	return s.BatchBoardScore([]*state.Board{board})[0]
 }
 
 // BatchBoardScore implements ai.BatchBoardScorer.
-func (s *Scorer) BatchBoardScore(boards []*state.Board) (scores []float32) {
-	scores = make([]float32, len(boards))
-	for ii, board := range boards {
-		scores[ii] = s.BoardScore(board)
-	}
-	return
+func (s *Scorer) BatchBoardScore(boards []*state.Board) []float32 {
+	inputs := s.model.CreateInputs(boards)
+	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
+		return graph.DonateTensorBuffer(t, backend())
+	})
+	scores := s.scoreExec.Call(donatedInputs...)[0]
+	return scores.Value().([]float32)
 }
 
 // Learn implements ai.LearnerScorer, and trains model with the new boards and its labels.
-// It returns the loss.
+// It returns the lossExec.
 func (s *Scorer) Learn(boards []*state.Board, boardLabels []float32) (loss float32) {
 	//fmt.Printf("Learn(%d boards)\n", len(boards))
 	s.muLearning.Lock()
@@ -155,7 +180,7 @@ func (s *Scorer) Learn(boards []*state.Board, boardLabels []float32) (loss float
 	return 0
 }
 
-// Loss returns a measure of loss for the model -- whatever it is.
+// Loss returns a measure of lossExec for the model -- whatever it is.
 func (s *Scorer) Loss(boards []*state.Board, boardLabels []float32) (loss float32) {
 	return 0
 }

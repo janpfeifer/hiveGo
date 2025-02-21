@@ -1,12 +1,14 @@
 package gomlx
 
 import (
+	. "github.com/gomlx/gomlx/graph"
 	"github.com/gomlx/gomlx/ml/context"
 	"github.com/gomlx/gomlx/ml/layers"
 	"github.com/gomlx/gomlx/ml/layers/activations"
 	fnnLayer "github.com/gomlx/gomlx/ml/layers/fnn"
 	"github.com/gomlx/gomlx/ml/layers/kan"
 	"github.com/gomlx/gomlx/ml/layers/regularizers"
+	"github.com/gomlx/gomlx/ml/train/losses"
 	"github.com/gomlx/gomlx/ml/train/optimizers"
 	"github.com/gomlx/gomlx/ml/train/optimizers/cosineschedule"
 	"github.com/gomlx/gomlx/types/shapes"
@@ -81,4 +83,15 @@ func (fnn *FNN) CreateInputs(boards []*state.Board) []*tensors.Tensor {
 		}
 	})
 	return []*tensors.Tensor{boardFeatures}
+}
+
+// ForwardGraph calculates the scores of the board.
+func (fnn *FNN) ForwardGraph(ctx *context.Context, inputs []*Node) *Node {
+	return nil
+}
+
+// LossGraph calculates the lossExec.
+func (fnn *FNN) LossGraph(ctx *context.Context, inputs []*Node, labels *Node) *Node {
+	predictions := fnn.ForwardGraph(ctx, inputs)
+	return losses.MeanSquaredError([]*Node{labels}, []*Node{predictions})
 }
