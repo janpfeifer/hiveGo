@@ -1,13 +1,17 @@
 package gomlx
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/gomlx/gomlx/ml/context"
+	"github.com/gomlx/gomlx/ml/context/checkpoints"
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/parameters"
 	"github.com/janpfeifer/hiveGo/internal/players"
 	"github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/pkg/errors"
+	"k8s.io/klog/v2"
+	"slices"
 	"sync"
 )
 
@@ -33,15 +37,17 @@ type Scorer struct {
 	// modelCtx holds the model variables and hyperparameters.
 	modelCtx *context.Context
 
+	// checkpoint handler, if model is being saved/loaded to/from disk.
+	checkpoint *checkpoints.Handler
+
 	// Hyperparameters cached values: they should also be set in modelCtx.
 	batchSize int
 
-	// Linearize training.
+	// muLearning limits Learn call to at most one at a time.
 	muLearning sync.Mutex
 
-	// FileName where to save/load the model from.
-	FileName string
-	muSave   sync.Mutex
+	// muSave makes saving sequential.
+	muSave sync.Mutex
 }
 
 var (
@@ -81,9 +87,25 @@ func New(params parameters.Params) (*Scorer, error) {
 		}
 		s.modelCtx = s.model.CreateContext()
 
+		// Help if requested.
+		if slices.Index([]string{"help", "--help", "-help", "-h"}, filePath) != -1 {
+			s.writeHyperparametersHelp()
+			return nil, fmt.Errorf("model type %s help requested", modelType)
+		}
+
 		// Create checkpoint, and load it if it exists.
+		if filePath != "" {
+			if err := s.createCheckpoint(filePath); err != nil {
+				return nil, errors.WithMessagef(err, "failed to build checkpoint for model %s in path %s",
+					modelType, filePath)
+			}
+		}
 
 		// Overwrite hyperparameters from given params.
+		err := s.extractParams(params)
+		if err != nil {
+			return nil, err
+		}
 
 		return s, nil
 	}
@@ -107,7 +129,10 @@ func (s *Scorer) String() string {
 	if s == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("%s (path: %s)", s.Type, s.FileName)
+	if s.checkpoint == nil {
+		return s.Type.String()
+	}
+	return fmt.Sprintf("%s (%s)", s.Type, s.checkpoint.String())
 }
 
 // BoardScore implements ai.BoardScorer.
@@ -147,4 +172,78 @@ func (s *Scorer) Save() error {
 // BatchSize returns the recommended batch size and implements ai.LearnerScorer.
 func (s *Scorer) BatchSize() int {
 	return s.batchSize
+}
+
+// writeHyperparametersHelp enumerates all the hyperparameters set in the context.
+func (s *Scorer) writeHyperparametersHelp() {
+	buf := &bytes.Buffer{}
+	_, _ = fmt.Fprintf(buf, "Model %s parameters:\n", s.Type)
+	s.modelCtx.EnumerateParams(func(scope, key string, value any) {
+		if scope != context.RootScope {
+			return
+		}
+		_, _ = fmt.Fprintf(buf, "\t%q: default value is %v\n", key, value)
+	})
+	klog.Info(buf)
+}
+
+// extractParams and write them as context hyperparameters
+func (s *Scorer) extractParams(params parameters.Params) error {
+	ctx := s.modelCtx
+	var err error
+	ctx.EnumerateParams(func(scope, key string, valueAny any) {
+		if err != nil {
+			// If error happened skip the rest.
+			return
+		}
+		if scope != context.RootScope {
+			return
+		}
+		switch defaultValue := valueAny.(type) {
+		case string:
+			value, _ := parameters.PopParamOr(params, key, defaultValue)
+			ctx.SetParam(key, value)
+		case int:
+			value, newErr := parameters.PopParamOr(params, key, defaultValue)
+			if newErr != nil {
+				err = errors.WithMessagef(newErr, "parsing %q (int) for model %s", key, s.Type)
+				return
+			}
+			ctx.SetParam(key, value)
+		case float64:
+			value, newErr := parameters.PopParamOr(params, key, defaultValue)
+			if newErr != nil {
+				err = errors.WithMessagef(newErr, "parsing %q (float64) for model %s", key, s.Type)
+				return
+			}
+			ctx.SetParam(key, value)
+		case float32:
+			value, newErr := parameters.PopParamOr(params, key, defaultValue)
+			if newErr != nil {
+				err = errors.WithMessagef(newErr, "parsing %q (float32) for model %s", key, s.Type)
+				return
+			}
+			ctx.SetParam(key, value)
+		case bool:
+			value, newErr := parameters.PopParamOr(params, key, defaultValue)
+			if newErr != nil {
+				err = errors.WithMessagef(newErr, "parsing %q (bool) for model %s", key, s.Type)
+				return
+			}
+			ctx.SetParam(key, value)
+		default:
+			err = errors.Errorf("model %s parameter %q is of unknown type %T", s.Type, key, defaultValue)
+		}
+	})
+	return err
+}
+
+func (s *Scorer) createCheckpoint(filePath string) error {
+	var err error
+	s.checkpoint, err = checkpoints.
+		Build(s.modelCtx).
+		Dir(filePath).
+		Immediate().
+		Done()
+	return err
 }

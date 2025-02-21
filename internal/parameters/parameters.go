@@ -51,7 +51,7 @@ func GetParamOr[T interface {
 	toT := func(v any) T { return v.(T) }
 	switch vAny.(type) {
 	case string:
-		if value, exists := params[key]; exists && value != "" {
+		if value, exists := params[key]; exists {
 			return toT(value), nil
 		}
 	case int:

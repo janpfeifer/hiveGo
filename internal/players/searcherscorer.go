@@ -62,6 +62,10 @@ func New(config string) (*SearcherScorer, error) {
 		if err != nil {
 			return nil, err
 		}
+		if s == nil {
+			// Not this type of scorer.
+			continue
+		}
 		if player.Scorer != nil {
 			return nil, errors.Errorf("multiple scorers defined in parameters %q", config)
 		}
