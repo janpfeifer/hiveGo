@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/gomlx/gomlx/backends"
+	_ "github.com/gomlx/gomlx/backends/xla"
 	"github.com/gomlx/gomlx/graph"
 	"github.com/gomlx/gomlx/ml/context"
 	"github.com/gomlx/gomlx/ml/context/checkpoints"
@@ -116,11 +117,19 @@ func New(params parameters.Params) (*Scorer, error) {
 		}
 
 		// Setup scoreExec executor.
-		s.scoreExec = context.NewExec(backend(), s.model.Context(), s.model.ForwardGraph)
+		s.scoreExec = context.NewExec(backend(), s.model.Context(),
+			func(ctx *context.Context, inputs []*graph.Node) *graph.Node {
+				// Remove last axis with dimension 1.
+				return graph.Squeeze(s.model.ForwardGraph(ctx, inputs), -1)
+			})
 		s.lossExec = context.NewExec(backend(), s.model.Context(),
 			func(ctx *context.Context, inputsAndLabels []*graph.Node) *graph.Node {
 				inputs := inputsAndLabels[:len(inputsAndLabels)-1]
 				labels := inputsAndLabels[len(inputsAndLabels)-1]
+				if labels.Rank() == 1 {
+					// Add the last axes with dimension 1.
+					labels = graph.ExpandAxes(labels, -1)
+				}
 				loss := s.model.LossGraph(ctx, inputs, labels)
 				if !loss.IsScalar() {
 					// Some losses may return one value per example of the batch.
@@ -182,7 +191,13 @@ func (s *Scorer) Learn(boards []*state.Board, boardLabels []float32) (loss float
 
 // Loss returns a measure of lossExec for the model -- whatever it is.
 func (s *Scorer) Loss(boards []*state.Board, boardLabels []float32) (loss float32) {
-	return 0
+	inputs := s.model.CreateInputs(boards)
+	inputs = append(inputs, s.model.CreateLabels(boardLabels))
+	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
+		return graph.DonateTensorBuffer(t, backend())
+	})
+	lossT := s.lossExec.Call(donatedInputs...)[0]
+	return tensors.ToScalar[float32](lossT)
 }
 
 // Save should save the model.

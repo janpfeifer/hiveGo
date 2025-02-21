@@ -73,25 +73,79 @@ func (fnn *FNN) Context() *context.Context {
 	return fnn.ctx
 }
 
+// paddedBatchSize returns a padded batchSize for the given numBoards.
+// This is important so we don't have too many different versions of the program for every different batch size.
+func (fnn *FNN) paddedBatchSize(numBoards int) int {
+	// Make sure the default batchSize is supported without padding.
+	defaultBatchSize := context.GetParamOr(fnn.ctx, "batch_size", 128)
+	if numBoards == defaultBatchSize {
+		return numBoards
+	}
+
+	paddedSize := 1
+	for paddedSize < numBoards {
+		// Increase 1.5x at a time.
+		paddedSize = paddedSize + (paddedSize+1)/2
+	}
+	return paddedSize
+}
+
+// CreateInputs implements Model.CreateInputs.
 func (fnn *FNN) CreateInputs(boards []*state.Board) []*tensors.Tensor {
+	// TODO: add mask and batchSizes in power-of-2 (or some other value)
 	version := context.GetParamOr(fnn.ctx, "features_version", features.BoardFeaturesDim)
-	boardFeatures := tensors.FromShape(shapes.Make(dtypes.Float32, len(boards), version))
+	numBoards := len(boards)
+	paddedBatchSize := fnn.paddedBatchSize(numBoards)
+	boardFeatures := tensors.FromShape(shapes.Make(dtypes.Float32, paddedBatchSize, version))
 	tensors.MutableFlatData(boardFeatures, func(flat []float32) {
 		for boardIdx, board := range boards {
 			values := features.ForBoard(board, version)
 			copy(flat[boardIdx*version:], values)
 		}
 	})
-	return []*tensors.Tensor{boardFeatures}
+	return []*tensors.Tensor{boardFeatures, tensors.FromScalar(int32(len(boards)))}
+}
+
+// CreateLabels implements Model.CreateLabels.
+func (fnn *FNN) CreateLabels(labels []float32) *tensors.Tensor {
+	paddedBatchSize := fnn.paddedBatchSize(len(labels))
+	boardLabels := tensors.FromShape(shapes.Make(dtypes.Float32, paddedBatchSize, 1))
+	tensors.MutableFlatData(boardLabels, func(flat []float32) {
+		copy(flat, labels)
+	})
+	return boardLabels
+}
+
+// getBatchMask based on padding on the inputs.
+func (fnn *FNN) getBatchMask(inputs []*Node) *Node {
+	logits := inputs[0]
+	usedBatchSize := inputs[1]
+	g := logits.Graph()
+	batchSize := logits.Shape().Dim(0)
+	batchMask := LessThan(Iota(g, shapes.Make(dtypes.Int32, batchSize), 0), usedBatchSize)
+	return batchMask
 }
 
 // ForwardGraph calculates the scores of the board.
 func (fnn *FNN) ForwardGraph(ctx *context.Context, inputs []*Node) *Node {
-	return nil
+	logits := inputs[0]
+	batchSize := logits.Shape().Dim(0)
+
+	// Model itself is an FNN or a KAN.
+	if context.GetParamOr(ctx, "kan", false) {
+		// Use KAN, all configured by context hyperparameters. See createDefaultContext for defaults.
+		logits = kan.New(ctx.In("kan"), logits, 1).Done()
+	} else {
+		// Normal FNN, all configured by context hyperparameters. See createDefaultContext for defaults.
+		logits = fnnLayer.New(ctx.In("fnn"), logits, 1).Done()
+	}
+	logits.AssertDims(batchSize, 1) // 2-dim tensor, with batch size as the leading dimension.
+	return logits
 }
 
 // LossGraph calculates the lossExec.
 func (fnn *FNN) LossGraph(ctx *context.Context, inputs []*Node, labels *Node) *Node {
 	predictions := fnn.ForwardGraph(ctx, inputs)
-	return losses.MeanSquaredError([]*Node{labels}, []*Node{predictions})
+	batchMask := fnn.getBatchMask(inputs)
+	return losses.MeanSquaredError([]*Node{labels, batchMask}, []*Node{predictions})
 }

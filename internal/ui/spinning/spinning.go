@@ -37,6 +37,7 @@ func SafeInterrupt(onInterrupt func(), gracePeriod time.Duration) {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		s := <-sigChan
+		Reset()
 		fmt.Println()
 		klog.Errorf("Got interrupted (signal %q), shutting down... (%s)", s, gracePeriod)
 		if onInterrupt != nil {
@@ -52,7 +53,7 @@ func SafeInterrupt(onInterrupt func(), gracePeriod time.Duration) {
 
 // Reset terminal: make cursor visible, restore default terminal colors.
 func Reset() {
-	fmt.Print("\033[?25h\033[39;49;0m\n") // Restore cursor and colors.
+	fmt.Print("\033[?25h\033[39;49;0m") // Restore cursor and colors.
 }
 
 // New starts a spinning display that runs on a separate GoRoutine.
