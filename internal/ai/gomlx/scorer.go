@@ -204,7 +204,11 @@ func (s *Scorer) Loss(boards []*state.Board, boardLabels []float32) (loss float3
 
 // Save should save the model.
 func (s *Scorer) Save() error {
-	return nil
+	if s.checkpoint == nil {
+		klog.Warningf("This %s model is not associated to a checkpoint directory,  not saving", s.Type)
+		return nil
+	}
+	return s.checkpoint.Save()
 }
 
 // BatchSize returns the recommended batch size and implements ai.LearnerScorer.
