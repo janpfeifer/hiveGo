@@ -59,9 +59,10 @@ func New(scorer ai.BoardScorer) *Searcher {
 		batchScorer = &ai.BatchBoardScorerWrapper{BoardScorer: scorer}
 	}
 	return &Searcher{
-		scorer:   batchScorer,
-		maxDepth: DefaultMaxDepth,
-		discount: DefaultDiscount,
+		scorer:            batchScorer,
+		maxDepth:          DefaultMaxDepth,
+		discount:          DefaultDiscount,
+		maxMoveRandomness: 10,
 	}
 }
 
@@ -107,6 +108,23 @@ func NewFromParams(scorer ai.BoardScorer, params parameters.Params) (searchers.S
 	if discount >= 0 {
 		ab.WithDiscount(discount)
 	}
+
+	randomness, err := parameters.PopParamOr(params, "randomness", float32(-1))
+	if err != nil {
+		return nil, err
+	}
+	if randomness >= 0 {
+		ab.WithRandomness(randomness)
+	}
+
+	maxMoveRandomness, err := parameters.PopParamOr(params, "max_move_rand", int(-1))
+	if err != nil {
+		return nil, err
+	}
+	if maxMoveRandomness >= 0 {
+		ab.WithMaxMoveRandomness(maxMoveRandomness)
+	}
+
 	return ab, nil
 }
 

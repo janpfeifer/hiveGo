@@ -47,7 +47,6 @@ func New(config string) (*SearcherScorer, error) {
 		config = DefaultPlayerConfig
 	}
 	params := parameters.NewFromConfigString(config)
-
 	player := &SearcherScorer{}
 
 	if len(RegisteredScorers) == 0 {

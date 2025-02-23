@@ -17,6 +17,9 @@ func NewFromConfigString(config string) map[string]string {
 	params := make(map[string]string)
 	parts := strings.Split(config, ",")
 	for _, part := range parts {
+		if part == "" {
+			continue
+		}
 		subParts := strings.SplitN(part, "=", 2) // Split into up to 2 parts to handle '=' in values
 		if len(subParts) == 1 {
 			params[subParts[0]] = ""
