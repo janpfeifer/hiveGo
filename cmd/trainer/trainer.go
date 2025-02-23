@@ -261,32 +261,38 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match) error {
 			continue
 		}
 
-		// First learn with 0 steps: only evaluation without dropout.
-		//loss, boardLoss, actionsLoss := aiPlayers[0].Learner.Learn(
-		//	le.Boards, le.Labels,
-		//	le.ActionsLabels, float32(*flagLearningRate),
-		//	0, nil)
-		//klog.V(1).Infof("Evaluation loss: total=%g board=%g actions=%g",
-		//	loss, boardLoss, actionsLoss)
-		if klog.V(1).Enabled() {
-			preTrainLoss := aiPlayers[0].Learner.Loss(labeledBoards.Boards, labeledBoards.Labels)
-			klog.Infof("Pre-training loss %.4g", preTrainLoss)
-		}
-
-		boardsBatch := make([]*Board, batchSize)
-		labelsBatch := make([]float32, batchSize)
 		var loss float32
-		for range numLearnSteps {
-			// Sample batch: random with replacement:
-			for exampleIdx := range batchSize {
-				idx := rand.Intn(labeledBoards.Len())
-				boardsBatch[exampleIdx] = labeledBoards.Boards[idx]
-				labelsBatch[exampleIdx] = labeledBoards.Labels[idx]
+		err := exceptions.TryCatch[error](func() {
+			// First learn with 0 steps: only evaluation without dropout.
+			//loss, boardLoss, actionsLoss := aiPlayers[0].Learner.Learn(
+			//	le.Boards, le.Labels,
+			//	le.ActionsLabels, float32(*flagLearningRate),
+			//	0, nil)
+			//klog.V(1).Infof("Evaluation loss: total=%g board=%g actions=%g",
+			//	loss, boardLoss, actionsLoss)
+			if klog.V(1).Enabled() {
+				preTrainLoss := aiPlayers[0].Learner.Loss(labeledBoards.Boards, labeledBoards.Labels)
+				klog.Infof("Pre-training loss %.4g", preTrainLoss)
 			}
-			loss = aiPlayers[0].Learner.Learn(boardsBatch, labelsBatch)
-			countLearn++
+
+			boardsBatch := make([]*Board, batchSize)
+			labelsBatch := make([]float32, batchSize)
+			for range numLearnSteps {
+				// Sample batch: random with replacement:
+				for exampleIdx := range batchSize {
+					idx := rand.Intn(labeledBoards.Len())
+					boardsBatch[exampleIdx] = labeledBoards.Boards[idx]
+					labelsBatch[exampleIdx] = labeledBoards.Labels[idx]
+				}
+				loss = aiPlayers[0].Learner.Learn(boardsBatch, labelsBatch)
+				countLearn++
+				averageLoss = movingAverage(averageLoss, loss, averageLossDecay, countLearn)
+			}
+			klog.V(1).Infof("Post-training loss %.4g", loss)
+		})
+		if err != nil {
+			return err
 		}
-		klog.V(1).Infof("Post-training loss %.4g", loss)
 
 		// Evaluate (learn with 0 steps)on training data.
 		//loss, boardLoss, actionsLoss = aiPlayers[0].Learner.Learn(
@@ -295,8 +301,6 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match) error {
 		//	0, nil)
 		//klog.V(1).Infof("Training loss: total=%g board=%g actions=%g",
 		//	loss, boardLoss, actionsLoss)
-
-		averageLoss = movingAverage(averageLoss, loss, averageLossDecay, countLearn)
 		//averageBoardLoss = movingAverage(averageBoardLoss, boardLoss, decay)
 		//averageActionsLoss = movingAverage(averageActionsLoss, actionsLoss, decay)
 

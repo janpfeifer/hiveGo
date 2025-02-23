@@ -6,8 +6,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/gomlx/exceptions"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	. "github.com/janpfeifer/hiveGo/internal/state"
+	"github.com/pkg/errors"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
 	"slices"
 	"sync"
@@ -100,17 +103,38 @@ func playAndTrain(ctx context.Context) error {
 	matchesChan := make(chan *Match, 5)
 	matchIdGen := &IdGen{}
 	matchStats := NewMatchStats()
+	wgPlay, ctxPlay := errgroup.WithContext(ctx)
 	for i := 0; i < parallelism; i++ {
-		go continuouslyPlay(ctx, matchIdGen, matchStats, matchesChan)
+		wgPlay.Go(func() error {
+			return continuouslyPlay(ctxPlay, matchIdGen, matchStats, matchesChan)
+		})
 	}
+	go func(c chan *Match) {
+		err := wgPlay.Wait()
+		if err != nil {
+			klog.Errorf("Playing a match failed: %+v", err)
+		}
+		fmt.Println("Closing matchesChan")
+		close(c)
+	}(matchesChan)
 
 	// Rescore player1's moves, for learning.
 	if !isSamePlayer {
 		rescoreMatchesChan := make(chan *Match, 2*parallelism)
+		wgRescore, ctxRescore := errgroup.WithContext(ctx)
 		klog.Infof("Rescoring player 1's moves for learning (parallelism=%d).", parallelism)
 		for range parallelism {
-			go continuouslyRescoreMatches(ctx, matchesChan, rescoreMatchesChan, PlayerSecond)
+			wgRescore.Go(func() error {
+				return continuouslyRescoreMatches(ctxRescore, matchesChan, rescoreMatchesChan, PlayerSecond)
+			})
 		}
+		go func() {
+			err := wgPlay.Wait()
+			if err != nil {
+				klog.Errorf("Rescoring a match failed: %+v", err)
+			}
+			close(rescoreMatchesChan)
+		}()
 		// Swap matchesChan and rescoreMatchesChan, so that matchesChan holds the
 		// correctly labeled matches.
 		matchesChan = rescoreMatchesChan
@@ -133,44 +157,52 @@ func playAndTrain(ctx context.Context) error {
 	return aiPlayers[0].Learner.Save()
 }
 
-func continuouslyPlay(ctx context.Context, matchIdGen *IdGen, matchStats *MatchStats, matchesChan chan<- *Match) {
-	// Defer clean exit, if interrupted.
-	defer func() {
-		klog.Infof("Continues playing interrupted: %v", ctx.Err())
-		close(matchesChan)
-	}()
-	for {
-		id := matchIdGen.NextId()
-		match := runMatch(ctx, id)
-		if ctx.Err() != nil {
-			klog.Infof("Match %d interrupted: context cancelled with %v", id, ctx.Err())
-			return
-		}
-		if match == nil {
-			klog.Errorf("runMatch() returned a nil Match!? Something went wrong.")
-			return
-		}
-		matchStats.AddResult(match)
-		msg := "draw"
-		if !match.FinalBoard().Draw() {
-			player := match.FinalBoard().Winner()
-			if match.Swapped {
-				player = 1 - player
+func continuouslyPlay(ctx context.Context, matchIdGen *IdGen, matchStats *MatchStats, matchesChan chan<- *Match) error {
+	exception := exceptions.Try(func() {
+		for {
+			id := matchIdGen.NextId()
+			match := runMatch(ctx, id)
+			if ctx.Err() != nil {
+				klog.Infof("Match %d interrupted: context cancelled with %v", id, ctx.Err())
+				return
 			}
-			msg = fmt.Sprintf("player %d wins", player)
+			if match == nil {
+				klog.Errorf("runMatch() returned a nil Match!? Something went wrong.")
+				return
+			}
+			matchStats.AddResult(match)
+			msg := "draw"
+			if !match.FinalBoard().Draw() {
+				player := match.FinalBoard().Winner()
+				if match.Swapped {
+					player = 1 - player
+				}
+				msg = fmt.Sprintf("player %d wins", player)
+			}
+			klog.V(1).Infof("Match %d finished (%s in %d moves). %d matches played so far. "+
+				"Last %d results: p0 win=%d, p1 win=%d, draw=%d",
+				id, msg, len(match.Actions), matchStats.TotalCount, NumMatchesToKeepForStats,
+				matchStats.Wins[0], matchStats.Wins[1], matchStats.Draws)
+			select {
+			case <-ctx.Done():
+				klog.Infof("Match %d interrupted: context cancelled with %v", id, ctx.Err())
+				return
+			case matchesChan <- match:
+				// Done.
+			}
 		}
-		klog.V(1).Infof("Match %d finished (%s in %d moves). %d matches played so far. "+
-			"Last %d results: p0 win=%d, p1 win=%d, draw=%d",
-			id, msg, len(match.Actions), matchStats.TotalCount, NumMatchesToKeepForStats,
-			matchStats.Wins[0], matchStats.Wins[1], matchStats.Draws)
-		select {
-		case <-ctx.Done():
-			klog.Infof("Match %d interrupted: context cancelled with %v", id, ctx.Err())
-			return
-		case matchesChan <- match:
-			// Done.
+	})
+	return exceptionToError(exception)
+}
+
+func exceptionToError(exception any) error {
+	if exception != nil {
+		if err, ok := exception.(error); ok {
+			return err
 		}
+		return errors.Errorf("match failed with exception: %v", exception)
 	}
+	return nil
 }
 
 // continuouslyRescoreMatches should be called concurrently, and it will indefinitely (or until ctx is cancelled)
@@ -178,46 +210,50 @@ func continuouslyPlay(ctx context.Context, matchIdGen *IdGen, matchStats *MatchS
 //
 // It automatically handles matches with swapped players (Match.Swapped), in which case the rescorePlayers are interpreted
 // in reverse.
-func continuouslyRescoreMatches(ctx context.Context, matchesIn <-chan *Match, matchesOut chan<- *Match, rescorePlayers ...PlayerNum) {
-	for match := range generics.IterChanWithContext(ctx, matchesIn) {
-		klog.V(1).Infof("Match received for rescoring.")
-		// Pick only moves done by player 0 (or both if they are the same)
-		from, to, _ := match.SelectRangeOfActions()
-		for idx := range match.Actions {
-			if idx < from || idx >= to {
-				// We only need to rescore those actions that are actually going
-				// to be used.
-				continue
-			}
-			board := match.Boards[idx]
-			if board.NumActions() < 2 {
-				// Skip when there is none or only one action available.
-				continue
-			}
-			player := board.NextPlayer
-			if match.Swapped {
-				player = 1 - player
-			}
-			if len(rescorePlayers) != 0 && slices.Index(rescorePlayers, player) == -1 {
-				// No need to rescore.
-				continue
-			}
+func continuouslyRescoreMatches(ctx context.Context, matchesIn <-chan *Match, matchesOut chan<- *Match, rescorePlayers ...PlayerNum) error {
+	exception := exceptions.Try(func() {
+		for match := range generics.IterChanWithContext(ctx, matchesIn) {
+			klog.V(1).Infof("Match received for rescoring.")
+			// Pick only moves done by player 0 (or both if they are the same)
+			from, to, _ := match.SelectRangeOfActions()
+			for idx := range match.Actions {
+				if idx < from || idx >= to {
+					// We only need to rescore those actions that are actually going
+					// to be used.
+					continue
+				}
+				board := match.Boards[idx]
+				if board.NumActions() < 2 {
+					// Skip when there is none or only one action available.
+					continue
+				}
+				player := board.NextPlayer
+				if match.Swapped {
+					player = 1 - player
+				}
+				if len(rescorePlayers) != 0 && slices.Index(rescorePlayers, player) == -1 {
+					// No need to rescore.
+					continue
+				}
 
-			// Rescore as player 0:
-			_, _, newScore, _ := aiPlayers[0].Play(board)
-			//newScores, ActionsLabels := aiPlayers[0].Searcher.ScoreMatch(
-			//	board, match.Actions[idx:idx+1])
+				// Rescore as player 0:
+				_, _, newScore, _ := aiPlayers[0].Play(board)
+				//newScores, ActionsLabels := aiPlayers[0].Searcher.ScoreMatch(
+				//	board, match.Actions[idx:idx+1])
 
-			// Clone over new scores and labels for the particular action on the match.
-			match.Scores[idx] = newScore
-			//if ActionsLabels != nil {
-			//	match.ActionsLabels[idx] = ActionsLabels[0]
-			//}
+				// Clone over new scores and labels for the particular action on the match.
+				match.Scores[idx] = newScore
+				//if ActionsLabels != nil {
+				//	match.ActionsLabels[idx] = ActionsLabels[0]
+				//}
+			}
+			klog.V(1).Infof("Rescored match issued.")
+			if !generics.WriteToChanWithContext(ctx, matchesOut, match) {
+				// Context cancelled, we are done.
+				return
+			}
 		}
-		klog.V(1).Infof("Rescored match issued.")
-		if !generics.WriteToChanWithContext(ctx, matchesOut, match) {
-			// Context cancelled, we are done.
-			return
-		}
-	}
+		return
+	})
+	return exceptionToError(exception)
 }
