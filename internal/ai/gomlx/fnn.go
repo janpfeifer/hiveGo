@@ -66,6 +66,7 @@ func NewFNN() *FNN {
 		kan.ParamDiscreteSplitPointsTrainable: true,
 		kan.ParamResidual:                     true,
 	})
+	fnn.ctx = fnn.ctx.Checked(false)
 	return fnn
 }
 
@@ -122,7 +123,7 @@ func (fnn *FNN) getBatchMask(inputs []*Node) *Node {
 	usedBatchSize := inputs[1]
 	g := logits.Graph()
 	batchSize := logits.Shape().Dim(0)
-	batchMask := LessThan(Iota(g, shapes.Make(dtypes.Int32, batchSize), 0), usedBatchSize)
+	batchMask := LessThan(Iota(g, shapes.Make(dtypes.Int32, batchSize, 1), 0), usedBatchSize)
 	return batchMask
 }
 
