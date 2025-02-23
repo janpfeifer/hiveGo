@@ -8,6 +8,8 @@ import (
 	"github.com/gomlx/gomlx/graph"
 	"github.com/gomlx/gomlx/ml/context"
 	"github.com/gomlx/gomlx/ml/context/checkpoints"
+	"github.com/gomlx/gomlx/ml/train"
+	"github.com/gomlx/gomlx/ml/train/optimizers"
 	"github.com/gomlx/gomlx/types/tensors"
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/generics"
@@ -40,16 +42,24 @@ type Scorer struct {
 	model Model
 
 	// Executors.
-	scoreExec, lossExec *context.Exec
+	scoreExec, lossExec, trainStepExec *context.Exec
 
 	// checkpoint handler, if model is being saved/loaded to/from disk.
 	checkpoint *checkpoints.Handler
+
+	// checkpointsToKeep is the number of copies of older checkpoints to keep around.
+	// Default to 10.
+	checkpointsToKeep int
 
 	// Hyperparameters cached values: they should also be set in modelCtx.
 	batchSize int
 
 	// muLearning limits Learn call to at most one at a time.
 	muLearning sync.Mutex
+
+	// optimizer used when training the model.
+	// ?Should this be owned by the model itself?
+	optimizer optimizers.Interface
 
 	// muSave makes saving sequential.
 	muSave sync.Mutex
@@ -102,27 +112,43 @@ func New(params parameters.Params) (*Scorer, error) {
 			return nil, fmt.Errorf("model type %s help requested", modelType)
 		}
 
+		// Number of checkpoints to keep.
+		var err error
+		s.checkpointsToKeep, err = parameters.PopParamOr(params, "keep", 10)
+		if err != nil {
+			return nil, err
+		}
+
 		// Create checkpoint, and load it if it exists.
 		if filePath != "" {
-			if err := s.createCheckpoint(filePath); err != nil {
+			if err = s.createCheckpoint(filePath); err != nil {
 				return nil, errors.WithMessagef(err, "failed to build checkpoint for model %s in path %s",
 					modelType, filePath)
 			}
 		}
 
+		// Create the backend.
+		_ = backend()
+
 		// Overwrite hyperparameters from given params.
-		err := s.extractParams(params)
+		err = s.extractParams(params)
 		if err != nil {
 			return nil, err
 		}
+		ctx := s.model.Context()
+		s.batchSize = context.GetParamOr(ctx, "batch_size", 100)
+
+		// Create optimizer to be used in training.
+		s.optimizer = optimizers.FromContext(ctx)
 
 		// Setup scoreExec executor.
-		s.scoreExec = context.NewExec(backend(), s.model.Context(),
+		s.scoreExec = context.NewExec(backend(), ctx,
 			func(ctx *context.Context, inputs []*graph.Node) *graph.Node {
 				// Remove last axis with dimension 1.
+				ctx = ctx.Checked(false)
 				return graph.Squeeze(s.model.ForwardGraph(ctx, inputs), -1)
 			})
-		s.lossExec = context.NewExec(backend(), s.model.Context(),
+		s.lossExec = context.NewExec(backend(), ctx,
 			func(ctx *context.Context, inputsAndLabels []*graph.Node) *graph.Node {
 				inputs := inputsAndLabels[:len(inputsAndLabels)-1]
 				labels := inputsAndLabels[len(inputsAndLabels)-1]
@@ -137,6 +163,22 @@ func New(params parameters.Params) (*Scorer, error) {
 				}
 				return loss
 			})
+		s.trainStepExec = context.NewExec(backend(), s.model.Context(),
+			func(ctx *context.Context, inputsAndLabels []*graph.Node) *graph.Node {
+				inputs := inputsAndLabels[:len(inputsAndLabels)-1]
+				labels := inputsAndLabels[len(inputsAndLabels)-1]
+				g := labels.Graph()
+				ctx.SetTraining(g, true)
+				loss := s.model.LossGraph(ctx, inputs, labels)
+				s.optimizer.UpdateGraph(ctx, g, loss)
+				train.ExecPerStepUpdateGraphFn(ctx, g)
+				return loss
+			})
+
+		// Force creating/loading of variables without race conditions first.
+		board := state.NewBoard()
+		_ = s.BoardScore(board)
+
 		return s, nil
 	}
 	return nil, nil
@@ -176,6 +218,9 @@ func (s *Scorer) BatchBoardScore(boards []*state.Board) []float32 {
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
 		return graph.DonateTensorBuffer(t, backend())
 	})
+	//s.muLearning.Lock()
+	//defer s.muLearning.Unlock()
+
 	scoresT := s.scoreExec.Call(donatedInputs...)[0]
 	scores := scoresT.Value().([]float32)
 	// Remove any padding:
@@ -188,18 +233,25 @@ func (s *Scorer) Learn(boards []*state.Board, boardLabels []float32) (loss float
 	//fmt.Printf("Learn(%d boards)\n", len(boards))
 	s.muLearning.Lock()
 	defer s.muLearning.Unlock()
-	return 0
+	lossT := s.trainStepExec.Call(s.createInputsAndLabels(boards, boardLabels)...)[0]
+	return tensors.ToScalar[float32](lossT)
 }
 
 // Loss returns a measure of lossExec for the model -- whatever it is.
 func (s *Scorer) Loss(boards []*state.Board, boardLabels []float32) (loss float32) {
+	//s.muLearning.Lock()
+	//defer s.muLearning.Unlock()
+	lossT := s.lossExec.Call(s.createInputsAndLabels(boards, boardLabels)...)[0]
+	return tensors.ToScalar[float32](lossT)
+}
+
+func (s *Scorer) createInputsAndLabels(boards []*state.Board, boardLabels []float32) []any {
 	inputs := s.model.CreateInputs(boards)
 	inputs = append(inputs, s.model.CreateLabels(boardLabels))
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
 		return graph.DonateTensorBuffer(t, backend())
 	})
-	lossT := s.lossExec.Call(donatedInputs...)[0]
-	return tensors.ToScalar[float32](lossT)
+	return donatedInputs
 }
 
 // Save should save the model.
@@ -286,6 +338,7 @@ func (s *Scorer) createCheckpoint(filePath string) error {
 		Build(s.model.Context()).
 		Dir(filePath).
 		Immediate().
+		Keep(10).
 		Done()
 	return err
 }
