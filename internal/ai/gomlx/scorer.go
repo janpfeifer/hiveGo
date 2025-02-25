@@ -75,6 +75,9 @@ var (
 var (
 	// Backend is a singleton, the same for all players.
 	backend = sync.OnceValue(func() backends.Backend { return backends.New() })
+
+	//
+	muNewClient sync.Mutex
 )
 
 const notSpecified = "#<not_specified>"
@@ -142,6 +145,8 @@ func New(params parameters.Params) (*Scorer, error) {
 		s.optimizer = optimizers.FromContext(ctx)
 
 		// Setup scoreExec executor.
+		muNewClient.Lock()
+		defer muNewClient.Unlock()
 		s.scoreExec = context.NewExec(backend(), ctx,
 			func(ctx *context.Context, inputs []*graph.Node) *graph.Node {
 				// Remove last axis with dimension 1.
@@ -215,11 +220,12 @@ func (s *Scorer) BoardScore(board *state.Board) float32 {
 // BatchBoardScore implements ai.BatchBoardScorer.
 func (s *Scorer) BatchBoardScore(boards []*state.Board) []float32 {
 	inputs := s.model.CreateInputs(boards)
+
+	s.muLearning.Lock()
+	defer s.muLearning.Unlock()
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
 		return graph.DonateTensorBuffer(t, backend())
 	})
-	//s.muLearning.Lock()
-	//defer s.muLearning.Unlock()
 
 	scoresT := s.scoreExec.Call(donatedInputs...)[0]
 	scores := scoresT.Value().([]float32)
