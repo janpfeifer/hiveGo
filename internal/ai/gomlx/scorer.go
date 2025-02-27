@@ -54,8 +54,8 @@ type Scorer struct {
 	// Hyperparameters cached values: they should also be set in modelCtx.
 	batchSize int
 
-	// muLearning limits Learn call to at most one at a time.
-	muLearning sync.Mutex
+	// muLearning "write" for learning, and "read" for scoring.
+	muLearning sync.RWMutex
 
 	// optimizer used when training the model.
 	// ?Should this be owned by the model itself?
@@ -221,8 +221,8 @@ func (s *Scorer) BoardScore(board *state.Board) float32 {
 func (s *Scorer) BatchBoardScore(boards []*state.Board) []float32 {
 	inputs := s.model.CreateInputs(boards)
 
-	s.muLearning.Lock()
-	defer s.muLearning.Unlock()
+	s.muLearning.RLock()
+	defer s.muLearning.RUnlock()
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
 		return graph.DonateTensorBuffer(t, backend())
 	})
@@ -245,8 +245,8 @@ func (s *Scorer) Learn(boards []*state.Board, boardLabels []float32) (loss float
 
 // Loss returns a measure of lossExec for the model -- whatever it is.
 func (s *Scorer) Loss(boards []*state.Board, boardLabels []float32) (loss float32) {
-	//s.muLearning.Lock()
-	//defer s.muLearning.Unlock()
+	s.muLearning.RLock()
+	defer s.muLearning.RUnlock()
 	lossT := s.lossExec.Call(s.createInputsAndLabels(boards, boardLabels)...)[0]
 	return tensors.ToScalar[float32](lossT)
 }
