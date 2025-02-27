@@ -29,7 +29,7 @@ const (
 	ModelFNN
 )
 
-//go:generate go tool enumer -type=ModelType -trimprefix=Model -transform=snake -values -text -json -yaml model.go
+//go:generate go tool enumer -type=ModelType -trimprefix=Model -transform=snake -values -text -json -yaml scorer.go
 
 // Scorer implements a generic GoMLX scorer for the Hive game.
 // It implements ai.BoardScorer, ai.BatchBoardScorer and ai.LearnerScorer.
