@@ -5,6 +5,7 @@ package features
 
 import (
 	"fmt"
+	"github.com/chewxy/math32"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"k8s.io/klog/v2"
 	"log"
@@ -56,6 +57,9 @@ const (
 	// Two values: one for the next player, and one for its opponent.
 	IdNumPlacementPositions
 
+	// IdMoveNumber is the Log(1 + move number).
+	IdMoveNumber
+
 	// IdNumFeatureIds defined -- this must always be the last enum.
 	IdNumFeatureIds
 )
@@ -104,6 +108,7 @@ var (
 		{IdOpponentAverageDistanceToQueen,
 			int(NumPieceTypes), 0, fAverageDistanceToQueen, 51},
 		{IdNumPlacementPositions, 2, 0, fNumPlacementPositions, 53},
+		{IdMoveNumber, 1, 0, fMoveNumber, 54},
 	}
 
 	// BoardFeaturesDim is the dimension of all board features concatenated, set during package
@@ -180,6 +185,10 @@ func PrettyPrint(f []float32) {
 		}
 		fmt.Println()
 	}
+}
+
+func fMoveNumber(b *Board, def *BoardSpec, f []float32) {
+	f[def.VecIndex] = math32.Log(float32(b.MoveNumber + 1))
 }
 
 func fNumOffBoard(b *Board, def *BoardSpec, f []float32) {

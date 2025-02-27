@@ -8,11 +8,11 @@ import (
 	"strings"
 )
 
-const _BoardIdName = "NumOffboardOpponentNumOffboardNumSurroundingQueenOpponentNumSurroundingQueenNumCanMoveOpponentNumCanMoveNumThreateningMovesOpponentNumThreateningMovesMovesToDrawNumSingleQueenCoveredAverageDistanceToQueenOpponentAverageDistanceToQueenNumPlacementPositionsNumFeatureIds"
+const _BoardIdName = "NumOffboardOpponentNumOffboardNumSurroundingQueenOpponentNumSurroundingQueenNumCanMoveOpponentNumCanMoveNumThreateningMovesOpponentNumThreateningMovesMovesToDrawNumSingleQueenCoveredAverageDistanceToQueenOpponentAverageDistanceToQueenNumPlacementPositionsMoveNumberNumFeatureIds"
 
-var _BoardIdIndex = [...]uint16{0, 11, 30, 49, 76, 86, 104, 123, 150, 161, 170, 182, 204, 234, 255, 268}
+var _BoardIdIndex = [...]uint16{0, 11, 30, 49, 76, 86, 104, 123, 150, 161, 170, 182, 204, 234, 255, 265, 278}
 
-const _BoardIdLowerName = "numoffboardopponentnumoffboardnumsurroundingqueenopponentnumsurroundingqueennumcanmoveopponentnumcanmovenumthreateningmovesopponentnumthreateningmovesmovestodrawnumsinglequeencoveredaveragedistancetoqueenopponentaveragedistancetoqueennumplacementpositionsnumfeatureids"
+const _BoardIdLowerName = "numoffboardopponentnumoffboardnumsurroundingqueenopponentnumsurroundingqueennumcanmoveopponentnumcanmovenumthreateningmovesopponentnumthreateningmovesmovestodrawnumsinglequeencoveredaveragedistancetoqueenopponentaveragedistancetoqueennumplacementpositionsmovenumbernumfeatureids"
 
 func (i BoardId) String() string {
 	if i >= BoardId(len(_BoardIdIndex)-1) {
@@ -43,10 +43,11 @@ func _BoardIdNoOp() {
 	_ = x[IdAverageDistanceToQueen-(11)]
 	_ = x[IdOpponentAverageDistanceToQueen-(12)]
 	_ = x[IdNumPlacementPositions-(13)]
-	_ = x[IdNumFeatureIds-(14)]
+	_ = x[IdMoveNumber-(14)]
+	_ = x[IdNumFeatureIds-(15)]
 }
 
-var _BoardIdValues = []BoardId{IdNumOffboard, IdOpponentNumOffboard, IdNumSurroundingQueen, IdOpponentNumSurroundingQueen, IdNumCanMove, IdOpponentNumCanMove, IdNumThreateningMoves, IdOpponentNumThreateningMoves, IdMovesToDraw, IdNumSingle, IdQueenCovered, IdAverageDistanceToQueen, IdOpponentAverageDistanceToQueen, IdNumPlacementPositions, IdNumFeatureIds}
+var _BoardIdValues = []BoardId{IdNumOffboard, IdOpponentNumOffboard, IdNumSurroundingQueen, IdOpponentNumSurroundingQueen, IdNumCanMove, IdOpponentNumCanMove, IdNumThreateningMoves, IdOpponentNumThreateningMoves, IdMovesToDraw, IdNumSingle, IdQueenCovered, IdAverageDistanceToQueen, IdOpponentAverageDistanceToQueen, IdNumPlacementPositions, IdMoveNumber, IdNumFeatureIds}
 
 var _BoardIdNameToValueMap = map[string]BoardId{
 	_BoardIdName[0:11]:         IdNumOffboard,
@@ -77,8 +78,10 @@ var _BoardIdNameToValueMap = map[string]BoardId{
 	_BoardIdLowerName[204:234]: IdOpponentAverageDistanceToQueen,
 	_BoardIdName[234:255]:      IdNumPlacementPositions,
 	_BoardIdLowerName[234:255]: IdNumPlacementPositions,
-	_BoardIdName[255:268]:      IdNumFeatureIds,
-	_BoardIdLowerName[255:268]: IdNumFeatureIds,
+	_BoardIdName[255:265]:      IdMoveNumber,
+	_BoardIdLowerName[255:265]: IdMoveNumber,
+	_BoardIdName[265:278]:      IdNumFeatureIds,
+	_BoardIdLowerName[265:278]: IdNumFeatureIds,
 }
 
 var _BoardIdNames = []string{
@@ -96,7 +99,8 @@ var _BoardIdNames = []string{
 	_BoardIdName[182:204],
 	_BoardIdName[204:234],
 	_BoardIdName[234:255],
-	_BoardIdName[255:268],
+	_BoardIdName[255:265],
+	_BoardIdName[265:278],
 }
 
 // BoardIdString retrieves an enum value from the enum constants string name.
