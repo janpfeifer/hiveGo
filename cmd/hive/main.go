@@ -94,6 +94,10 @@ func main() {
 	fmt.Printf("> %s\n", lipgloss.NewStyle().Bold(true).Render(board.FinishReason()))
 	ui.Print(board, false)
 	ui.PrintWinner(board)
+	winner := board.Winner()
+	if winner != PlayerInvalid && aiPlayers[winner] != nil {
+		fmt.Printf("Winner AI: %s\n", aiPlayers[winner])
+	}
 }
 
 // createPlayers in aiPlayers.
@@ -108,19 +112,15 @@ func createPlayers() {
 
 	// Create AI player:
 	var aiPlayerNum PlayerNum
-	if *flagWatch {
+	if strings.ToLower(*flagFirst) == "human" {
+		aiPlayerNum = 1
+	} else if strings.ToLower(*flagFirst) == "ai" {
 		aiPlayerNum = 0
+	} else if *flagFirst == "" {
+		// Random:
+		aiPlayerNum = PlayerNum(rand.IntN(2))
 	} else {
-		if strings.ToLower(*flagFirst) == "human" {
-			aiPlayerNum = 1
-		} else if strings.ToLower(*flagFirst) == "ai" {
-			aiPlayerNum = 0
-		} else if *flagFirst == "" {
-			// Random:
-			aiPlayerNum = PlayerNum(rand.IntN(2))
-		} else {
-			exceptions.Panicf("invalid --first=%q, only valid values are \"human\" or \"ai\"", *flagFirst)
-		}
+		exceptions.Panicf("invalid --first=%q, only valid values are \"human\" or \"ai\"", *flagFirst)
 	}
 	aiPlayers[aiPlayerNum] = must.M1(players.New(*flagAIConfig))
 	if !*flagWatch {
