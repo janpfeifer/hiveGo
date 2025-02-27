@@ -5,7 +5,9 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/charmbracelet/lipgloss"
 	. "github.com/janpfeifer/hiveGo/internal/state"
+	"golang.org/x/term"
 	"log"
 	"os"
 	"regexp"
@@ -18,6 +20,31 @@ const (
 	LinesPerRow    = 4
 	CharsPerColumn = 9
 )
+
+func printCentered(block string) {
+	lines := strings.Split(block, "\n")
+	terminalWidth, _, _ := term.GetSize(int(os.Stdout.Fd()))
+	blockWidth := 1_000_000
+	for _, line := range lines {
+		if len(line) == 0 {
+			continue
+		}
+		if len(line) < blockWidth {
+			blockWidth = len(line)
+		}
+	}
+	indent := (terminalWidth - blockWidth) / 2
+	if indent < 0 {
+		indent = 0
+	}
+	for _, line := range lines {
+		if len(line) == 0 {
+			fmt.Println()
+			continue
+		}
+		fmt.Printf("%s%s\n", strings.Repeat(" ", indent), line)
+	}
+}
 
 func centerString(s string, fit int) string {
 	if len(s) >= fit {
@@ -97,24 +124,20 @@ func (ui *UI) Run(board *Board) (*Board, error) {
 }
 
 func (ui *UI) PrintWinner(b *Board) {
-	d := b.Derived
-	if d.Wins[0] && d.Wins[1] {
-		reason := "Both queens were surrounded"
-		if d.Repeats >= 2 {
-			reason = "Last position repeated 3 times"
-		} else if b.MoveNumber > b.MaxMoves {
-			reason = "Max number of moves reached"
-		}
-		fmt.Printf("\n\n%s*** DRAW: %s! ***%s\n\n",
-			ui.blinkStart(), reason, ui.colorEnd())
+	winner := b.Winner()
+	fmt.Println()
+	if winner == PlayerInvalid {
+		printCentered(
+			lipgloss.NewStyle().
+				Background(lipgloss.Color("13")).
+				Foreground(lipgloss.Color("0")).
+				Padding(1, 2).
+				Render(fmt.Sprintf("*** DRAW: %s! ***", b.FinishReason())))
 	} else {
-		player := PlayerFirst
-		if d.Wins[1] {
-			player = PlayerSecond
-		}
-		fmt.Printf("\n\n%s*** %s PLAYER WINS!! Congratulations! ***%s\n\n",
-			ui.colorStart(player), strings.ToUpper(player.String()), ui.colorEnd())
+		fmt.Printf("\t%s *** %s PLAYER WINS!! Congratulations! *** %s\n",
+			ui.colorStart(winner), strings.ToUpper(winner.String()), ui.colorEnd())
 	}
+	fmt.Println()
 }
 
 func (ui *UI) ReadCommand(b *Board) (action Action, err error) {

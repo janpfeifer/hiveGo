@@ -423,12 +423,30 @@ func (b *Board) NumActions() int {
 // IsFinished returns whether the board represents a finished match.
 // It depends on Derived.
 func (b *Board) IsFinished() bool {
-	return b.Derived.Repeats >= MaxBoardRepeats || b.Derived.Wins[0] || b.Derived.Wins[1]
+	return b.Derived.Repeats >= MaxBoardRepeats || b.Derived.Wins[0] || b.Derived.Wins[1] || b.MoveNumber >= b.MaxMoves
+}
+
+func (b *Board) FinishReason() string {
+	if !b.IsFinished() {
+		return "game not finished yet"
+	}
+	if b.Winner() != PlayerInvalid {
+		return fmt.Sprintf("%s won", b.Winner())
+	}
+	if b.Derived.Repeats >= MaxBoardRepeats {
+		return fmt.Sprintf("current board position was repeated %d time", MaxBoardRepeats)
+	}
+	if b.MoveNumber >= b.MaxMoves {
+		return fmt.Sprintf("max number of moves %d (one per player) was reached", b.MaxMoves)
+	}
+	if b.Derived.Wins[0] && b.Derived.Wins[1] {
+		return "the Queens from both players were surrounded at the same time"
+	}
+	return "unknown reason!?"
 }
 
 func (b *Board) Draw() bool {
-	return b.IsFinished() && (b.Derived.Repeats >= MaxBoardRepeats ||
-		b.Derived.Wins[0] == b.Derived.Wins[1])
+	return b.IsFinished() && b.Derived.Wins[0] == b.Derived.Wins[1]
 }
 
 // Winner returns the player that wins on the current board.

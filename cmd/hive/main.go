@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/gomlx/exceptions"
 	"github.com/janpfeifer/hiveGo/internal/players"
 	_ "github.com/janpfeifer/hiveGo/internal/players/default"
@@ -90,6 +91,7 @@ func main() {
 		}
 	}
 
+	fmt.Printf("> %s\n", lipgloss.NewStyle().Bold(true).Render(board.FinishReason()))
 	ui.Print(board, false)
 	ui.PrintWinner(board)
 }
