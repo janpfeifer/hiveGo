@@ -60,7 +60,7 @@ func main() {
 	ui := cli.New(true, false)
 
 	// Loop over match.
-	for !board.IsFinished() {
+	for !board.IsFinished() && globalCtx.Err() == nil {
 		if newBoard, skip := ui.CheckNoAvailableAction(board); skip {
 			board = newBoard
 			continue
@@ -89,6 +89,10 @@ func main() {
 			board = newBoard
 			fmt.Println()
 		}
+	}
+	if globalCtx.Err() != nil {
+		fmt.Printf("\nMatch interrupted: %s\n", globalCtx.Err())
+		return
 	}
 
 	fmt.Printf("> %s\n", lipgloss.NewStyle().Bold(true).Render(board.FinishReason()))
