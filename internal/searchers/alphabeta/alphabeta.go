@@ -28,6 +28,8 @@ type Searcher struct {
 	maxMoveRandomness int
 	scorer            ai.BatchBoardScorer
 	stats             Stats
+
+	drawScore float32
 }
 
 // Assert that Searcher implements searchers.Searcher.
@@ -67,7 +69,7 @@ func New(scorer ai.BoardScorer) *Searcher {
 }
 
 // String returns the searcher name.
-func (s *Searcher) String() string {
+func (ab *Searcher) String() string {
 	return "alpha-beta"
 }
 
@@ -83,6 +85,14 @@ const (
 // Otherwise, it returns nil (and no error).
 //
 // It pops out the parameters used (see parameters.PopParamOr).
+//
+// Params used:
+//
+// - "max_depth": in number of plies. Default is DefaultMaxDepth which is currently set to 3.
+// - "discount": multiplicative discount the score per ply. Default is 0.98.
+// - "randomness": adds a normal noise to the scores with mean 0 and the given value as standard deviation. Default is 0.
+// - "max_move_rand": max move (in plies) of the game to which to apply randomness. After this move, randomness is set to 0.
+// - "draw_score": (-1 to +1) how much score to associate to a draw. If you want to skew the AI to avoid draws, set to some negative value.
 func NewFromParams(scorer ai.BoardScorer, params parameters.Params) (searchers.Searcher, error) {
 	isAB, err := parameters.PopParamOr(params, "ab", false)
 	if err != nil {
@@ -93,7 +103,7 @@ func NewFromParams(scorer ai.BoardScorer, params parameters.Params) (searchers.S
 	}
 	ab := New(scorer)
 
-	maxDepth, err := parameters.PopParamOr(params, "max_depth", int(-1))
+	maxDepth, err := parameters.PopParamOr(params, "max_depth", -1)
 	if err != nil {
 		return nil, err
 	}
@@ -117,13 +127,19 @@ func NewFromParams(scorer ai.BoardScorer, params parameters.Params) (searchers.S
 		ab.WithRandomness(randomness)
 	}
 
-	maxMoveRandomness, err := parameters.PopParamOr(params, "max_move_rand", int(-1))
+	maxMoveRandomness, err := parameters.PopParamOr(params, "max_move_rand", -1)
 	if err != nil {
 		return nil, err
 	}
 	if maxMoveRandomness >= 0 {
 		ab.WithMaxMoveRandomness(maxMoveRandomness)
 	}
+
+	drawScore, err := parameters.PopParamOr(params, "draw_score", float32(0))
+	if err != nil {
+		return nil, err
+	}
+	ab.drawScore = drawScore
 
 	return ab, nil
 }
@@ -219,7 +235,7 @@ func (ab *Searcher) Search(board *Board) (bestAction Action, bestBoard *Board, b
 	}
 	actionsLabels = nil
 	// TODO: implement maxTime by interactively increasing the depth in the search, until the time expires.
-	bestAction, bestBoard, bestScore = ab.searchToMaxDepth(board, ab.maxDepth)
+	bestAction, bestBoard, bestScore = ab.searchToMaxDepth(board, ab.maxDepth, board.NextPlayer)
 	elapsedTime := time.Since(start).Seconds()
 	if klog.V(3).Enabled() {
 		muLogBoard.Lock()
@@ -254,19 +270,20 @@ func (ab *Searcher) Search(board *Board) (bestAction Action, bestBoard *Board, b
 //	bestScore: score of taking betAction
 //
 // TODO: Add support to a parallelized version. Careful with stats, likely will need a mutex.
-func (ab *Searcher) searchToMaxDepth(board *Board, maxDepth int) (
+func (ab *Searcher) searchToMaxDepth(board *Board, maxDepth int, mainPlayer PlayerNum) (
 	bestAction Action, bestBoard *Board, bestScore float32) {
 	alpha := float32(-math.MaxFloat32)
 	beta := float32(-math.MaxFloat32)
 	addNoise := ab.randomness > 0 && (ab.maxMoveRandomness <= 0 || board.MoveNumber <= ab.maxMoveRandomness)
-	bestAction, bestBoard, bestScore = ab.recursion(board, maxDepth, alpha, beta, addNoise)
+	bestAction, bestBoard, bestScore = ab.recursion(board, maxDepth, mainPlayer, alpha, beta, addNoise)
 	return
 }
 
 var muLogBoard sync.Mutex
 
 // recursion of the alpha-beta pruning algorithm, with depthLeft plies to go.
-func (ab *Searcher) recursion(board *Board, depthLeft int, alpha, beta float32, addNoise bool) (
+// mainPlayer is the player that initiated the search -- some values are not symmetric, so we need this.
+func (ab *Searcher) recursion(board *Board, depthLeft int, mainPlayer PlayerNum, alpha, beta float32, addNoise bool) (
 	bestAction Action, bestBoard *Board, bestScore float32) {
 	isLeaf := depthLeft <= 1
 
@@ -317,6 +334,20 @@ func (ab *Searcher) recursion(board *Board, depthLeft int, alpha, beta float32, 
 				}
 			}
 		}
+
+		// Switch the score of draws.
+		if ab.drawScore != 0 {
+			for actionIdx, board := range newBoards {
+				if board.Draw() {
+					newScore := ab.drawScore
+					if board.NextPlayer != mainPlayer {
+						newScore = -newScore
+					}
+					scores[actionIdx] = newScore
+				}
+			}
+		}
+
 		// Pick best:
 		bestScore, bestActionIdx = pickBest(scores)
 		bestBoard = newBoards[bestActionIdx]
@@ -338,7 +369,7 @@ func (ab *Searcher) recursion(board *Board, depthLeft int, alpha, beta float32, 
 		// Only follows recursion if this action doesn't end the match.
 		if !newBoards[actionIdx].IsFinished() {
 			// Runs alphaBeta for opponent player, so the alpha/beta are reversed.
-			_, _, score := ab.recursion(newBoards[actionIdx], depthLeft-1, beta, alpha, addNoise)
+			_, _, score := ab.recursion(newBoards[actionIdx], depthLeft-1, mainPlayer, beta, alpha, addNoise)
 
 			// Apply discount to non-winning scores.
 			if math32.Abs(score) < ai.WinGameScore {
