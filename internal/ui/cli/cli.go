@@ -3,11 +3,13 @@ package cli
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/charmbracelet/lipgloss"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"golang.org/x/term"
+	"io"
 	"log"
 	"os"
 	"regexp"
@@ -306,6 +308,7 @@ func (ui *UI) PrintAvailablePieces(board *Board) {
 }
 
 func (ui *UI) PrintBoard(board *Board) {
+	var buf bytes.Buffer
 	minX, maxX, minY, maxY := board.DisplayUsedLimits()
 	minX--
 	maxX++
@@ -315,12 +318,13 @@ func (ui *UI) PrintBoard(board *Board) {
 	for y := minY; y <= maxY; y++ {
 		// Loop over line within a row.
 		for line := int8(0); line < LinesPerRow; line++ {
-			ui.printBoardLine(board, y, line, minX, maxX)
+			ui.printBoardLine(&buf, board, y, line, minX, maxX)
 		}
 	}
+	printCentered(buf.String())
 }
 
-func (ui *UI) printBoardLine(board *Board, y, line, minX, maxX int8) {
+func (ui *UI) printBoardLine(w io.Writer, board *Board, y, line, minX, maxX int8) {
 	for x := minX; x <= maxX+1; x++ {
 		adjY := y
 		adjLine := line
@@ -335,46 +339,46 @@ func (ui *UI) printBoardLine(board *Board, y, line, minX, maxX int8) {
 		pos := Pos{x, adjY}.FromDisplayPos()
 		player, piece, stacked := board.PieceAt(pos)
 		lastX := x == maxX+1
-		ui.printStrip(board, pos, player, piece, stacked, adjLine, lastX)
+		ui.printStrip(w, board, pos, player, piece, stacked, adjLine, lastX)
 	}
-	fmt.Println()
+	_, _ = fmt.Fprintln(w)
 }
 
-func (ui *UI) printStrip(board *Board, pos Pos,
+func (ui *UI) printStrip(w io.Writer, board *Board, pos Pos,
 	player PlayerNum, piece PieceType, stacked bool, line int8, lastX bool) {
 	switch {
 	case line == 0:
-		fmt.Print(" /")
+		_, _ = fmt.Fprint(w, " /")
 		if !lastX {
-			fmt.Print(strings.Repeat(" ", CharsPerColumn-2))
+			_, _ = fmt.Fprint(w, strings.Repeat(" ", CharsPerColumn-2))
 		}
 	case line == 1:
-		fmt.Print("/")
+		_, _ = fmt.Fprint(w, "/")
 		if !lastX {
 			coord := fmt.Sprintf("%d,%d", pos.X(), pos.Y())
-			fmt.Print(" " + centerString(coord, CharsPerColumn-2))
+			_, _ = fmt.Fprint(w, " "+centerString(coord, CharsPerColumn-2))
 		}
 	case line == 2:
-		fmt.Print("\\")
+		_, _ = fmt.Fprint(w, "\\")
 		if !lastX {
 			if piece == NoPiece {
-				fmt.Print(strings.Repeat(" ", CharsPerColumn-1))
+				_, _ = fmt.Fprint(w, strings.Repeat(" ", CharsPerColumn-1))
 			} else {
-				fmt.Print(" ")
+				_, _ = fmt.Fprint(w, " ")
 				if !stacked {
-					fmt.Print(ui.colorStartForPiece(player, piece) +
-						centerString(PieceLetters[piece], CharsPerColumn-2) +
+					_, _ = fmt.Fprint(w, ui.colorStartForPiece(player, piece)+
+						centerString(PieceLetters[piece], CharsPerColumn-2)+
 						ui.colorEnd())
 				} else {
 					stack := board.StackAt(pos)
-					fmt.Print(ui.stackedPieces(player, piece, stack, CharsPerColumn-2))
+					_, _ = fmt.Fprint(w, ui.stackedPieces(player, piece, stack, CharsPerColumn-2))
 				}
 			}
 		}
 	case line == 3:
-		fmt.Print(" \\")
+		_, _ = fmt.Fprint(w, " \\")
 		if !lastX {
-			fmt.Print(strings.Repeat("_", CharsPerColumn-2))
+			_, _ = fmt.Fprint(w, strings.Repeat("_", CharsPerColumn-2))
 		}
 	}
 }
