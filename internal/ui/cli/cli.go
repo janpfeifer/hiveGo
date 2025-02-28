@@ -23,16 +23,20 @@ const (
 	CharsPerColumn = 9
 )
 
+var ansiFilter = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+// displayWidth of s removes its color/control sequences and returns the length of what is left.
+func displayWidth(s string) int {
+	return len(ansiFilter.ReplaceAllString(s, ""))
+}
+
 func printCentered(block string) {
 	lines := strings.Split(block, "\n")
 	terminalWidth, _, _ := term.GetSize(int(os.Stdout.Fd()))
-	blockWidth := 1_000_000
+	blockWidth := 0
 	for _, line := range lines {
-		if len(line) == 0 {
-			continue
-		}
-		if len(line) < blockWidth {
-			blockWidth = len(line)
+		if len(line) > blockWidth {
+			blockWidth = displayWidth(line)
 		}
 	}
 	indent := (terminalWidth - blockWidth) / 2
@@ -136,8 +140,8 @@ func (ui *UI) PrintWinner(b *Board) {
 				Padding(1, 2).
 				Render(fmt.Sprintf("*** DRAW: %s! ***", b.FinishReason())))
 	} else {
-		fmt.Printf("\t%s *** %s PLAYER WINS!! Congratulations! *** %s\n",
-			ui.colorStart(winner), strings.ToUpper(winner.String()), ui.colorEnd())
+		printCentered(fmt.Sprintf("%s *** %s PLAYER WINS!! Congratulations! *** %s\n",
+			ui.colorStart(winner), strings.ToUpper(winner.String()), ui.colorEnd()))
 	}
 	fmt.Println()
 }
