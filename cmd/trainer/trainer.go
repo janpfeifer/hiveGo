@@ -338,7 +338,8 @@ func updateMovingAverages(match *Match, count int, ratioWins, ratioLosses, ratio
 	if winner == PlayerInvalid {
 		valueDraw = 1
 	} else {
-		if match.Swapped {
+		swapped := match.PlayersIdx[0] == 1
+		if swapped {
 			winner = 1 - winner
 		}
 		switch winner {

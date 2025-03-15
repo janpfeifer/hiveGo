@@ -76,8 +76,13 @@ var (
 	// Backend is a singleton, the same for all players.
 	backend = sync.OnceValue(func() backends.Backend { return backends.New() })
 
-	//
+	// muNewClient is a Mutex used to synchronize access to GoMLX client initialization
+	// or related critical sections.
 	muNewClient sync.Mutex
+
+	// Cache of models: per model type / checkpoint name.
+	muModelsCache sync.Mutex
+	modelsCache   = make(map[string]map[string]*Scorer)
 )
 
 const notSpecified = "#<not_specified>"
@@ -90,6 +95,9 @@ const notSpecified = "#<not_specified>"
 //
 // If no known model type is configured, it returns nil, nil.
 func New(params parameters.Params) (*Scorer, error) {
+	muModelsCache.Lock()
+	defer muModelsCache.Unlock()
+
 	for _, modelType := range ModelTypeValues() {
 		if modelType == ModelNone {
 			continue
@@ -100,8 +108,20 @@ func New(params parameters.Params) (*Scorer, error) {
 			continue
 		}
 
+		// Check cache for previously created models.
+		var s *Scorer
+		cachePerModelType, found := modelsCache[key]
+		if found {
+			if s, found = cachePerModelType[filePath]; found {
+				return s, nil
+			}
+		} else {
+			cachePerModelType = make(map[string]*Scorer)
+			modelsCache[key] = cachePerModelType
+		}
+
 		// Create model and context.
-		s := &Scorer{Type: modelType}
+		s = &Scorer{Type: modelType}
 		switch modelType {
 		case ModelFNN:
 			s.model = NewFNN()
@@ -183,6 +203,11 @@ func New(params parameters.Params) (*Scorer, error) {
 		// Force creating/loading of variables without race conditions first.
 		board := state.NewBoard()
 		_ = s.BoardScore(board)
+
+		// Cache resulting scorer.
+		cachePerModelType[filePath] = s
+
+		klog.V(1).Infof("Created new scorer %s", s)
 
 		return s, nil
 	}

@@ -12,6 +12,7 @@ import (
 	"io"
 	"k8s.io/klog/v2"
 	"log"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
@@ -25,8 +26,8 @@ type Match struct {
 	// Match number: only for printing.
 	MatchNum int
 
-	// Whether p0/p1 swapped positions in this match.
-	Swapped bool
+	// Which AI played this match as the first/last player.
+	PlayersIdx [2]int
 
 	// Match actions, alternating players.
 	Actions []Action
@@ -196,12 +197,33 @@ var (
 
 // runMatch from start to end, and return the collected moves and scores.
 // It returns nil is the ctx was cancelled at any point.
-func runMatch(ctx context.Context, matchNum int) *Match {
-	swapped := matchNum%2 != 0
-	matchName := fmt.Sprintf("Match-%05d (swap=%v)", matchNum, swapped)
+func runMatch(ctx context.Context, matchNum int, useRandomPlayers bool) *Match {
+	if len(aiPlayers) < 0 {
+		klog.Fatalf("No AI players configured, cannot run matches")
+	}
+
 	board := NewBoard()
 	board.MaxMoves = *flagMaxMoves
-	match := &Match{MatchNum: matchNum, Swapped: swapped, Boards: []*Board{board}}
+	match := &Match{MatchNum: matchNum, Boards: []*Board{board}}
+	if useRandomPlayers {
+		for ii := range 2 {
+			match.PlayersIdx[ii] = rand.Intn(len(aiPlayers))
+		}
+	} else {
+		if len(aiPlayers) > 2 {
+			klog.Fatalf("Expected 1 or 2 AI players configured, got %d", len(aiPlayers))
+		}
+		if len(aiPlayers) == 2 {
+			// Alternate who plays first.
+			if matchNum%2 == 0 {
+				match.PlayersIdx[0], match.PlayersIdx[1] = 0, 1
+			} else {
+				match.PlayersIdx[0], match.PlayersIdx[1] = 1, 0
+			}
+		}
+	}
+	matchName := fmt.Sprintf("Match-%05d (First players=%d, Second player=%d)",
+		matchNum, match.PlayersIdx[0], match.PlayersIdx[1])
 
 	// Run match.
 	lastWasSkip := false
@@ -210,12 +232,10 @@ func runMatch(ctx context.Context, matchNum int) *Match {
 			return nil
 		}
 		playerNum := board.NextPlayer
-		if swapped {
-			playerNum = 1 - playerNum
-		}
+		aiPlayer := aiPlayers[match.PlayersIdx[playerNum]]
 		if klog.V(1).Enabled() {
 			klog.Infof(
-				"\n\n%s: playerNum %d at turn %d (#valid actions=%d)\n\n",
+				"\n\n%s: %s at turn %d (#valid actions=%d)\n\n",
 				matchName, playerNum, board.MoveNumber, len(board.Derived.Actions))
 		}
 		var action Action
@@ -230,7 +250,7 @@ func runMatch(ctx context.Context, matchNum int) *Match {
 				klog.Fatalf("No moves to either side!?\n\n%v\n", board)
 			}
 		} else {
-			action, board, score, actionLabels = aiPlayers[playerNum].Play(board)
+			action, board, score, actionLabels = aiPlayer.Play(board)
 			if lastWasSkip {
 				// Use inverse of this score for previous "NOOP" move.
 				match.Scores[len(match.Scores)-1] = -score
@@ -267,17 +287,11 @@ func runMatch(ctx context.Context, matchNum int) *Match {
 			}
 		} else {
 			player := finalBoard.Winner()
-			if swapped {
-				player = 1 - player
-			}
-			msg = fmt.Sprintf("player %d won!", player)
+			winnerAI := aiPlayers[match.PlayersIdx[player]]
+			msg = fmt.Sprintf("%s won! (%s)", player, winnerAI)
 		}
-		started := 0
-		if match.Swapped {
-			started = 1
-		}
-		klog.V(1).Infof("\n\nMatch %d: finished at turn %d, %s (Player %d started)\n\n",
-			matchNum, finalBoard.MoveNumber, msg, started)
+		klog.Infof("\n\n%s: finished at turn %d, %s\n\n",
+			matchNum, finalBoard.MoveNumber, msg)
 	}
 
 	return match
@@ -297,16 +311,8 @@ func setAutoBatchSizes(batchSize int) {
 	*/
 }
 
-var (
-	// Set to true if same AI is playing both sides.
-	isSamePlayer = false
-)
-
 func setAutoBatchSizesForParallelism(parallelism int) {
 	autoBatchSize := parallelism / 4
-	if isSamePlayer {
-		autoBatchSize = parallelism / 2
-	}
 	setAutoBatchSizes(autoBatchSize)
 }
 
@@ -358,7 +364,7 @@ func runMatches(ctx context.Context, matchesChan chan<- *Match) {
 		wg.Add(1)
 		go func(matchNum int) {
 			defer wg.Done()
-			match := runMatch(ctx, matchNum)
+			match := runMatch(ctx, matchNum, false) // Not random players, but rather among 2 players (each start half the matches).
 			if ctx.Err() != nil {
 				klog.Infof("Match %d interrupted: context cancelled with %v", matchNum, ctx.Err())
 			}
@@ -509,11 +515,13 @@ func reportMatches(results <-chan *Match) (matches []*Match) {
 		// Accounting.
 		board := match.FinalBoard()
 		wins := board.Derived.Wins
-		if match.Swapped {
+		swapped := match.PlayersIdx[0] == 1
+		if swapped {
+			// Players were swapped.
 			wins[0], wins[1] = wins[1], wins[0]
 		}
 		if *flagPrint {
-			if match.Swapped {
+			if swapped {
 				fmt.Printf("*** Players swapped positions at this match! ***\n")
 			}
 			ui.PrintBoard(board)

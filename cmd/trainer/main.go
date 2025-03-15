@@ -14,6 +14,8 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
+	"slices"
+	"strings"
 	"time"
 	// "github.com/janpfeifer/hiveGo/ai/tfddqn"
 	//ab "github.com/janpfeifer/hiveGo/internal/searchers/alphabeta"
@@ -25,10 +27,9 @@ var _ = fmt.Printf
 var (
 	flagCpuProfile = flag.String("cpu_profile", "", "write cpu profile to `file`")
 
-	flagPlayers = [2]*string{
-		flag.String("ai0", "linear,ab", "Configuration string for ai playing as the starting player."),
-		flag.String("ai1", "linear,ab", "Configuration string for ai playing as the second player."),
-	}
+	flagPlayers = flag.String("ai", "linear,ab,max_depth=2;same", "Configuration string for AI players. "+
+		"Each AI player configuration is separated by \";\", and options within an AI config are separated "+
+		"by \",\". The special value \"same\" repeats the previous AI configuration.")
 
 	flagMaxMoves = flag.Int(
 		"max_moves", DefaultMaxMoves, "Max moves before game is assumed to be a draw.")
@@ -50,12 +51,14 @@ var (
 		"Must be used in combination with --last_actions. If set, it defines the first action to start using "+
 			"for training, and --last_actions will define how many actions to learn from.")
 
-	flagTrain           = flag.Bool("train", false, "Set to true to train with match data.")
+	flagTrain = flag.String("train", "same", "Set to the AI model definition to be trained. "+
+		"If not empty, train the given model. "+
+		"If the value is \"same\", it uses teh first AI model configured with -ai.")
 	flagTrainLoops      = flag.Int("train_loops", 1, "After acquiring data for all matches, how many times to loop the training over it.")
 	flagTrainValidation = flag.Int("train_validation", 0, "Percentage (int value) of matches used for validation (evaluation only).")
 	flagRescore         = flag.Bool("rescore", false, "If to rescore matches.")
 	flagDistill         = flag.Bool("distill", false,
-		"If set it will simply distill from --ai1 to --ai0, without searching for best moves.")
+		"If set it will simply distill from the first model set by -ai to the second, without searching for best moves.")
 	flagTrainWithEndScore = flag.Float64("train_with_end_score",
 		0, "If > 0, it will use the final match score across all moves. "+
 			"Also known as Monte Carlo learning. Values between 0 and 1 are interpreted as weight "+
@@ -79,7 +82,9 @@ var (
 		"After how many rescored matches/action to issue another learning mini-batch.")
 
 	// AI for the players. If their configuration is exactly the same, they will point to the same object.
-	aiPlayers [2]*players.SearcherScorer
+	// trainingAI is the AI set to be trained (if one is set) -- it is nil, if none was set.
+	aiPlayers  []*players.SearcherScorer
+	trainingAI *players.SearcherScorer
 
 	// globalCtx used everywhere. It is cancelled when the program is about to exit either by
 	// an interrupt (ctrl+C) or by reaching the end.
@@ -105,10 +110,15 @@ func main() {
 	if *flagMaxMoves <= 0 {
 		klog.Fatalf("Invalid --max_moves=%d", *flagMaxMoves)
 	}
+
+	// Create AI players, and training AI if one is configured.
 	createAIPlayers()
 
-	// Continuous play and train uses a separate flow:
 	if *flagContinuosPlayAndTrain {
+		if trainingAI == nil {
+			klog.Fatal("For continuous training with -play_and_train you need to set an AI model to train with -train=...")
+		}
+		// (a) Continuous play and train uses a separate flow:
 		err := playAndTrain(globalCtx)
 		if err != nil {
 			globalCancel()
@@ -147,7 +157,7 @@ func main() {
 			klog.Fatalf("Failed to save matches in %s: %+v", *flagSaveMatches, err)
 		}
 	}
-	if *flagTrain {
+	if trainingAI != nil {
 		trainFromMatches(matches)
 		return
 	}
@@ -171,23 +181,39 @@ func getParallelism() (parallelism int) {
 }
 
 func createAIPlayers() {
-	// Create AI players. If they are the same, reuse -- sharing same TF Session can be more
-	// efficient.
-	klog.V(1).Infof("Creating player 0 from %q", *flagPlayers[0])
-	var err error
-	aiPlayers[0], err = players.New(*flagPlayers[0])
-	if err != nil {
-		klog.Fatalf("Failed to create player 0: %+v", err)
-	}
-	if *flagPlayers[1] == *flagPlayers[0] || *flagPlayers[1] == "same" {
-		aiPlayers[1] = aiPlayers[0]
-		isSamePlayer = true
-		klog.V(1).Infof("Player 1 is the same as player 0, reusing AI player object.")
-	} else {
-		klog.V(1).Infof("Creating player 1 from %q", *flagPlayers[1])
-		aiPlayers[1], err = players.New(*flagPlayers[1])
+	configs := strings.Split(*flagPlayers, ";")
+	configs = slices.DeleteFunc(configs, func(s string) bool { return s == "" })
+	aiPlayers = make([]*players.SearcherScorer, len(configs))
+
+	for idxConfig, config := range configs {
+		klog.V(1).Infof("Creating AI #%d from %q", idxConfig, config)
+		if config == "same" {
+			if idxConfig == 0 {
+				klog.Fatalf("First AI player cannot be configured as %q", config)
+			}
+			aiPlayers[idxConfig] = aiPlayers[idxConfig-1]
+			continue
+		}
+		var err error
+		aiPlayers[idxConfig], err = players.New(config)
 		if err != nil {
-			klog.Fatalf("Failed to create player 1: %+v", err)
+			klog.Fatalf("Failed to create AI #%d from %q: %+v", idxConfig, config, err)
+		}
+	}
+
+	config := *flagTrain
+	if config != "" {
+		if config == "same" {
+			if len(aiPlayers) == 0 {
+				klog.Fatalf("No AI player configured, cannot use %q for training AI", config)
+			}
+			trainingAI = aiPlayers[0]
+		} else {
+			var err error
+			trainingAI, err = players.New(config)
+			if err != nil {
+				klog.Fatalf("Failed to create training AI from %q: %+v", config, err)
+			}
 		}
 	}
 }

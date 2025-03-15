@@ -12,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
-	"slices"
 	"sync"
 )
 
@@ -34,12 +33,15 @@ func (ig *IdGen) NextId() int {
 	return id
 }
 
+type PerPlayerStats struct {
+	Wins, Draws, Losses int
+}
+
 type MatchStats struct {
 	mu          sync.Mutex
 	TotalCount  int
 	lastMatches []*Match
-	Wins        [2]int
-	Draws       int
+	PerPlayer   []PerPlayerStats
 }
 
 const NumMatchesToKeepForStats = 200
@@ -47,6 +49,7 @@ const NumMatchesToKeepForStats = 200
 func NewMatchStats() *MatchStats {
 	return &MatchStats{
 		lastMatches: make([]*Match, 0, NumMatchesToKeepForStats),
+		PerPlayer:   make([]PerPlayerStats, 0, len(aiPlayers)),
 	}
 }
 
@@ -55,19 +58,7 @@ func (ms *MatchStats) AddResult(match *Match) {
 	defer ms.mu.Unlock()
 
 	if len(ms.lastMatches) >= NumMatchesToKeepForStats {
-		// Remove counts for oldest match.
-		oldMatch := ms.lastMatches[ms.TotalCount%NumMatchesToKeepForStats]
-		b := oldMatch.FinalBoard()
-		if b.Draw() {
-			ms.Draws--
-		} else {
-			player := b.Winner()
-			if oldMatch.Swapped {
-				player = 1 - player
-			}
-			ms.Wins[player]--
-		}
-		// Replace with new match.
+		// Replace old match.
 		ms.lastMatches[ms.TotalCount%NumMatchesToKeepForStats] = match
 	} else {
 		// Add new match.
@@ -75,17 +66,18 @@ func (ms *MatchStats) AddResult(match *Match) {
 	}
 	ms.TotalCount++
 
-	// Add count of this match.
-	b := match.FinalBoard()
-	if b.Draw() {
-		ms.Draws++
-	} else {
-		player := b.Winner()
-		if match.Swapped {
-			player = 1 - player
-		}
-		ms.Wins[player]++
-	}
+	// Update totals:
+	// TODO: matrix of first player vs second player stats.
+	//b := match.FinalBoard()
+	//if b.Draw() {
+	//	ms.Draws++
+	//} else {
+	//	player := b.Winner()
+	//	if match.Swapped {
+	//		player = 1 - player
+	//	}
+	//	ms.Wins[player]++
+	//}
 }
 
 // Players[0] is the one being trained, and also playing.
@@ -95,9 +87,6 @@ func (ms *MatchStats) AddResult(match *Match) {
 // If interrupted return nil. If something failed (like saving model), returns the error.
 func playAndTrain(ctx context.Context) error {
 	parallelism := getParallelism()
-	if isSamePlayer {
-		klog.Infof("Same player playing both sides, learning from both.")
-	}
 
 	// Generate played games.
 	matchesChan := make(chan *Match, 5)
@@ -118,27 +107,23 @@ func playAndTrain(ctx context.Context) error {
 		close(c)
 	}(matchesChan)
 
-	// Rescore player1's moves, for learning.
-	if !isSamePlayer {
-		rescoreMatchesChan := make(chan *Match, 2*parallelism)
-		wgRescore, ctxRescore := errgroup.WithContext(ctx)
-		klog.Infof("Rescoring player 1's moves for learning (parallelism=%d).", parallelism)
-		for range parallelism {
-			wgRescore.Go(func() error {
-				return continuouslyRescoreMatches(ctxRescore, matchesChan, rescoreMatchesChan, PlayerSecond)
-			})
-		}
-		go func() {
-			err := wgPlay.Wait()
-			if err != nil {
-				klog.Errorf("Rescoring a match failed: %+v", err)
-			}
-			close(rescoreMatchesChan)
-		}()
-		// Swap matchesChan and rescoreMatchesChan, so that matchesChan holds the
-		// correctly labeled matches.
-		matchesChan = rescoreMatchesChan
+	// Rescore moves, for learning.
+	rescoreMatchesChan := make(chan *Match, 2*parallelism)
+	wgRescore, ctxRescore := errgroup.WithContext(ctx)
+	klog.Infof("Rescoring matches for learning (parallelism=%d).", parallelism)
+	for range parallelism {
+		wgRescore.Go(func() error {
+			return continuouslyRescoreMatches(ctxRescore, matchesChan, rescoreMatchesChan)
+		})
 	}
+	go func() {
+		err := wgPlay.Wait()
+		if err != nil {
+			klog.Errorf("Rescoring a match failed: %+v", err)
+		}
+		close(rescoreMatchesChan)
+	}()
+	matchesChan = rescoreMatchesChan
 
 	// Rescore from end-game score.
 	if *flagTrainWithEndScore > 0 {
@@ -154,14 +139,14 @@ func playAndTrain(ctx context.Context) error {
 		return err
 	}
 	klog.Infof("Saving on exit: %s", aiPlayers[0].Scorer)
-	return aiPlayers[0].Learner.Save()
+	return trainingAI.Learner.Save()
 }
 
 func continuouslyPlay(ctx context.Context, matchIdGen *IdGen, matchStats *MatchStats, matchesChan chan<- *Match) error {
 	exception := exceptions.Try(func() {
 		for {
 			id := matchIdGen.NextId()
-			match := runMatch(ctx, id)
+			match := runMatch(ctx, id, true)
 			if ctx.Err() != nil {
 				klog.Infof("Match %d interrupted: context cancelled with %v", id, ctx.Err())
 				return
@@ -171,18 +156,15 @@ func continuouslyPlay(ctx context.Context, matchIdGen *IdGen, matchStats *MatchS
 				return
 			}
 			matchStats.AddResult(match)
-			msg := "draw"
-			if !match.FinalBoard().Draw() {
-				player := match.FinalBoard().Winner()
-				if match.Swapped {
-					player = 1 - player
+			if klog.V(1).Enabled() {
+				msg := "draw"
+				if !match.FinalBoard().Draw() {
+					player := match.FinalBoard().Winner()
+					msg = fmt.Sprintf("player %d wins", match.PlayersIdx[player])
 				}
-				msg = fmt.Sprintf("player %d wins", player)
+				klog.Infof("Match %d finished (%s in %d moves). %d matches played so far. ",
+					id, msg, len(match.Actions), matchStats.TotalCount)
 			}
-			klog.V(1).Infof("Match %d finished (%s in %d moves). %d matches played so far. "+
-				"Last %d results: p0 win=%d, p1 win=%d, draw=%d",
-				id, msg, len(match.Actions), matchStats.TotalCount, NumMatchesToKeepForStats,
-				matchStats.Wins[0], matchStats.Wins[1], matchStats.Draws)
 			select {
 			case <-ctx.Done():
 				klog.Infof("Match %d interrupted: context cancelled with %v", id, ctx.Err())
@@ -227,17 +209,9 @@ func continuouslyRescoreMatches(ctx context.Context, matchesIn <-chan *Match, ma
 					// Skip when there is none or only one action available.
 					continue
 				}
-				player := board.NextPlayer
-				if match.Swapped {
-					player = 1 - player
-				}
-				if len(rescorePlayers) != 0 && slices.Index(rescorePlayers, player) == -1 {
-					// No need to rescore.
-					continue
-				}
 
 				// Rescore as player 0:
-				_, _, newScore, _ := aiPlayers[0].Play(board)
+				_, _, newScore, _ := trainingAI.Play(board)
 				//newScores, ActionsLabels := aiPlayers[0].Searcher.ScoreMatch(
 				//	board, match.Actions[idx:idx+1])
 
