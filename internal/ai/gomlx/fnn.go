@@ -141,7 +141,8 @@ func (fnn *FNN) ForwardGraph(ctx *context.Context, inputs []*Node) *Node {
 		logits = fnnLayer.New(ctx.In("fnn"), logits, 1).Done()
 	}
 	logits.AssertDims(batchSize, 1) // 2-dim tensor, with batch size as the leading dimension.
-	return logits
+	predictions := MulScalar(Tanh(logits), 0.99)
+	return predictions
 }
 
 // LossGraph calculates the lossExec.
