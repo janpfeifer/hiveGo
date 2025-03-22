@@ -91,7 +91,7 @@ func (fnn *FNN) paddedBatchSize(numBoards int) int {
 	return paddedSize
 }
 
-// CreateInputs implements Model.CreateInputs.
+// CreateInputs implements ValueModel.CreateInputs.
 func (fnn *FNN) CreateInputs(boards []*state.Board) []*tensors.Tensor {
 	// TODO: add mask and batchSizes in power-of-2 (or some other value)
 	version := context.GetParamOr(fnn.ctx, "features_version", features.BoardFeaturesDim)
@@ -107,7 +107,7 @@ func (fnn *FNN) CreateInputs(boards []*state.Board) []*tensors.Tensor {
 	return []*tensors.Tensor{boardFeatures, tensors.FromScalar(int32(len(boards)))}
 }
 
-// CreateLabels implements Model.CreateLabels.
+// CreateLabels implements ValueModel.CreateLabels.
 func (fnn *FNN) CreateLabels(labels []float32) *tensors.Tensor {
 	paddedBatchSize := fnn.paddedBatchSize(len(labels))
 	boardLabels := tensors.FromShape(shapes.Make(dtypes.Float32, paddedBatchSize, 1))
@@ -132,7 +132,7 @@ func (fnn *FNN) ForwardGraph(ctx *context.Context, inputs []*Node) *Node {
 	logits := inputs[0]
 	batchSize := logits.Shape().Dim(0)
 
-	// Model itself is an FNN or a KAN.
+	// ValueModel itself is an FNN or a KAN.
 	if context.GetParamOr(ctx, "kan", false) {
 		// Use KAN, all configured by context hyperparameters. See createDefaultContext for defaults.
 		logits = kan.New(ctx.In("kan"), logits, 1).Done()

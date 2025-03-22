@@ -2,12 +2,13 @@ package searchers
 
 import (
 	. "github.com/janpfeifer/hiveGo/internal/state"
+	"math"
+	"slices"
 )
 
 var (
-	// IdleChan if created is read before each chunk of search is
-	// done. This allows for processing to happens in the idle callbacks
-	// when running in javascript (via GopherJS)
+	// IdleChan if created is read before each chunk of search is done.
+	// This allows for processing to happen in the idle callbacks when running in javascript (via GopherJS).
 	IdleChan chan bool
 )
 
@@ -16,15 +17,24 @@ var (
 type Searcher interface {
 	// Search returns the next action to take on the given board, along with the updated Board (after taking the action)
 	// and the expected score of taking that action.
-	//
-	// Optionally, it can also return the score for each of the actions available on the board.
-	// Some algorithms (e.g.: alpha-beta pruning) don't provide good approximations to those, so they return it nil.
-	Search(board *Board) (bestAction Action, bestBoard *Board, bestScore float32, actionsLabels []float32)
+	Search(board *Board) (bestAction Action, bestBoard *Board, bestScore float32)
+}
 
-	// ScoreMatch will score the board at each board position, starting from the current one,
-	// and following each one of the actions. In the end, len(scores) == len(actions)+1.
-	//
-	// actionsLabels is a probability distribution over the actions (or a one-hot encoding if there is
-	// a winning action).
-	//ScoreMatch(board *Board, actions []Action) (scores []float32, actionsLabels [][]float32)
+// softmax returns the softmax of the given logits in a numerically stable way.
+func softmax(logits []float64) (probs []float64) {
+	probs = make([]float64, len(logits))
+	var sum float64
+
+	// Subtract maxValue from all logits keep the probability the same, but makes for more numerically stable
+	// logits.
+	maxValue := slices.Max(logits)
+	// Normalize value for numeric logits (smaller exponentials)
+	for ii, value := range logits {
+		probs[ii] = math.Exp(value - maxValue)
+		sum += probs[ii]
+	}
+	for ii := range probs {
+		probs[ii] /= sum
+	}
+	return
 }

@@ -255,10 +255,6 @@ type Board struct {
 	MoveNumber, MaxMoves int
 	NextPlayer           PlayerNum
 
-	// Previous is a link to the Board at the previous position, or nil if
-	// this is the initial Board.
-	Previous *Board
-
 	// Derived information is regenerated after each move.
 	Derived *Derived
 }
@@ -272,7 +268,6 @@ func NewBoard() *Board {
 		MoveNumber: 1,
 		MaxMoves:   DefaultMaxMoves,
 		NextPlayer: 0,
-		Previous:   nil,
 	}
 	board.BuildDerived()
 	return board
@@ -284,7 +279,6 @@ func (b *Board) Clone() *Board {
 	newB := &Board{}
 	*newB = *b
 	newB.Derived = nil
-	newB.Previous = b
 	newB.board = maps.Clone(b.board)
 	return newB
 }

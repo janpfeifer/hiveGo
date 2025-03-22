@@ -61,13 +61,8 @@ var _ BatchBoardScorer = &BatchBoardScorerWrapper{}
 // PolicyScorer represents an AI capable of scoring both the board and individual actions.
 type PolicyScorer interface {
 	// PolicyScore returns a score for the board and one score per valid action on the board.
+	//
 	PolicyScore(board *Board) (float32, []float32)
-}
-
-// PolicyBatchScorer represents an AI capable of scoring individual actions for each board.
-type PolicyBatchScorer interface {
-	// PolicyBatchScore returns a batch of scores for the board and a batch of actions score for each board.
-	PolicyBatchScore(boards []*Board) ([]float32, [][]float32)
 }
 
 // LearnerScorer is the interface used to train a model.
@@ -85,6 +80,7 @@ type LearnerScorer interface {
 	Save() error
 
 	// BatchSize returns the batch size used by the learner.
+	// It is used only as an optimization hint for the trainer.
 	// If Learn is called with more examples than this, it will be split, and if smaller
 	// it will be padded (or something equivalent).
 	BatchSize() int

@@ -29,7 +29,7 @@ const (
 	ModelFNN
 )
 
-//go:generate go tool enumer -type=ModelType -trimprefix=Model -transform=snake -values -text -json -yaml scorer.go
+//go:generate go tool enumer -type=ModelType -trimprefix=ValueModel -transform=snake -values -text -json -yaml scorer.go
 
 // Scorer implements a generic GoMLX scorer for the Hive game.
 // It implements ai.BoardScorer, ai.BatchBoardScorer and ai.LearnerScorer.
@@ -39,7 +39,7 @@ type Scorer struct {
 	Type ModelType
 
 	// model used by the Scorer.
-	model Model
+	model ValueModel
 
 	// Executors.
 	scoreExec, lossExec, trainStepExec *context.Exec
@@ -302,7 +302,7 @@ func (s *Scorer) BatchSize() int {
 // writeHyperparametersHelp enumerates all the hyperparameters set in the context.
 func (s *Scorer) writeHyperparametersHelp() {
 	buf := &bytes.Buffer{}
-	_, _ = fmt.Fprintf(buf, "Model %s parameters:\n", s.Type)
+	_, _ = fmt.Fprintf(buf, "ValueModel %s parameters:\n", s.Type)
 	s.model.Context().EnumerateParams(func(scope, key string, value any) {
 		if scope != context.RootScope {
 			return

@@ -228,12 +228,11 @@ func (ab *Searcher) WithMaxTime(maxTime time.Duration) *Searcher {
 // It returns actionLabels always nil, because it wouldn't be a good approximation for the non-best move.
 // This is because of the pruning aspect of the algorithm: bad moves are cut short, so alpha-beta pruning score
 // estimation for bad moves will not be a good one.
-func (ab *Searcher) Search(board *Board) (bestAction Action, bestBoard *Board, bestScore float32, actionsLabels []float32) {
+func (ab *Searcher) Search(board *Board) (bestAction Action, bestBoard *Board, bestScore float32) {
 	start := time.Now()
 	if board.Derived == nil {
 		board.BuildDerived()
 	}
-	actionsLabels = nil
 	// TODO: implement maxTime by interactively increasing the depth in the search, until the time expires.
 	bestAction, bestBoard, bestScore = ab.searchToMaxDepth(board, ab.maxDepth, board.NextPlayer)
 	elapsedTime := time.Since(start).Seconds()
@@ -420,18 +419,18 @@ func executeAndScoreActions(board *Board, scorer ai.BatchBoardScorer) (newBoards
 
 	// Pre-score actions that lead to end-game.
 	boardsToScore := make([]*Board, 0, len(actions))
+	newBoards = board.TakeAllActions()
 	hasWinning := 0
-	for ii, action := range actions {
-		newBoards[ii] = board.Act(action)
-		if isEnd, score := ai.IsEndGameAndScore(newBoards[ii]); isEnd {
+	for actionIdx, newBoard := range newBoards {
+		if isEnd, score := ai.IsEndGameAndScore(newBoard); isEnd {
 			// End game is treated differently.
-			score = -score // Score for board.NextPlayer, not newBoards[ii].NextPlayer
-			if score > 0.0 {
+			score = -score // Score for board.NextPlayer, not newBoards[actionIdx].NextPlayer
+			if score == ai.WinGameScore {
 				hasWinning++
 			}
-			scores[ii] = score
+			scores[actionIdx] = score
 		} else {
-			boardsToScore = append(boardsToScore, newBoards[ii])
+			boardsToScore = append(boardsToScore, newBoard)
 		}
 	}
 
@@ -449,11 +448,11 @@ func executeAndScoreActions(board *Board, scorer ai.BatchBoardScorer) (newBoards
 		// TODO: Use "Principal Variation" to estimate the score.
 		scored := scorer.BatchBoardScore(boardsToScore)
 		scoredIdx := 0
-		for ii := range scores {
-			if !newBoards[ii].IsFinished() {
-				// Score for board.NextPlayer, not newBoards[ii].NextPlayer, hence
+		for actionIdx, newBoard := range newBoards {
+			if !newBoard.IsFinished() {
+				// Score for board.NextPlayer, not newBoards[actionIdx].NextPlayer, hence
 				// we take the inverse here.
-				scores[ii] = -1 * 0.999 * scored[scoredIdx] // Evaluation score capped to +/- 0.999, to avoid mixing with actual game won/lost.
+				scores[actionIdx] = -1 * 0.999 * scored[scoredIdx] // Evaluation score capped to +/- 0.999, to avoid mixing with actual game won/lost.
 				scoredIdx++
 			}
 		}

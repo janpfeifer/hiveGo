@@ -8,7 +8,7 @@ import (
 
 func init() {
 	for _, key := range []string{"mcts", "c_puct", "max_time", "max_traverses",
-		"min_traverses", "max_score", "max_depth", "randomness"} {
+		"min_traverses", "max_score", "max_depth", "temperature"} {
 		players2.RegisterModule("mcts", key,
 			NewParsingData, ParsePlayerParam, FinalizeParsing,
 			players2.SearcherType)
@@ -23,7 +23,7 @@ func NewParsingData() (data interface{}) {
 		minTraverses: 0,
 		maxAbsScore:  9.0,
 		cPuct:        1.1,
-		randomness:   0.0,
+		temperature:  0.0,
 		parallelized: false,
 		useMCTS:      false,
 	}
@@ -49,8 +49,8 @@ func ParsePlayerParam(data interface{}, key, value string) {
 		d.minTraverses = players2.MustInt(value, key)
 	} else if key == "max_score" {
 		d.maxAbsScore = players2.MustFloat32(value, key)
-	} else if key == "randomness" {
-		d.randomness = players2.MustFloat32(value, key)
+	} else if key == "temperature" {
+		d.temperature = players2.MustFloat32(value, key)
 	} else {
 		log.Panicf("Unknown parameter '%s=%s' passed to mcts module.", key, value)
 	}
