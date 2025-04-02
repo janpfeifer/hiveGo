@@ -255,11 +255,16 @@ type Board struct {
 	MoveNumber, MaxMoves int
 	NextPlayer           PlayerNum
 
+	// PreviousBoards is a list of hashes to previously seen board positions: used to check
+	// for draws because of repeated positions.
+	PreviousBoards *HashNode
+
 	// Derived information is regenerated after each move.
 	Derived *Derived
 }
 
-// NewBoard creates a new empty board, with the correct initial number of pieces.
+// NewBoard creates a new empty board, with the correct initial number of pieces and an empty
+// list of previous boards played.
 func NewBoard() *Board {
 	board := &Board{
 		available: [NumPlayers]Availability{

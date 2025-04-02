@@ -18,6 +18,6 @@ import (
 func init() {
 	// Register default scorers and searchers.
 	players.RegisteredScorers = append(players.RegisteredScorers, linear.NewFromParams)
-	players.RegisteredSearchers = append(players.RegisteredSearchers, alphabeta.NewFromParams)
-	players.RegisteredSearchers = append(players.RegisteredSearchers, mcts.NewFromParams)
+	players.RegisteredSearchers = append(players.RegisteredSearchers,
+		alphabeta.NewFromParams, mcts.NewFromParams)
 }

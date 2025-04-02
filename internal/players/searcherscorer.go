@@ -81,6 +81,9 @@ func New(config string) (*SearcherScorer, error) {
 		if err != nil {
 			return nil, err
 		}
+		if s == nil {
+			continue
+		}
 		if player.Searcher != nil {
 			return nil, errors.Errorf("multiple searchers defined in parameters %q", config)
 		}

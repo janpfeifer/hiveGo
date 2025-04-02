@@ -7,9 +7,16 @@ package state
 import (
 	"encoding/binary"
 	"hash/fnv"
-	"log"
-	"sort"
+	"k8s.io/klog/v2"
+	"slices"
 )
+
+// HashNode represents the a list (but during exploration it may become a tree) of hash
+// of the previous matches in a line of the game, used to check for repeated positions.
+type HashNode struct {
+	Hash uint64
+	Prev *HashNode
+}
 
 // PosStack represents a position and the stack of pieces in the position.
 type PosStack struct {
@@ -20,16 +27,25 @@ type PosStack struct {
 // PosStackSlice is a sortable slice of PosStack.
 type PosStackSlice []PosStack
 
-func (p PosStackSlice) Len() int { return len(p) }
-func (p PosStackSlice) Less(i, j int) bool {
-	if p[i].Pos[1] != p[j].Pos[1] {
-		return p[i].Pos[1] < p[j].Pos[1]
-	} else {
-		return p[i].Pos[0] < p[j].Pos[0]
+func cmpInt8(a, b int8) int {
+	if a < b {
+		return -1
 	}
+	if b < a {
+		return 1
+	}
+	return 0
 }
-func (p PosStackSlice) Swap(i, j int) {
-	p[i], p[j] = p[j], p[i]
+
+// Sort in-place slice of PosStack.
+// There should be only one stack per position.
+func (s PosStackSlice) Sort() {
+	slices.SortFunc(s, func(a, b PosStack) int {
+		if cmp := cmpInt8(a.Pos[1], b.Pos[1]); cmp != 0 {
+			return cmp
+		}
+		return cmpInt8(a.Pos[0], b.Pos[0])
+	})
 }
 
 // normalizedPosStackSlice returns sorted slice of positions/stacks that
@@ -38,10 +54,10 @@ func (p PosStackSlice) Swap(i, j int) {
 //
 // Return value should be stored in Board.Derived, and should be accessed
 // from there.
-func (b *Board) normalizedPosStackSlice() (poss PosStackSlice) {
-	poss = make(PosStackSlice, 0, len(b.board))
+func (b *Board) normalizedPosStackSlice() (pieces PosStackSlice) {
+	pieces = make(PosStackSlice, 0, len(b.board))
 	for pos, stack := range b.board {
-		poss = append(poss, PosStack{pos, stack})
+		pieces = append(pieces, PosStack{pos, stack})
 	}
 
 	// Normalize positions such that they start at (0,0) -- or (1,0), if it
@@ -50,18 +66,16 @@ func (b *Board) normalizedPosStackSlice() (poss PosStackSlice) {
 	if minX&1 != 0 {
 		minX--
 	}
-	for ii := range poss {
-		poss[ii].Pos[0] -= minX
-		poss[ii].Pos[1] -= minY
+	for ii := range pieces {
+		pieces[ii].Pos[0] -= minX
+		pieces[ii].Pos[1] -= minY
 	}
-
-	// Finally sort positions.
-	sort.Sort(poss)
-	return poss
+	pieces.Sort()
+	return pieces
 }
 
 // normalizedHash will calculate a hash from a normalized board: pieces
-// shifted to start at 0,0.
+// shifted to start at 0,0, and iterated in X order than Y.
 //
 // It requires b.Derived to exist, and in particular
 // b.Derived.NormalizedPosStackSlice to be filled.
@@ -71,10 +85,10 @@ func (b *Board) normalizedHash() uint64 {
 		return 0
 	}
 	if err := binary.Write(hasher, binary.LittleEndian, b.NextPlayer); err != nil {
-		log.Panicf("Failed to write to hasher: %v", err)
+		klog.Fatalf("Failed to write to hasher: %v", err)
 	}
 	if err := binary.Write(hasher, binary.LittleEndian, b.Derived.NormalizedPosStackSlice); err != nil {
-		log.Panicf("Failed to write to hasher: %v", err)
+		klog.Fatalf("Failed to write to hasher: %v", err)
 	}
 	return hasher.Sum64()
 }
@@ -96,23 +110,24 @@ func CompareBoards(b1, b2 *Board) bool {
 		return false
 	}
 
-	poss1 := b1.Derived.NormalizedPosStackSlice
-	poss2 := b2.Derived.NormalizedPosStackSlice
-	for ii := range poss1 {
-		if poss1[ii] != poss2[ii] {
+	stacks1 := b1.Derived.NormalizedPosStackSlice
+	stacks2 := b2.Derived.NormalizedPosStackSlice
+	for ii := range stacks1 {
+		if stacks1[ii] != stacks2[ii] {
 			return false
 		}
 	}
 	return true
 }
 
-// FindRepeats returns the number of repeated board positions in the same match.
-func (b *Board) FindRepeats() uint8 {
-	numPieces := b.NumPiecesOnBoard()
-	for b2 := b.Previous; b2 != nil && b2.NumPiecesOnBoard() == numPieces; b2 = b2.Previous {
-		if CompareBoards(b, b2) {
-			return b2.Derived.Repeats + 1
+// CountRepeats returns the number of repeated board positions in the same match.
+func (b *Board) CountRepeats() uint8 {
+	h := b.Derived.Hash
+	var repeats uint8
+	for hn := b.PreviousBoards; hn != nil; hn = hn.Prev {
+		if hn.Hash == h {
+			repeats++
 		}
 	}
-	return 0
+	return repeats
 }

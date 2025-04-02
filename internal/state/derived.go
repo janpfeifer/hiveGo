@@ -26,8 +26,7 @@ type Derived struct {
 	MinX, MaxX, MinY, MaxY int8
 
 	// Hash of the Board. Usually unique, but not guaranteed.
-	// One of the things that the Hash doesn't cover if the previous state
-	// in the same match.
+	// Used for the purpose of verifying repeated positions.
 	Hash uint64
 
 	// Normalized (shifted) and sorted list of positions occupied. Used by hash
@@ -120,7 +119,7 @@ func (b *Board) BuildDerived() {
 	// Normalized list of positions.
 	derived.NormalizedPosStackSlice = b.normalizedPosStackSlice()
 	derived.Hash = b.normalizedHash()
-	derived.Repeats = b.FindRepeats()
+	derived.Repeats = b.CountRepeats()
 
 	// Per player info.
 	for p := PlayerNum(0); p < NumPlayers; p++ {
@@ -384,6 +383,11 @@ func (b *Board) Act(action Action) (newB *Board) {
 	}
 	newB.NextPlayer = 1 - newB.NextPlayer
 	newB.MoveNumber++
+	newB.PreviousBoards = &HashNode{
+		Hash: b.Derived.Hash,
+		Prev: b.PreviousBoards,
+	}
+
 	newB.BuildDerived()
 	return
 }
