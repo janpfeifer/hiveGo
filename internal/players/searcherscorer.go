@@ -108,7 +108,11 @@ var _ Player = &SearcherScorer{}
 // Play implements the Player interface: it chooses an action given a Board.
 func (s *SearcherScorer) Play(b *Board) (
 	action Action, board *Board, score float32, actionsLabels []float32) {
-	action, board, score = s.Searcher.Search(b)
+	var err error
+	action, board, score, err = s.Searcher.Search(b)
+	if err != nil {
+		klog.Fatal("Searcher error: %+v", err)
+	}
 	if klog.V(2).Enabled() {
 		klog.Infof("Move #%d: AI (%s) playing %s, score=%.3f",
 			b.MoveNumber, s.Scorer, action, score)

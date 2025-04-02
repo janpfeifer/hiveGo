@@ -61,7 +61,6 @@ var _ BatchBoardScorer = &BatchBoardScorerWrapper{}
 // PolicyScorer represents an AI capable of scoring both the board and individual actions.
 type PolicyScorer interface {
 	// PolicyScore returns a score for the board and one score per valid action on the board.
-	//
 	PolicyScore(board *Board) (float32, []float32)
 }
 

@@ -12,11 +12,12 @@ import (
 	"github.com/janpfeifer/hiveGo/internal/ai/linear"
 	"github.com/janpfeifer/hiveGo/internal/players"
 	"github.com/janpfeifer/hiveGo/internal/searchers/alphabeta"
+	"github.com/janpfeifer/hiveGo/internal/searchers/mcts"
 )
 
 func init() {
 	// Register default scorers and searchers.
 	players.RegisteredScorers = append(players.RegisteredScorers, linear.NewFromParams)
 	players.RegisteredSearchers = append(players.RegisteredSearchers, alphabeta.NewFromParams)
-
+	players.RegisteredSearchers = append(players.RegisteredSearchers, mcts.NewFromParams)
 }

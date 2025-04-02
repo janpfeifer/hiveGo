@@ -6,6 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Params represent generic configuration parameters.
@@ -32,7 +33,7 @@ func NewFromConfigString(config string) map[string]string {
 
 // PopParamOr is like GetParamOr, but it also deletes from the params map the retrieved parameter.
 func PopParamOr[T interface {
-	bool | int | float32 | float64 | string
+	bool | int | float32 | float64 | string | time.Duration
 }](params Params, key string, defaultValue T) (T, error) {
 	value, err := GetParamOr(params, key, defaultValue)
 	if err != nil {
@@ -47,7 +48,7 @@ func PopParamOr[T interface {
 //
 // For bool types, a key without a value is interpreted as true.
 func GetParamOr[T interface {
-	bool | int | float32 | float64 | string
+	bool | int | float32 | float64 | string | time.Duration
 }](params Params, key string, defaultValue T) (T, error) {
 	vAny := (any)(defaultValue)
 	var t T
@@ -78,6 +79,14 @@ func GetParamOr[T interface {
 			parsedValue, err := strconv.ParseFloat(value, 64)
 			if err != nil {
 				return t, errors.Wrapf(err, "failed to parse configuration %s=%q to float", key, value)
+			}
+			return toT(parsedValue), nil
+		}
+	case time.Duration:
+		if value, exists := params[key]; exists && value != "" {
+			parsedValue, err := time.ParseDuration(value)
+			if err != nil {
+				return t, errors.Wrapf(err, "failed to parse configuration %s=%q to duration", key, value)
 			}
 			return toT(parsedValue), nil
 		}

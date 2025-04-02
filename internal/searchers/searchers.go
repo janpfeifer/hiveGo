@@ -17,7 +17,7 @@ var (
 type Searcher interface {
 	// Search returns the next action to take on the given board, along with the updated Board (after taking the action)
 	// and the expected score of taking that action.
-	Search(board *Board) (bestAction Action, bestBoard *Board, bestScore float32)
+	Search(board *Board) (bestAction Action, bestBoard *Board, bestScore float32, err error)
 }
 
 // softmax returns the softmax of the given logits in a numerically stable way.

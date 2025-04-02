@@ -1,22 +1,27 @@
 package mcts
 
 import (
-	players2 "github.com/janpfeifer/hiveGo/internal/players"
-	"log"
+	"github.com/janpfeifer/hiveGo/internal/ai"
+	"github.com/janpfeifer/hiveGo/internal/parameters"
+	"github.com/janpfeifer/hiveGo/internal/searchers"
+	"github.com/pkg/errors"
 	"time"
 )
 
-func init() {
-	for _, key := range []string{"mcts", "c_puct", "max_time", "max_traverses",
-		"min_traverses", "max_score", "max_depth", "temperature"} {
-		players2.RegisterModule("mcts", key,
-			NewParsingData, ParsePlayerParam, FinalizeParsing,
-			players2.SearcherType)
+func NewFromParams(scorer ai.BoardScorer, params parameters.Params) (searchers.Searcher, error) {
+	isMCTS, err := parameters.PopParamOr(params, "mcts", false)
+	if err != nil {
+		return nil, err
 	}
-}
-
-func NewParsingData() (data interface{}) {
-	return &mctsSearcher{
+	if !isMCTS {
+		return nil, nil
+	}
+	policyScorer, ok := scorer.(ai.PolicyScorer)
+	if !ok {
+		return nil, errors.Errorf("mcts requires a 'policy scorer', a normal scorer (%q) won't work", scorer)
+	}
+	mcts := &mctsSearcher{
+		scorer:       policyScorer,
 		maxDepth:     10,
 		maxTime:      30 * time.Second,
 		maxTraverses: 300,
@@ -27,45 +32,28 @@ func NewParsingData() (data interface{}) {
 		parallelized: false,
 		useMCTS:      false,
 	}
-}
-
-func ParsePlayerParam(data interface{}, key, value string) {
-	d := data.(*mctsSearcher)
-	if key == "mcts" {
-		d.useMCTS = true
-	} else if key == "c_puct" {
-		d.cPuct = players2.MustFloat32(value, key)
-		if d.cPuct < 0 {
-			log.Panicf("Negative c_puct value not possible")
-		}
-	} else if key == "max_time" {
-		sec := players2.MustInt(value, key)
-		d.maxTime = time.Second * time.Duration(sec)
-	} else if key == "max_depth" {
-		d.maxDepth = players2.MustInt(value, key)
-	} else if key == "max_traverses" {
-		d.maxTraverses = players2.MustInt(value, key)
-	} else if key == "min_traverses" {
-		d.minTraverses = players2.MustInt(value, key)
-	} else if key == "max_score" {
-		d.maxAbsScore = players2.MustFloat32(value, key)
-	} else if key == "temperature" {
-		d.temperature = players2.MustFloat32(value, key)
-	} else {
-		log.Panicf("Unknown parameter '%s=%s' passed to mcts module.", key, value)
+	mcts.cPuct, err = parameters.PopParamOr(params, "c_puct", mcts.cPuct)
+	if err != nil {
+		return nil, err
 	}
-}
-
-func FinalizeParsing(data interface{}, player *players2.SearcherScorer) {
-	d := data.(*mctsSearcher)
-	if d.useMCTS {
-		if player.Searcher != nil {
-			log.Panicf("Searcher already selected while setting up MCTS.")
-		}
-		if player.Scorer == nil {
-			log.Panicf("MCTS requires a scorer.")
-		}
-		d.scorer = player.Scorer
-		player.Searcher = d
+	if mcts.cPuct < 0 {
+		return nil, errors.Errorf("negative c_puct value (%f given) not possible", mcts.cPuct)
 	}
+	mcts.maxTime, err = parameters.PopParamOr(params, "max_time", mcts.maxTime)
+	if err != nil {
+		return nil, err
+	}
+	mcts.maxDepth, err = parameters.PopParamOr(params, "max_depth", mcts.maxDepth)
+	if err != nil {
+		return nil, err
+	}
+	mcts.maxTraverses, err = parameters.PopParamOr(params, "max_traverses", mcts.maxTraverses)
+	if err != nil {
+		return nil, err
+	}
+	mcts.temperature, err = parameters.PopParamOr(params, "temperature", mcts.temperature)
+	if err != nil {
+		return nil, err
+	}
+	return mcts, nil
 }

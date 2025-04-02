@@ -228,7 +228,7 @@ func (ab *Searcher) WithMaxTime(maxTime time.Duration) *Searcher {
 // It returns actionLabels always nil, because it wouldn't be a good approximation for the non-best move.
 // This is because of the pruning aspect of the algorithm: bad moves are cut short, so alpha-beta pruning score
 // estimation for bad moves will not be a good one.
-func (ab *Searcher) Search(board *Board) (bestAction Action, bestBoard *Board, bestScore float32) {
+func (ab *Searcher) Search(board *Board) (bestAction Action, bestBoard *Board, bestScore float32, err error) {
 	start := time.Now()
 	if board.Derived == nil {
 		board.BuildDerived()
