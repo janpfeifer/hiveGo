@@ -4,7 +4,6 @@ package ai
 
 import (
 	"github.com/chewxy/math32"
-	"github.com/janpfeifer/hiveGo/internal/generics"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 )
 
@@ -38,33 +37,20 @@ type BatchBoardScorer interface {
 	BatchBoardScore(boards []*Board) []float32
 }
 
-// BatchBoardScorerWrapper is a trivial implementation of a BatchBoardScorer, with no efficiency gains.
-type BatchBoardScorerWrapper struct {
-	BoardScorer
-}
-
-// BatchBoardScore calls the BoardScore for each board of the batch.
-func (s BatchBoardScorerWrapper) BatchBoardScore(boards []*Board) (scores []float32) {
-	scores = generics.SliceMap(boards, func(board *Board) float32 {
-		return s.BoardScore(board)
-	})
-	return
-}
-
-func (s BatchBoardScorerWrapper) String() string {
-	return s.BoardScorer.String()
-}
-
-// Assert BatchBoardScorerWrapper implements BatchBoardScorer
-var _ BatchBoardScorer = &BatchBoardScorerWrapper{}
-
 // PolicyScorer represents an AI capable of scoring both the board and individual actions.
+// Notice that while the board score and the policy scores share the model -- and they are learned
+// jointly, they are evaluated separately, since for the leaf states visited (most of them),
+// the policy values are not needed.
 type PolicyScorer interface {
-	// PolicyScore returns a score for the board and one score per valid action on the board.
-	PolicyScore(board *Board) (float32, []float32)
+	BoardScorer
+
+	// PolicyScore returns a score (probability) for each of the action of the board.
+	// In the article/paper, this is $P[s] = { p(s, a), \forall a \in s }$, where s is the state (board)
+	// and $a$ is an action valid in the state $s$.
+	PolicyScore(board *Board) []float32
 }
 
-// LearnerScorer is the interface used to train a model.
+// LearnerScorer is the interface used to train a BoardScorer model.
 type LearnerScorer interface {
 	BatchBoardScorer
 

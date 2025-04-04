@@ -93,7 +93,6 @@ func (fnn *FNN) paddedBatchSize(numBoards int) int {
 
 // CreateInputs implements ValueModel.CreateInputs.
 func (fnn *FNN) CreateInputs(boards []*state.Board) []*tensors.Tensor {
-	// TODO: add mask and batchSizes in power-of-2 (or some other value)
 	version := context.GetParamOr(fnn.ctx, "features_version", features.BoardFeaturesDim)
 	numBoards := len(boards)
 	paddedBatchSize := fnn.paddedBatchSize(numBoards)

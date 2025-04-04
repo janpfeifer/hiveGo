@@ -58,7 +58,7 @@ type Stats struct {
 func New(scorer ai.BoardScorer) *Searcher {
 	batchScorer, ok := scorer.(ai.BatchBoardScorer)
 	if !ok {
-		batchScorer = &ai.BatchBoardScorerWrapper{BoardScorer: scorer}
+		batchScorer = &ai.BatchBoardScorerProxy{BoardScorer: scorer}
 	}
 	return &Searcher{
 		scorer:            batchScorer,
