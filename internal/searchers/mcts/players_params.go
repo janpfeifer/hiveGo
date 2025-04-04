@@ -18,7 +18,12 @@ func NewFromParams(scorer ai.BoardScorer, params parameters.Params) (searchers.S
 	}
 	policyScorer, ok := scorer.(ai.PolicyScorer)
 	if !ok {
-		return nil, errors.Errorf("mcts requires a 'policy scorer', a normal scorer (%q) won't work", scorer)
+		scale, err := parameters.PopParamOr(params, "policy_scale", float32(1))
+		if err != nil {
+			return nil, err
+		}
+		policyScorer = ai.NewPolicyProxy(scorer, scale)
+		//return nil, errors.Errorf("mcts requires a 'policy scorer', a normal scorer (%q) won't work", scorer)
 	}
 	mcts := &mctsSearcher{
 		scorer:       policyScorer,
