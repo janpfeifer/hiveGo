@@ -1,8 +1,21 @@
 // Package mcts is a Monte Carlo Tree Search implementation of searchers.Searcher for
 // the Alpha-Zero algorithm.
 //
-// There is a very good description in a post from Surag Nair, in
-// https://web.stanford.edu/~surag/posts/alphazero.html
+// References used, since the original paper doesn't actually provide the formulas:
+//
+//   - https://suragnair.github.io/posts/alphazero.html by Surag Nair
+//   - https://web.stanford.edu/class/archive/cs/cs221/cs221.1196/sections/Section5.pdf
+//
+// AlphaZero original paper -- that mostly talks about its successes but not the actual
+// formula:
+//
+//   - Mastering Chess and Shogi by Self-Play with a General Reinforcement Learning Algorithm
+//     https://arxiv.org/abs/1712.01815
+//
+// AlphaGo Zero has more details, but too many for someone who simply wants to understand how
+// it is done:
+//
+//   - https://www.nature.com/articles/nature24270.epdf?author_access_token=VJXbVjaSHxFoctQQ4p2k4tRgN0jAjWel9jnR3ZoTv0PVW4gB86EEpGqTRDtpIz-2rmo8-KG06gqVobU5NSCFeHILHcVFUeMsbvwS-lxjqQGg98faovwjxeTUgZAUMnRQ
 package mcts
 
 import (
@@ -13,10 +26,6 @@ import (
 	"k8s.io/klog/v2"
 	"log"
 	"math"
-	"math/rand"
-	"sort"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
@@ -30,7 +39,6 @@ var (
 const (
 	DECAY                     = float32(0.999)
 	DEPTH_CHECK_MAX_ABS_SCORE = 5
-	EPSILON                   = float64(1e-8)
 )
 
 type mctsSearcher struct {
@@ -69,18 +77,8 @@ func (mcts *mctsSearcher) Clone() *mctsSearcher {
 
 // cacheNode holds information about the possible actions of a board.
 type cacheNode struct {
-	// Parent information is only used for debugging.
-	parent          *cacheNode
-	parentActionIdx int
-
 	// Board, actions, children boards and children base scores.
 	board *Board
-
-	// actions is a shortcut to cacheNode.board.Derived.Actions.
-	actions []Action
-
-	// score is the model prediction.
-	score float32
 
 	// actionsProbs are the model actions probabilities.
 	actionsProbs []float32
@@ -95,35 +93,28 @@ type cacheNode struct {
 	// sumN holds the sum of all values of N.
 	sumN int
 
-	// sumMCScores holds the sum of the scores returned by the MCTS for each path taken.
-	// If nil, it is assumed to be 0 for all actions.
-	sumMCScores []float32
-
-	// Estimation of $Q(s, a)$, where $s$ is the state (board here), and $a$ is the action.
-	// This is also renormalized to be between -1 (loosing) and 1 (winning)
-	// If nil, it is assumed to be 0 for all actions.
-	Q []float32
-
-	// Lock for updates.
-	mu sync.Mutex
+	// sumScores of the score of taking the corresponding action at the current board.
+	// If N[a] > 0, we have $Q(s, a) = sumScores[a]/N[a]$.
+	sumScores []float32
 }
 
 // newCacheNode for the given board position and updated matchStats.
 // root indicates this is a root node for the search, this decides whether the temperature should be used.
-func (mcts *mctsSearcher) newCacheNode(b *Board, root bool, stats *matchStats) (*cacheNode, error) {
-	// numActions := len(b.Derived.Actions)
+func (mcts *mctsSearcher) newCacheNode(b *Board, stats *matchStats) (*cacheNode, error) {
+	if b.IsFinished() {
+		return nil, errors.Errorf("can't create cacheNode for a finished board state")
+	}
+	numActions := len(b.Derived.Actions)
 	cn := &cacheNode{
-		board: b,
-		//actions: b.Derived.Actions,
-		//cacheNodes:  make([]*cacheNode, numActions),
-		//N:           make([]int, numActions),
-		//sumMCScores: make([]float32, numActions),
-		//Q:           make([]float32, numActions),
+		board:      b,
+		cacheNodes: make([]*cacheNode, numActions),
+		N:          make([]int, numActions),
+		sumScores:  make([]float32, numActions),
 	}
 	if stats != nil {
 		stats.numCacheNodes++
 	}
-	cn.score, cn.actionsProbs = mcts.scorer.PolicyScore(b)
+	cn.actionsProbs = mcts.scorer.PolicyScore(b)
 
 	// Sanity check:
 	var sumProbs float32
@@ -139,438 +130,128 @@ func (mcts *mctsSearcher) newCacheNode(b *Board, root bool, stats *matchStats) (
 		}
 		sumProbs += prob
 	}
-	if len(cn.actions) > 1 && abs32(sumProbs-1.0) > 1e-3 {
+	if math.Abs(float64(sumProbs-1.0)) > 1e-3 {
 		ui := cli.New(true, false)
 		fmt.Println()
 		ui.PrintBoard(cn.board)
 		fmt.Printf("Available actions: %v", cn.board.Derived.Actions)
 		fmt.Printf("Probabilities: %v", cn.actionsProbs)
-		log.Panicf("Sum of probabilities=%g != 1.0", sumProbs)
+		return nil, errors.Errorf("sum of probabilities=%g != 1.0", sumProbs)
 	}
 
-	if root && mcts.temperature > 0 {
-		for ii := range cn.actionsProbs {
-			cn.actionsProbs[ii] += float32(rand.NormFloat64()) * mcts.temperature
-		}
-	}
-	for ii := range cn.Q {
-		cn.Q[ii] = cn.score
-	}
 	return cn, nil
 }
 
-// Step steps into the index's cacheNode under the current one. If it doesn't exist,
-// it creates a new one.
-// Setting `index == -1` is valid if there are no valid actions. In this case a single
-// child node is considered and used.
-func (cn *cacheNode) Step(mcts *mctsSearcher, stats *matchStats, index int, log bool) (*cacheNode, error) {
-	cn.mu.Lock()
-	defer cn.mu.Unlock()
-	var err error
-
-	cnIdx := index
-	if index < 0 {
-		cnIdx = 0
-	}
-	newCN := cn.cacheNodes[cnIdx]
-	if newCN == nil {
-		var action Action
-		if index >= 0 {
-			action = cn.actions[index]
-		} else {
-			action = SkipAction
+// SearchSubtree rooted on cn, expanding one board.
+//
+// It returns the new sampled score for the "next player" (to play) of cacheNode's board.
+//
+// Notice it doesn't return the score estimate (Q) of all samples in the sub-tree, but simply
+// the score of the individual new sample (the value returned by the scorer on the leaf-node
+// of the recursion).
+//
+// This is the core of the AlphaZero/MCTS algorithm, based on the estimated
+// upper bounds of each possible action.
+func (mcts *mctsSearcher) SearchSubtree(cn *cacheNode, stats *matchStats) (score float32, err error) {
+	// Find the action with the best upper confidence (U in the description).
+	bestAction := -1
+	bestUpperConfidence := float32(math.Inf(-1))
+	globalFactor := mcts.cPuct * float32(math.Sqrt(float64(cn.sumN)))
+	for actionIdx, numVisits := range cn.N {
+		var Q float32 // 0 if we haven't subsampled it yet.
+		if numVisits > 0 {
+			Q = cn.sumScores[actionIdx] / float32(numVisits)
 		}
-		newCN, err = mcts.newCacheNode(cn.board.Act(action), false, stats)
+		upperConfidence := Q + globalFactor*cn.actionsProbs[actionIdx]/float32(1+numVisits)
+		if upperConfidence > bestUpperConfidence {
+			bestAction = actionIdx
+			bestUpperConfidence = upperConfidence
+		}
+	}
+
+	// For the first time an action is considered, just get the plain score estimate
+	// for the new board.
+	if cn.N[bestAction] == 0 {
+		// Notice TakeAllActions is cached in the board.
+		newBoard := cn.board.TakeAllActions()[bestAction]
+		if isEnd, endScore := ai.IsEndGameAndScore(newBoard); isEnd {
+			// Return endScore immediately.
+			// TODO: add some optimization/check if we are repeatedly sampling a game that is won or lost,
+			// 	and there is no alternative play, to accelerate end-game.
+			return endScore, nil
+		}
+
+		cn.N[bestAction] = 1
+		cn.sumN++
+		score = -mcts.scorer.BoardScore(newBoard)
+		cn.sumScores[bestAction] += score
+		return
+	}
+
+	// If not the first time we sample the action, make sure we have a corresponding
+	// cacheNode for it, expanding the tree.
+	if cn.cacheNodes[bestAction] == nil {
+		newBoard := cn.board.TakeAllActions()[bestAction]
+		cn.cacheNodes[bestAction], err = mcts.newCacheNode(newBoard, stats)
 		if err != nil {
-			return nil, err
-		}
-		cn.cacheNodes[cnIdx] = newCN
-		if log {
-			klog.Infof("Create new cacheNode with action %s", action)
+			return
 		}
 	}
-	return newCN, nil
-}
 
-// RecursivelyClearMCTSScores but not the action probabilities and board value estimated by the NN.
-func (cn *cacheNode) RecursivelyClearMCTSScores(mcts *mctsSearcher) {
-	for ii := range cn.actions {
-		cn.N[ii] = 0
-		cn.sumMCScores[ii] = 0
-		cn.Q[ii] = 0
-	}
-	cn.sumN = 0
-
-	for _, childCN := range cn.cacheNodes {
-		if childCN != nil {
-			childCN.RecursivelyClearMCTSScores(mcts)
-		}
-	}
-}
-
-// Sample picks the next step, with probability weighted
-// by the estimated upper bound.
-func (cn *cacheNode) Sample(mcts *mctsSearcher) int {
-	cn.mu.Lock()
-	defer cn.mu.Unlock()
-
-	if len(cn.actions) == 0 {
-		return -1
-	}
-	if len(cn.actions) == 1 {
-		return 0
-	}
-	best := -1
-	bestActionAdjustedQ := float32(-1e6)
-	globalFactor := mcts.cPuct * float32(math.Sqrt(float64(cn.sumN)+EPSILON))
-	hasLosses := false
-
-	for ii := range cn.actions {
-		actionCN := cn.cacheNodes[ii]
-		actionAdjustedQ := cn.Q[ii] + globalFactor*cn.actionsProbs[ii]/(1+float32(cn.N[ii]))
-		if actionCN != nil {
-			if actionCN.board.IsFinished() {
-				if actionCN.score > 0 {
-					// Opponent wins (since actionCN is the board with the opponent turn),
-					// so no need to sample this one. Odd, since the player would
-					// cause their own loss.
-					hasLosses = true
-					continue
-				} else if actionCN.score > 0 {
-					// Player wins, so it would simply greedily take this action.
-					best = ii
-					bestActionAdjustedQ = actionAdjustedQ
-					break
-				}
-			}
-		}
-		klog.V(4).Infof("Sampling: adjustedQ=%g, Q=%g, probs=%.2g", actionAdjustedQ,
-			cn.Q[ii], cn.actionsProbs[ii])
-		if actionAdjustedQ > bestActionAdjustedQ {
-			best = ii
-			bestActionAdjustedQ = actionAdjustedQ
-		}
-	}
-	if best == -1 {
-		if hasLosses {
-			klog.V(1).Infof("Sampling: all actions lead to loss, taking the first.")
-			return 0
-		}
-		log.Panicf("Not able to sample a move, likely probabilities are NaN.")
-	}
-	if cn.parent == nil {
-		klog.V(3).Infof("Sampled %s: adjustedQ=%g, Q=%g, probs=%.2g%%",
-			cn.actions[best], bestActionAdjustedQ, cn.Q[best], 100.0*cn.actionsProbs[best])
-	}
-	return best
-}
-
-func (cn *cacheNode) FindBestScore(mcts *mctsSearcher) (
-	bestIdx int, bestScore float32, actionsLabels []float32) {
-	if len(cn.actions) <= 1 {
-		// There is either one or none actions. Index will be set to 0 (first action)
-		// or -1 (represents a SkipAction) respectively, and the score should be the
-		// negative of the score for the opponent at the next action.
-		bestIdx = len(cn.actions) - 1
-		bestScore = cn.score
-		if cn.cacheNodes[0] != nil {
-			_, childScore, _ := cn.cacheNodes[0].FindBestScore(mcts)
-			bestScore = -childScore
-		}
-		if len(cn.actions) == 1 {
-			actionsLabels = []float32{1}
-		}
+	// Recursively sample value of the best action.
+	score, err = mcts.SearchSubtree(cn.cacheNodes[bestAction], stats)
+	score = -score
+	if err != nil {
 		return
 	}
-
-	// If nothing was visited, simply return the current estimated score
-	// and the action with the largest probability.
-	actionsLabels = make([]float32, len(cn.actions))
-	if cn.sumN == 0 {
-		klog.Errorf("MCTS.FindBestNode() called with no visits having been made.")
-		bestScore = cn.score
-		bestIdx = 0
-		bestProb := cn.actionsProbs[0]
-		actionsLabels[0] = 1.0 / float32(len(cn.actions))
-		for ii := 1; ii < len(cn.actions); ii++ {
-			actionsLabels[ii] = actionsLabels[0]
-			if cn.actionsProbs[ii] > bestProb {
-				bestIdx = ii
-				bestProb = cn.actionsProbs[ii]
-			}
-		}
-		return
-	}
-
-	// Select best action based on N of visits (see paper), and in case of ties, break by
-	// Q(s,a) estimation. Final score is given by mean of the sumMCScores.
-	bestIdx = -1
-	bestCount := -1
-	totalCount := float32(cn.sumN)
-	for ii := 0; ii < len(cn.actions); ii++ {
-		if cn.N[ii] > bestCount || (cn.N[ii] == bestCount && cn.Q[ii] > bestScore) {
-			bestIdx = ii
-			bestCount = cn.N[ii]
-			bestScore = cn.Q[ii]
-		}
-		actionsLabels[ii] = float32(cn.N[ii]) / totalCount
-	}
-	bestScore = cn.sumMCScores[bestIdx] / float32(cn.N[bestIdx])
+	cn.sumScores[bestAction] += score
+	cn.N[bestAction]++
+	cn.sumN++
 	return
 }
 
-func abs32(x float32) float32 { return float32(math.Abs(float64(x))) }
-
-func (cn *cacheNode) recursiveLogTraverse(actionIdx int, parts []string) ([]string, float32) {
-	if cn.parent != nil {
-		if actionIdx < 0 {
-			parts = append(parts, SkipAction.String())
-		} else {
-			parts = append(parts, cn.actions[actionIdx].String())
-		}
-		var mult float32
-		parts, mult = cn.parent.recursiveLogTraverse(cn.parentActionIdx, parts)
-		return parts, -mult * DECAY
-	}
-	return parts, -1
-}
-
-func (cn *cacheNode) logTraverse(score float32, stopReason string) {
-	var parts []string
-	if cn.parent != nil {
-		var mult float32
-		parts, mult = cn.parent.recursiveLogTraverse(cn.parentActionIdx, parts)
-		score *= -mult
-	}
-	for ii := len(parts)/2 - 1; ii >= 0; ii-- {
-		jj := len(parts) - ii - 1
-		parts[ii], parts[jj] = parts[jj], parts[ii]
-	}
-	klog.Infof("Traverse (%s): score=%.6f, path=[%s]", stopReason, score, strings.Join(parts, "], ["))
-}
-
-// Traverse traverses the game tree up to the given depth, and returns the
-// expected score returned by the leaf node (or deepest node) visited.
-// The score is with respect to the player playing (board.NextPlayer) at the node cn.
-func (cn *cacheNode) Traverse(mcts *mctsSearcher, stats *matchStats, depthLeft int) (float32, error) {
-	// Checks end of game conditions.
-	if isEnd, score := ai.IsEndGameAndScore(cn.board); isEnd {
-		if klog.V(3).Enabled() {
-			cn.logTraverse(score, "end game")
-		}
-		return score, nil
-	}
-
-	// Checks max depth reached.
-	if depthLeft == 0 {
-		if klog.V(3).Enabled() {
-			cn.logTraverse(cn.score, "max depth")
-		}
-		return cn.score, nil
-	}
-
-	// Checks if score threshold is reached.
-	if depthLeft < mcts.maxDepth-DEPTH_CHECK_MAX_ABS_SCORE {
-		if abs32(cn.score) >= mcts.maxAbsScore {
-			if klog.V(3).Enabled() {
-				cn.logTraverse(cn.score, "max abs score")
-			}
-			return cn.score, nil
-		}
-	}
-
-	// Sample new action.
-	actionIdx := cn.Sample(mcts)
-	nextCN, err := cn.Step(mcts, stats, actionIdx, false)
+// Search implements searchers.Searcher API.
+//
+// It returns the expected best action, board, and score estimate of the given best action.
+//
+// TODO: implement parallelism in MCTS.
+func (mcts *mctsSearcher) Search(board *Board) (bestAction Action, bestBoard *Board, bestScore float32, err error) {
+	var rootCacheNode *cacheNode
+	var stats matchStats
+	rootCacheNode, err = mcts.newCacheNode(board, &stats)
 	if err != nil {
-		return 0, err
-	}
-	nextCN.parent = cn
-	nextCN.parentActionIdx = actionIdx
-	score, err := nextCN.Traverse(mcts, stats, depthLeft-1)
-	if err != nil {
-		return 0, err
-	}
-	score = -score * DECAY
-
-	// If there are no actions, or only one action, we don't keep tabs, since
-	// there are no options anyway.
-	if len(cn.actions) <= 1 {
-		return score, nil
-	}
-
-	// Propagate back the score.
-	cn.mu.Lock()
-	cn.sumN++
-	cn.N[actionIdx]++
-	cn.sumMCScores[actionIdx] += score
-	meanScore := cn.sumMCScores[actionIdx] / float32(cn.N[actionIdx])
-	cn.Q[actionIdx] = meanScore
-	cn.mu.Unlock()
-	if depthLeft == mcts.maxDepth {
-		klog.V(3).Infof("Traverse[%s]: score=%.2f, Q=%.2f", cn.actions[actionIdx], score, cn.Q[actionIdx])
-	}
-	return score, nil
-}
-
-// runMCTS runs MCTS for the given specifications on the cacheNode.
-func (mcts *mctsSearcher) runOnCN(stats *matchStats, cn *cacheNode) error {
-	// Sample while there is time.
-	if len(cn.actions) > 1 {
-		start := time.Now()
-		count := 0
-
-		// Handle parallelism.
-		// TODO: parallelized forced to false for now (see NewMCSTSearcher). Still need to implement
-		//   locks such that no traverse share paths. Also the algorithm should change since it changes the
-		//   counts
-
-		// Loop over traverses.
-		for (time.Since(start) < mcts.maxTime || count < mcts.minTraverses) &&
-			count < mcts.maxTraverses {
-			_, err := cn.Traverse(mcts, stats, mcts.maxDepth)
-			if err != nil {
-				return err
-			}
-			count++
-		}
-		klog.V(1).Infof("MCTS traverses done: %d", count)
-	}
-	return nil
-}
-
-func (mcts *mctsSearcher) measuredRunOnCN(stats *matchStats, cn *cacheNode) error {
-	beforeCacheNodes := stats.numCacheNodes
-	start := time.Now()
-	err := mcts.runOnCN(stats, cn)
-	if err != nil {
-		return err
-	}
-	elapsedTime := time.Since(start)
-	searchCacheNodes := stats.numCacheNodes - beforeCacheNodes
-
-	moveNum := cn.board.MoveNumber
-	klog.Infof("States searched in move #%d:    \t%d CacheNodes",
-		moveNum, searchCacheNodes)
-	cacheNodesPerSec := float64(searchCacheNodes) / elapsedTime.Seconds()
-	klog.Infof("Rate of evaluations in move #%d:\t%.1f CacheNodes/s",
-		moveNum, cacheNodesPerSec)
-
-	klog.Infof("States searched in match in move #%d: \t%d CacheNodes",
-		moveNum, stats.numCacheNodes)
-	return nil
-}
-
-// Search implements the Searcher interface.
-func (mcts *mctsSearcher) Search(b *Board) (bestAction Action, bestBoard *Board, bestScore float32, err error) {
-	return mcts.searchWithStats(nil, b)
-}
-
-type sortableProbsActions struct {
-	indices []int
-	probs   []float32
-}
-
-func (pa *sortableProbsActions) Swap(i, j int) {
-	pa.indices[i], pa.indices[j] = pa.indices[j], pa.indices[i]
-}
-func (pa *sortableProbsActions) Len() int {
-	return len(pa.indices)
-}
-func (pa *sortableProbsActions) Less(i, j int) bool {
-	return pa.probs[pa.indices[i]] > pa.probs[pa.indices[j]]
-}
-
-func logTopActionProbs(labelProbs []float32, actions []Action, prevProbs, scores []float32) {
-	if len(scores) <= 1 || len(actions) <= 1 {
 		return
 	}
-	var sumProbs float32
-	for _, prob := range prevProbs {
-		sumProbs += prob
-	}
-	klog.Infof("  Model previous probabilities: [%v], sum(+rand)=%.3g", prevProbs, sumProbs)
-	maxProb, minProb := prevProbs[0], prevProbs[0]
-	for ii := 1; ii < len(prevProbs); ii++ {
-		prob := prevProbs[ii]
-		if prob > maxProb {
-			maxProb = prob
-		} else if prob < minProb {
-			minProb = prob
+
+	// Keep sampling until the time is over.
+	startTime := time.Now()
+	for {
+		_, err = mcts.SearchSubtree(rootCacheNode, &stats)
+		if err != nil {
+			return
 		}
-	}
-	klog.Infof("Difference max(prob)-min(prob)=%.4g%%",
-		100.0*(maxProb-minProb))
-	sorted := sortableProbsActions{
-		indices: make([]int, len(labelProbs)),
-		probs:   labelProbs,
-	}
-	for ii := range sorted.indices {
-		sorted.indices[ii] = ii
-	}
-	sort.Sort(&sorted)
-	for ii := 0; ii < len(sorted.indices) && ii < 5; ii++ {
-		idx := sorted.indices[ii]
-		if labelProbs[idx] < 0.02 {
+		elapsed := time.Since(startTime)
+		if elapsed > mcts.maxTime {
 			break
 		}
-		klog.Infof("  Action %s: new probability %.2f%%, prev probability %.2f%%, Q-score=%.2g",
-			actions[idx], 100*labelProbs[idx], 100*prevProbs[idx], scores[idx])
-	}
-	klog.Infof("  New probabilities: [%v]", labelProbs)
-}
-
-func (mcts *mctsSearcher) searchWithStats(stats *matchStats, b *Board) (
-	action Action, board *Board, score float32, err error) {
-	var cn *cacheNode
-	cn, err = mcts.newCacheNode(b, true, stats)
-	if err != nil {
-		return
-	}
-	if klog.V(1).Enabled() {
-		// Measure time and boards evaluated.
-		if stats == nil {
-			stats = &matchStats{}
-		}
-		err = mcts.measuredRunOnCN(stats, cn)
-	} else {
-		err = mcts.runOnCN(stats, cn)
-	}
-	if err != nil {
-		return
 	}
 
-	var actionIdx int
-	var actionsLabels []float32
-	actionIdx, score, actionsLabels = cn.FindBestScore(mcts)
-	board = nil
-	if actionIdx >= 0 {
-		action = cn.actions[actionIdx]
-		if cn.cacheNodes[actionIdx] != nil {
-			board = cn.cacheNodes[actionIdx].board
+	// Select best action and its estimate.
+	bestActionIdx, mostVisits := -1, -1
+	for actionIdx, nVisits := range rootCacheNode.N {
+		if nVisits > mostVisits {
+			mostVisits = nVisits
+			bestActionIdx = actionIdx
 		}
-		if klog.V(2).Enabled() {
-			fmt.Println()
-			ui := cli.New(true, false)
-			ui.PrintBoard(cn.board)
-			fmt.Println()
-			klog.Infof("Search Move #%d (p%d), %d actions available, baseline is %.2g%%:",
-				cn.board.MoveNumber, cn.board.NextPlayer,
-				len(cn.actions), 100.0/float64(len(cn.actions)))
-			logTopActionProbs(actionsLabels, cn.actions, cn.actionsProbs, cn.Q)
-		}
-
-	} else {
-		action = SkipAction
-		board = cn.cacheNodes[0].board
 	}
-	if board == nil {
-		board = cn.board.Act(action)
-	}
-	klog.V(1).Infof("Selected action %s, score %.2f", action, score)
+	bestAction = board.Derived.Actions[bestActionIdx]
+	bestBoard = board.TakeAllActions()[bestActionIdx]
+	// bestScore uses the Q estimate.
+	bestScore = rootCacheNode.sumScores[bestActionIdx] / float32(mostVisits)
 	return
 }
 
+/*
 // ScoreMatch will score the board at each board position, starting from the current one,
 // and following each one of the actions. In the end, len(scores) == len(actions)+1, and
 // len(actionsLabels) == len(actions).
@@ -615,7 +296,7 @@ func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action) (
 			klog.Infof("ScoreMatch Move #%d (%d to go), player %d has the turn:",
 				cn.board.MoveNumber, len(actions)-matchActionsIdx, cn.board.NextPlayer)
 			ui.PrintBoard(cn.board)
-			logTopActionProbs(boardActionsLabels, cn.actions, cn.actionsProbs, cn.Q)
+			logTopActionProbs(boardActionsLabels, cn.actions, cn.actionsProbs, cn.sumScores)
 			fmt.Println()
 		}
 
@@ -627,7 +308,7 @@ func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action) (
 		} else {
 			playedIdx = cn.board.FindActionDeep(action)
 			klog.V(2).Infof("Actually played: %s, prob=%.2g%%, prev_prob=%.2g%%, Q-score=%f",
-				cn.actions[playedIdx], boardActionsLabels[playedIdx]*100, cn.actionsProbs[playedIdx], cn.Q[playedIdx])
+				cn.actions[playedIdx], boardActionsLabels[playedIdx]*100, cn.actionsProbs[playedIdx], cn.sumScores[playedIdx])
 		}
 		cn, err = cn.Step(mcts, stats, playedIdx, true)
 		if err != nil {
@@ -647,3 +328,4 @@ func (mcts *mctsSearcher) ScoreMatch(b *Board, actions []Action) (
 	scores = append(scores, score)
 	return
 }
+*/
