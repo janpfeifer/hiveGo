@@ -20,6 +20,7 @@ import (
 	"k8s.io/klog/v2"
 	"slices"
 	"sync"
+	"weak"
 )
 
 type ModelType int
@@ -82,7 +83,7 @@ var (
 
 	// Cache of models: per model type / checkpoint name.
 	muModelsCache sync.Mutex
-	modelsCache   = make(map[string]map[string]*Scorer)
+	modelsCache   = make(map[string]map[string]weak.Pointer[Scorer])
 )
 
 const notSpecified = "#<not_specified>"
@@ -112,11 +113,15 @@ func New(params parameters.Params) (*Scorer, error) {
 		var s *Scorer
 		cachePerModelType, found := modelsCache[key]
 		if found {
-			if s, found = cachePerModelType[filePath]; found {
-				return s, nil
+			if weakScorer, found := cachePerModelType[filePath]; found {
+				if s = weakScorer.Value(); s != nil {
+					return s, nil
+				}
+				// weak scorer has been collected.
+				delete(cachePerModelType, filePath)
 			}
 		} else {
-			cachePerModelType = make(map[string]*Scorer)
+			cachePerModelType = make(map[string]weak.Pointer[Scorer])
 			modelsCache[key] = cachePerModelType
 		}
 
@@ -205,8 +210,7 @@ func New(params parameters.Params) (*Scorer, error) {
 		_ = s.BoardScore(board)
 
 		// Cache resulting scorer.
-		cachePerModelType[filePath] = s
-
+		cachePerModelType[filePath] = weak.Make(s)
 		klog.V(1).Infof("Created new scorer %s", s)
 
 		return s, nil
