@@ -11,6 +11,8 @@ import (
 	"github.com/janpfeifer/hiveGo/internal/ui/spinning"
 	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"runtime"
 	"runtime/pprof"
@@ -81,6 +83,8 @@ var (
 	flagRescoreAndTrainIssueLearn = flag.Int("rescore_and_train_issue_learn", 10,
 		"After how many rescored matches/action to issue another learning mini-batch.")
 
+	flagProfiler = flag.Int("prof", -1, "If set, runs the profile at the given port.")
+
 	// AI for the players. If their configuration is exactly the same, they will point to the same object.
 	// trainingAI is the AI set to be trained (if one is set) -- it is nil, if none was set.
 	aiPlayers  []*players.SearcherScorer
@@ -101,6 +105,24 @@ func main() {
 	globalCtx, globalCancel = context.WithCancel(context.Background())
 	spinning.SafeInterrupt(globalCancel, 5*time.Second)
 	defer globalCancel()
+
+	// Optionally run profiler, and keep program alive on exit.
+	if *flagProfiler >= 0 {
+		addr := fmt.Sprintf("localhost:%d", *flagProfiler)
+		fmt.Printf("Starting profiler on %s/debug/pprof\n", addr)
+		fmt.Printf("- You can access it with: $ go tool pprof %s/debug/pprof/heap\n", addr)
+		fmt.Printf("- Program will be kept alive on end, you will have to interrupt it (Ctrl+C) to exit\n")
+		go func() {
+			klog.Fatal(http.ListenAndServe(addr, nil))
+		}()
+		defer func() {
+			runtime.GC()
+			fmt.Printf("- Program finished: kept alive with profiler opened at %s/debug/pprof\n", addr)
+			fmt.Printf("- Interrupt (Ctrl+C) to exit\n")
+			<-globalCtx.Done()
+			fmt.Printf("... exiting ...\n")
+		}()
+	}
 
 	if *flagCpuProfile != "" {
 		whenDone := createCPUProfile()
