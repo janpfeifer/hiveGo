@@ -175,15 +175,14 @@ func (mcts *mctsSearcher) SearchSubtree(cn *cacheNode, stats *matchStats) (score
 		// Notice TakeAllActions is cached in the board.
 		newBoard := cn.board.TakeAllActions()[bestAction]
 		if isEnd, endScore := ai.IsEndGameAndScore(newBoard); isEnd {
-			// Return endScore immediately.
 			// TODO: add some optimization/check if we are repeatedly sampling a game that is won or lost,
 			// 	and there is no alternative play, to accelerate end-game.
-			return endScore, nil
+			score = -endScore
+		} else {
+			score = -mcts.scorer.BoardScore(newBoard)
 		}
-
 		cn.N[bestAction] = 1
 		cn.sumN++
-		score = -mcts.scorer.BoardScore(newBoard)
 		cn.sumScores[bestAction] += score
 		return
 	}
@@ -192,6 +191,15 @@ func (mcts *mctsSearcher) SearchSubtree(cn *cacheNode, stats *matchStats) (score
 	// cacheNode for it, expanding the tree.
 	if cn.cacheNodes[bestAction] == nil {
 		newBoard := cn.board.TakeAllActions()[bestAction]
+		if isEnd, endScore := ai.IsEndGameAndScore(newBoard); isEnd {
+			// Return immediately and don't create a cacheNode.
+			score = -endScore
+			cn.N[bestAction] = 1
+			cn.sumN++
+			cn.sumScores[bestAction] += score
+			return
+		}
+
 		cn.cacheNodes[bestAction], err = mcts.newCacheNode(newBoard, stats)
 		if err != nil {
 			return
@@ -225,15 +233,22 @@ func (mcts *mctsSearcher) Search(board *Board) (bestAction Action, bestBoard *Bo
 
 	// Keep sampling until the time is over.
 	startTime := time.Now()
+	var elapsed time.Duration
 	for {
 		_, err = mcts.SearchSubtree(rootCacheNode, &stats)
 		if err != nil {
 			return
 		}
-		elapsed := time.Since(startTime)
+		elapsed = time.Since(startTime)
 		if elapsed > mcts.maxTime {
 			break
 		}
+	}
+
+	// Log performance.
+	if klog.V(1).Enabled() {
+		cacheNodeRate := float64(stats.numCacheNodes) / elapsed.Seconds()
+		klog.Infof("Search at move #%d: %.2f nodes/s", board.MoveNumber, cacheNodeRate)
 	}
 
 	// Select best action and its estimate.
