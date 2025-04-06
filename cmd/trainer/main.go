@@ -95,6 +95,13 @@ var (
 	globalCtx = context.Background()
 )
 
+// releaseGlobals should free all player and training information.
+// Used at the end of the program, to help profile for memory leaks.
+func releaseGlobals() {
+	aiPlayers = nil
+	trainingAI = nil
+}
+
 // main orchestrates playing, loading, rescoring, saving and training of matches.
 func main() {
 	klog.InitFlags(nil)
@@ -116,7 +123,11 @@ func main() {
 			klog.Fatal(http.ListenAndServe(addr, nil))
 		}()
 		defer func() {
-			runtime.GC()
+			// Release/free everything, there should be very little allocations left.
+			releaseGlobals()
+			for _ = range 10 {
+				runtime.GC()
+			}
 			fmt.Printf("- Program finished: kept alive with profiler opened at %s/debug/pprof\n", addr)
 			fmt.Printf("- Interrupt (Ctrl+C) to exit\n")
 			<-globalCtx.Done()
