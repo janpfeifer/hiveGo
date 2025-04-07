@@ -48,7 +48,12 @@ type Match struct {
 }
 
 // FinalBoard position of a match.
-func (m *Match) FinalBoard() *Board { return m.Boards[len(m.Boards)-1] }
+func (m *Match) FinalBoard() *Board {
+	if len(m.Boards) == 0 {
+		return nil
+	}
+	return m.Boards[len(m.Boards)-1]
+}
 
 // Encode the match (save it) into the given encoder.
 func (m *Match) Encode(enc Encoder) error {
@@ -198,6 +203,10 @@ var (
 // runMatch from start to end, and return the collected moves and scores.
 // It returns nil is the ctx was cancelled at any point.
 func runMatch(ctx context.Context, matchNum int, useRandomPlayers bool) *Match {
+	if klog.V(1).Enabled() {
+		klog.Infof("Starting match %d", matchNum)
+		defer klog.Infof("Finished match %d", matchNum)
+	}
 	if len(aiPlayers) < 0 {
 		klog.Fatalf("No AI players configured, cannot run matches")
 	}
@@ -228,6 +237,7 @@ func runMatch(ctx context.Context, matchNum int, useRandomPlayers bool) *Match {
 	// Run match.
 	lastWasSkip := false
 	for !board.IsFinished() {
+		prevBoard := board
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -259,6 +269,7 @@ func runMatch(ctx context.Context, matchNum int, useRandomPlayers bool) *Match {
 		}
 		match.Actions = append(match.Actions, action)
 		match.Boards = append(match.Boards, board)
+		prevBoard.ClearNextBoardsCache() // De-reference any trailing search tree boards from the previous state, GC takes over after that.
 		match.Scores = append(match.Scores, score)
 		match.ActionsLabels = append(match.ActionsLabels, actionLabels)
 
@@ -270,30 +281,24 @@ func runMatch(ctx context.Context, matchNum int, useRandomPlayers bool) *Match {
 			muStepUI.Unlock()
 		}
 	}
-
-	finalBoard := match.FinalBoard()
-	if !finalBoard.IsFinished() {
-		klog.Fatalf("%s stopped before being finished!?", matchName)
-	}
-
+	board.ClearNextBoardsCache() // Erase any trailing search tree.
 	if klog.V(1).Enabled() {
 		var msg string
-		if finalBoard.Draw() {
-			if finalBoard.MoveNumber > finalBoard.MaxMoves {
+		if board.Draw() {
+			if board.MoveNumber > board.MaxMoves {
 				msg = "match was a draw (MaxMoves reached)!"
 			} else {
 				msg = fmt.Sprintf("match was a draw (%d repeats)!",
-					finalBoard.Derived.Repeats)
+					board.Derived.Repeats)
 			}
 		} else {
-			player := finalBoard.Winner()
+			player := board.Winner()
 			winnerAI := aiPlayers[match.PlayersIdx[player]]
 			msg = fmt.Sprintf("%s won! (%s)", player, winnerAI)
 		}
 		klog.Infof("\n\n%s: finished at turn %d, %s\n\n",
-			matchNum, finalBoard.MoveNumber, msg)
+			matchNum, board.MoveNumber, msg)
 	}
-
 	return match
 }
 
@@ -372,7 +377,7 @@ func runMatches(ctx context.Context, matchesChan chan<- *Match) {
 				// Context interrupted, quick.
 				return
 			}
-			if !match.FinalBoard().Draw() {
+			if match.FinalBoard() != nil && !match.FinalBoard().Draw() {
 				wins++
 				if *flagWins {
 					done = done || (wins >= numMatchesToPlay)
@@ -385,11 +390,14 @@ func runMatches(ctx context.Context, matchesChan chan<- *Match) {
 			}
 			doneCount++
 			klog.V(1).Infof("Match %d finished: %d matches done, %d wins (non-draws)", matchNum, doneCount, wins)
+
+			// Allow next match to start already.
 			<-semaphore
 			if *flagWinsOnly && match.FinalBoard().Draw() {
 				return
 			}
 			matchesChan <- match
+
 		}(matchCount)
 		if !*flagWins {
 			done = done || (matchCount+1 >= numMatchesToPlay)
@@ -510,10 +518,12 @@ func reportMatches(results <-chan *Match) (matches []*Match) {
 	totalMoves := 0
 	ui := cli.New(true, false)
 	for match := range results {
-		matches = append(matches, match)
-
 		// Accounting.
 		board := match.FinalBoard()
+		if board == nil {
+			continue
+		}
+		matches = append(matches, match)
 		wins := board.Derived.Wins
 		swapped := match.PlayersIdx[0] == 1
 		if swapped {
@@ -541,6 +551,9 @@ func reportMatches(results <-chan *Match) (matches []*Match) {
 
 	// Print totals.
 	count := len(matches)
+	if count == 0 {
+		return
+	}
 	fmt.Printf("Total matches=%d\n", count)
 	for ii, value := range totalWins {
 		var p string
@@ -552,6 +565,5 @@ func reportMatches(results <-chan *Match) (matches []*Match) {
 		fmt.Printf("%s=%d\t%.1f%%\n", p, value, 100.0*float64(value)/float64(count))
 	}
 	fmt.Printf("Average number of moves=%.1f\n", float64(totalMoves)/float64(count))
-
 	return
 }

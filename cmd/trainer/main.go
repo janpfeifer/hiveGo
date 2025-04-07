@@ -98,6 +98,7 @@ var (
 // releaseGlobals should free all player and training information.
 // Used at the end of the program, to help profile for memory leaks.
 func releaseGlobals() {
+	klog.Info("* releaseGlobals()")
 	aiPlayers = nil
 	trainingAI = nil
 }
@@ -122,8 +123,17 @@ func main() {
 		go func() {
 			klog.Fatal(http.ListenAndServe(addr, nil))
 		}()
+		// Freeze while not interrupted, so one can read profile.
 		defer func() {
-			// Release/free everything, there should be very little allocations left.
+			// Don't freeze on panic.
+			if err := recover(); err != nil {
+				panic(err)
+			}
+			if globalCtx.Err() != nil {
+				// Already interrupted.
+				return
+			}
+
 			releaseGlobals()
 			for _ = range 10 {
 				runtime.GC()
