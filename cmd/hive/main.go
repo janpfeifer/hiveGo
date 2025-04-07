@@ -71,7 +71,10 @@ func main() {
 			if err != nil {
 				klog.Exitf("Failed to run match: %+v", err)
 			}
+			// Release data used during search of AI plays.
+			board.ClearNextBoardsCache()
 			board = newBoard
+
 		} else {
 			// AI plays.
 			if *flagWatch && !*flagQuiet {
@@ -86,6 +89,8 @@ func main() {
 			action, newBoard, score, _ := aiPlayer.Play(board)
 			s.Done()
 			fmt.Printf(" %s (score=%.3f)\n", action, score)
+			// Release data used during search of AI plays.
+			board.ClearNextBoardsCache()
 			board = newBoard
 			fmt.Println()
 		}
