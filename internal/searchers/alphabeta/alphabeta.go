@@ -26,7 +26,7 @@ type Searcher struct {
 	maxTime           time.Duration
 	randomness        float32
 	maxMoveRandomness int
-	scorer            ai.BatchBoardScorer
+	scorer            ai.BatchValueScorer
 	stats             Stats
 
 	drawScore float32
@@ -55,10 +55,10 @@ type Stats struct {
 // The one obligatory parameter is the scorer used for the search.
 //
 // See: wikipedia.org/wiki/Alpha-beta_pruning
-func New(scorer ai.BoardScorer) *Searcher {
-	batchScorer, ok := scorer.(ai.BatchBoardScorer)
+func New(scorer ai.ValueScorer) *Searcher {
+	batchScorer, ok := scorer.(ai.BatchValueScorer)
 	if !ok {
-		batchScorer = &ai.BatchBoardScorerProxy{BoardScorer: scorer}
+		batchScorer = &ai.BatchBoardScorerProxy{ValueScorer: scorer}
 	}
 	return &Searcher{
 		scorer:            batchScorer,
@@ -93,7 +93,7 @@ const (
 // - "randomness": adds a normal noise to the scores with mean 0 and the given value as standard deviation. Default is 0.
 // - "max_move_rand": max move (in plies) of the game to which to apply randomness. After this move, randomness is set to 0.
 // - "draw_score": (-1 to +1) how much score to associate to a draw. If you want to skew the AI to avoid draws, set to some negative value.
-func NewFromParams(scorer ai.BoardScorer, params parameters.Params) (searchers.Searcher, error) {
+func NewFromParams(scorer ai.ValueScorer, params parameters.Params) (searchers.Searcher, error) {
 	isAB, err := parameters.PopParamOr(params, "ab", false)
 	if err != nil {
 		return nil, err
@@ -246,7 +246,7 @@ func (ab *Searcher) Search(board *Board) (bestAction Action, bestBoard *Board, b
 		fmt.Printf(" - Move #%d\n\n", board.MoveNumber)
 		ui.PrintBoard(board)
 		fmt.Println()
-		batchScores := ab.scorer.BatchBoardScore([]*Board{board})
+		batchScores := ab.scorer.BatchScore([]*Board{board})
 		fmt.Printf("Best action found: %s - shallow score=%.2f, αβ-score=%.2f\n\n",
 			bestAction, batchScores[0], bestScore)
 	}
@@ -412,7 +412,7 @@ func (ab *Searcher) recursion(board *Board, depthLeft int, mainPlayer PlayerNum,
 // and returns the new boards and their scores according to the given scorer.
 //
 // It returns without using the scorer if any of the actions lead to b.NextPlayer winning.
-func executeAndScoreActions(board *Board, scorer ai.BatchBoardScorer) (newBoards []*Board, scores []float32) {
+func executeAndScoreActions(board *Board, scorer ai.BatchValueScorer) (newBoards []*Board, scores []float32) {
 	actions := board.Derived.Actions
 	scores = make([]float32, len(actions))
 	newBoards = make([]*Board, len(actions))
@@ -446,7 +446,7 @@ func executeAndScoreActions(board *Board, scorer ai.BatchBoardScorer) (newBoards
 	if len(boardsToScore) > 0 {
 		// Score non-game ending boards.
 		// TODO: Use "Principal Variation" to estimate the score.
-		scored := scorer.BatchBoardScore(boardsToScore)
+		scored := scorer.BatchScore(boardsToScore)
 		scoredIdx := 0
 		for actionIdx, newBoard := range newBoards {
 			if !newBoard.IsFinished() {

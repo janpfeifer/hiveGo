@@ -5,22 +5,22 @@ import (
 	. "github.com/janpfeifer/hiveGo/internal/state"
 )
 
-// BatchBoardScorerProxy is a trivial implementation of a BatchBoardScorer, with no efficiency gains.
+// BatchBoardScorerProxy is a trivial implementation of a BatchValueScorer, with no efficiency gains.
 type BatchBoardScorerProxy struct {
-	BoardScorer
+	ValueScorer
 }
 
-// BatchBoardScore calls the BoardScore for each board of the batch.
-func (s BatchBoardScorerProxy) BatchBoardScore(boards []*Board) (scores []float32) {
+// BatchBoardScore calls the Score for each board of the batch.
+func (s BatchBoardScorerProxy) BatchScore(boards []*Board) (scores []float32) {
 	scores = generics.SliceMap(boards, func(board *Board) float32 {
-		return s.BoardScore(board)
+		return s.Score(board)
 	})
 	return
 }
 
 func (s BatchBoardScorerProxy) String() string {
-	return s.BoardScorer.String()
+	return s.ValueScorer.String()
 }
 
-// Assert BatchBoardScorerProxy implements BatchBoardScorer
-var _ BatchBoardScorer = &BatchBoardScorerProxy{}
+// Assert BatchBoardScorerProxy implements BatchValueScorer
+var _ BatchValueScorer = &BatchBoardScorerProxy{}

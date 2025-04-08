@@ -100,7 +100,7 @@ func newBoardScorer(modelType ModelType, filePath string, model ValueModel, para
 
 	// Force creating/loading of variables without race conditions first.
 	board := state.NewBoard()
-	_ = boardScorer.BoardScore(board)
+	_ = boardScorer.Score(board)
 
 	return boardScorer, nil
 }
@@ -108,7 +108,7 @@ func newBoardScorer(modelType ModelType, filePath string, model ValueModel, para
 // BoardScorer implements a generic GoMLX "board scorer" (to use with AlphaBetaPruning or MinMax seachers) for the Hive game.
 // It only models the estimate of the state value (Q).
 //
-// It implements ai.BoardScorer, ai.BatchBoardScorer and ai.LearnerScorer.
+// It implements ai.ValueScorer, ai.BatchValueScorer and ai.ValueLearner.
 //
 // It is just a wrapper around on of the models implemented.
 type BoardScorer struct {
@@ -142,13 +142,13 @@ type BoardScorer struct {
 }
 
 var (
-	// Assert BoardScorer is an ai.BoardScorer, an ai.BatchBoardScorer and an ai.LearnerScorer.
-	_ ai.BoardScorer      = (*BoardScorer)(nil)
-	_ ai.BatchBoardScorer = (*BoardScorer)(nil)
-	_ ai.LearnerScorer    = (*BoardScorer)(nil)
+	// Assert BoardScorer is an ai.ValueScorer, an ai.BatchValueScorer and an ai.ValueLearner.
+	_ ai.ValueScorer      = (*BoardScorer)(nil)
+	_ ai.BatchValueScorer = (*BoardScorer)(nil)
+	_ ai.ValueLearner     = (*BoardScorer)(nil)
 )
 
-// String implements fmt.Stringer and ai.BoardScorer.
+// String implements fmt.Stringer and ai.ValueScorer.
 func (s *BoardScorer) String() string {
 	if s == nil {
 		return "<nil>[GoMLX]"
@@ -159,13 +159,13 @@ func (s *BoardScorer) String() string {
 	return fmt.Sprintf("%s[GoMLX]@%s", s.Type, s.checkpoint.Dir())
 }
 
-// BoardScore implements ai.BoardScorer.
-func (s *BoardScorer) BoardScore(board *state.Board) float32 {
-	return s.BatchBoardScore([]*state.Board{board})[0]
+// BoardScore implements ai.ValueScorer.
+func (s *BoardScorer) Score(board *state.Board) float32 {
+	return s.BatchScore([]*state.Board{board})[0]
 }
 
-// BatchBoardScore implements ai.BatchBoardScorer.
-func (s *BoardScorer) BatchBoardScore(boards []*state.Board) []float32 {
+// BatchBoardScore implements ai.BatchValueScorer.
+func (s *BoardScorer) BatchScore(boards []*state.Board) []float32 {
 	inputs := s.model.CreateInputs(boards)
 
 	s.muLearning.RLock()
@@ -180,7 +180,7 @@ func (s *BoardScorer) BatchBoardScore(boards []*state.Board) []float32 {
 	return scores[:len(boards)]
 }
 
-// Learn implements ai.LearnerScorer, and trains model with the new boards and its labels.
+// Learn implements ai.ValueLearner, and trains model with the new boards and its labels.
 // It returns the lossExec.
 func (s *BoardScorer) Learn(boards []*state.Board, boardLabels []float32) (loss float32) {
 	//fmt.Printf("Learn(%d boards)\n", len(boards))
@@ -216,7 +216,7 @@ func (s *BoardScorer) Save() error {
 	return s.checkpoint.Save()
 }
 
-// BatchSize returns the recommended batch size and implements ai.LearnerScorer.
+// BatchSize returns the recommended batch size and implements ai.ValueLearner.
 func (s *BoardScorer) BatchSize() int {
 	return s.batchSize
 }

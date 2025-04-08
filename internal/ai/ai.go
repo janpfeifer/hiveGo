@@ -18,23 +18,21 @@ func SquashScore(x float32) float32 {
 	return math32.Tanh(x) * WinGameScore
 }
 
-// BoardScorer returns two scores:
+// ValueScorer or aka. as a "value scorer" returns a score (value) for a given board.
 //
-//	value: how likely the current player is to win, in the form of
-//	  a score from +10 and -10.
-//	policy: Probability for each of the action. This is optional, and
-//	  some models may not return it.
-type BoardScorer interface {
-	BoardScore(board *Board) float32
+// A value score represents how likely the current player is to win: +1 represents a sure win,
+// -1 a sure loss, and 0 a draw.
+type ValueScorer interface {
+	Score(board *Board) float32
 	String() string
 }
 
-// BatchBoardScorer is a BoardScorer that handles batches.
-type BatchBoardScorer interface {
-	BoardScorer
+// BatchValueScorer is a ValueScorer that handles batches.
+type BatchValueScorer interface {
+	ValueScorer
 
-	// BatchBoardScore aggregate board scoring in batches, presumable more efficient.
-	BatchBoardScore(boards []*Board) []float32
+	// BatchScore aggregate board scoring in batches, presumable more efficient.
+	BatchScore(boards []*Board) []float32
 }
 
 // PolicyScorer represents an AI capable of scoring both the board and individual actions.
@@ -42,7 +40,7 @@ type BatchBoardScorer interface {
 // jointly, they are evaluated separately, since for the leaf states visited (most of them),
 // the policy values are not needed.
 type PolicyScorer interface {
-	BoardScorer
+	ValueScorer
 
 	// PolicyScore returns a score (probability) for each of the action of the board.
 	// In the article/paper, this is $P[s] = { p(s, a), \forall a \in s }$, where s is the state (board)
@@ -50,16 +48,37 @@ type PolicyScorer interface {
 	PolicyScore(board *Board) []float32
 }
 
-// LearnerScorer is the interface used to train a BoardScorer model.
-type LearnerScorer interface {
-	BatchBoardScorer
+// ValueLearner is the interface used to train a ValueScorer model, based on board value labels.
+type ValueLearner interface {
+	BatchValueScorer
 
-	// Learn makes the model learn from the given boards and associated boardLabels.
-	// It returns the training loss.
-	Learn(boards []*Board, boardLabels []float32) (loss float32)
+	// Learn from the given batch of boards and its associate value labels.
+	// It returns the training loss -- mean over batch.
+	Learn(boards []*Board, valueLabels []float32) (loss float32)
 
 	// Loss returns a measure of loss for the model -- whatever it is.
-	Loss(boards []*Board, boardLabels []float32) (loss float32)
+	Loss(boards []*Board, valueLabels []float32) (loss float32)
+
+	// Save the model being learned -- or create a new checkpoint.
+	Save() error
+
+	// BatchSize returns the batch size used by the learner.
+	// It is used only as an optimization hint for the trainer.
+	// If Learn is called with more examples than this, it will be split, and if smaller
+	// it will be padded (or something equivalent).
+	BatchSize() int
+}
+
+// PolicyLearner is the interface used to train a PolicyScorer model, based on board value and policy labels.
+type PolicyLearner interface {
+	PolicyScorer
+
+	// Learn from the given batch of boards, and their associated value and policy labels.
+	// It returns the training loss -- mean over batch.
+	Learn(boards []*Board, valueLabels []float32, policyLabels [][]float32) (loss float32)
+
+	// Loss returns a measure of loss for the model -- whatever it is.
+	Loss(boards []*Board, valueLabels []float32, policyLabels [][]float32) (loss float32)
 
 	// Save the model being learned -- or create a new checkpoint.
 	Save() error

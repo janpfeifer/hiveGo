@@ -36,7 +36,7 @@ var (
 
 	// Cache of models: per model type / checkpoint name.
 	muModelsCache sync.Mutex
-	modelsCache   = make(map[string]map[string]weak.Pointer[ai.BoardScorer])
+	modelsCache   = make(map[string]map[string]weak.Pointer[ai.ValueScorer])
 )
 
 const notSpecified = "#<not_specified>"
@@ -48,7 +48,7 @@ const notSpecified = "#<not_specified>"
 //     exist, a model is created with random weights. It's a BoardScorer.
 //
 // If no known model type is configured, it returns nil, nil.
-func New(params parameters.Params) (ai.BoardScorer, error) {
+func New(params parameters.Params) (ai.ValueScorer, error) {
 	muModelsCache.Lock()
 	defer muModelsCache.Unlock()
 
@@ -73,12 +73,12 @@ func New(params parameters.Params) (ai.BoardScorer, error) {
 				delete(cachePerModelType, filePath)
 			}
 		} else {
-			cachePerModelType = make(map[string]weak.Pointer[ai.BoardScorer])
+			cachePerModelType = make(map[string]weak.Pointer[ai.ValueScorer])
 			modelsCache[key] = cachePerModelType
 		}
 
 		// Create model and context.
-		var boardScorer ai.BoardScorer
+		var boardScorer ai.ValueScorer
 		var err error
 		switch modelType {
 		case ModelFNN:
@@ -102,7 +102,7 @@ func New(params parameters.Params) (ai.BoardScorer, error) {
 // init registers New as a potential scorer, so end users can use it.
 func init() {
 	players.RegisteredScorers = append(players.RegisteredScorers,
-		func(params parameters.Params) (ai.BoardScorer, error) {
+		func(params parameters.Params) (ai.ValueScorer, error) {
 			scorer, err := New(params)
 			if scorer == nil || err != nil {
 				return nil, err

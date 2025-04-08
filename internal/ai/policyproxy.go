@@ -6,31 +6,31 @@ import (
 	"slices"
 )
 
-// PolicyProxy implement a PolicyScorer that wraps a common BoardScorer.
+// PolicyProxy implement a PolicyScorer that wraps a common ValueScorer.
 // It scores the policy by using the score of the state of each action taken.
 //
 // It allows the scorer to work with MCTS (Monte Carlo Tree Search) searcher.
 //
 // It is not a PolicyLearner though, that requires a proper PolicyScorer model.
 type PolicyProxy struct {
-	BoardScorer
-	batchScorer BatchBoardScorer
+	ValueScorer
+	batchScorer BatchValueScorer
 	scale       float32
 }
 
-// NewPolicyProxy returns a proxy PolicyScorer that takes a BoardScorer to score the board states
+// NewPolicyProxy returns a proxy PolicyScorer that takes a ValueScorer to score the board states
 // for each action, passes the output to a Softmax and return that probability as a policy.
 // It also takes scale as a multiplier before the Softmax.
 //
 // It allows the scorer to work with MCTS (Monte Carlo Tree Search) searcher.
 //
 // It is not a PolicyLearner though, that requires a proper PolicyScorer model.
-func NewPolicyProxy(scorer BoardScorer, scale float32) PolicyScorer {
+func NewPolicyProxy(scorer ValueScorer, scale float32) PolicyScorer {
 	p := &PolicyProxy{
-		BoardScorer: scorer,
+		ValueScorer: scorer,
 		scale:       scale,
 	}
-	if batchScorer, ok := scorer.(BatchBoardScorer); ok {
+	if batchScorer, ok := scorer.(BatchValueScorer); ok {
 		p.batchScorer = batchScorer
 	} else {
 		p.batchScorer = BatchBoardScorerProxy{scorer}
@@ -41,7 +41,7 @@ func NewPolicyProxy(scorer BoardScorer, scale float32) PolicyScorer {
 // PolicyScore implements PolicyScorer.
 func (p *PolicyProxy) PolicyScore(board *Board) []float32 {
 	nextBoards := board.TakeAllActions()
-	scores := p.batchScorer.BatchBoardScore(nextBoards)
+	scores := p.batchScorer.BatchScore(nextBoards)
 	if p.scale != 1 {
 		for ii := range scores {
 			scores[ii] = p.scale * scores[ii]

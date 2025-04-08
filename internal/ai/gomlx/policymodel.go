@@ -23,11 +23,15 @@ type PolicyModel interface {
 	// CreatePolicyLabels tensors used during training.
 	CreatePolicyLabels(scoreLabel float32, policyLabels []float32) []*tensors.Tensor
 
+	// ForwardValueGraph outputs only the value score of a board.
+	ForwardValueGraph(ctx *context.Context, valueInputs []*graph.Node) (value *graph.Node)
+
 	// ForwardPolicyGraph is the GoMLX model graph function with the forward path that includes
-	// the a board value and its policy values (action probabilities).
+	// the value score of a board and its policy values (action probabilities).
+	//
 	// The returned policy probabilities may be padded -- just discard the values beyond the number of actions
 	// for the board.
-	ForwardPolicyGraph(ctx *context.Context, inputs []*graph.Node) (score *graph.Node, policy *graph.Node)
+	ForwardPolicyGraph(ctx *context.Context, policyInputs []*graph.Node) (value *graph.Node, policy *graph.Node)
 
 	// LossGraph should calculate the lossExec given the board inputs and the labels (shaped [batch_size, 1]).
 	// It must return a scalar with the lossExec value.

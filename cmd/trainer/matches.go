@@ -124,7 +124,7 @@ func (m *Match) AppendToLabeledBoardsForPlayers(labeledBoards *LabeledBoards, in
 			if klog.V(3).Enabled() {
 				fmt.Println("")
 				stepUI.PrintBoard(m.Boards[ii])
-				score := aiPlayers[0].Scorer.BoardScore(m.Boards[ii])
+				score := aiPlayers[0].Scorer.Score(m.Boards[ii])
 				fmt.Printf("Score: %g\n\n", score)
 			}
 

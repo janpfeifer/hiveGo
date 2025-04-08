@@ -57,7 +57,7 @@ type mctsSearcher struct {
 	// If to explore paths in parallel. Not yet supported.
 	parallelized bool
 
-	// BoardScorer to use during search.
+	// ValueScorer to use during search.
 	scorer ai.PolicyScorer
 
 	// Player parameter that indicates that MCTS was selected.
@@ -179,7 +179,7 @@ func (mcts *mctsSearcher) SearchSubtree(cn *cacheNode, stats *matchStats) (score
 			// 	and there is no alternative play, to accelerate end-game.
 			score = -endScore
 		} else {
-			score = -mcts.scorer.BoardScore(newBoard)
+			score = -mcts.scorer.Score(newBoard)
 		}
 		cn.N[bestAction] = 1
 		cn.sumN++

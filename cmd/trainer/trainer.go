@@ -184,14 +184,14 @@ func trainFromExamples(leTrain, leValidation *LabeledBoards) {
 // This can be used for distillation.
 //
 // It is "direct" because it doesn't use a searcher to do TD learning.
-func directRescoreMatch(scorer ai.BoardScorer, match *Match, from, to int) (scores []float32) {
+func directRescoreMatch(scorer ai.ValueScorer, match *Match, from, to int) (scores []float32) {
 	boards := match.Boards[from:to]
 	if len(boards) == 0 {
 		return nil
 	}
-	batchScorer, ok := scorer.(ai.BatchBoardScorer)
+	batchScorer, ok := scorer.(ai.BatchValueScorer)
 	if ok {
-		return batchScorer.BatchBoardScore(boards)
+		return batchScorer.BatchScore(boards)
 	}
 
 	// Parallel score board positions.
@@ -200,7 +200,7 @@ func directRescoreMatch(scorer ai.BoardScorer, match *Match, from, to int) (scor
 	for boardIdx, board := range boards {
 		wg.Add(1)
 		go func() {
-			scores[boardIdx] = scorer.BoardScore(board)
+			scores[boardIdx] = scorer.Score(board)
 			wg.Done()
 		}()
 	}

@@ -207,7 +207,7 @@ var (
 
 // NewFromParams returns the linear scorer if "linear" is set, otherwise it returns nil (and no error).
 // It returns an error if an unknown model or if it is a path to file, and it can't load or parse it.
-func NewFromParams(params parameters.Params) (ai.BoardScorer, error) {
+func NewFromParams(params parameters.Params) (ai.ValueScorer, error) {
 	if _, found := params["linear"]; !found {
 		return nil, nil
 	}

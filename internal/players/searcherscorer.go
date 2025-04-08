@@ -16,8 +16,8 @@ import (
 // It implements the Player interface.
 type SearcherScorer struct {
 	Searcher searchers.Searcher
-	Scorer   ai.BoardScorer
-	Learner  ai.LearnerScorer
+	Scorer   ai.ValueScorer
+	Learner  ai.ValueLearner
 }
 
 // New creates a new AI player given the configuration string.
@@ -94,7 +94,7 @@ func New(config string) (*SearcherScorer, error) {
 	}
 
 	// Check whether the scorer is also a learner.
-	if learner, ok := player.Scorer.(ai.LearnerScorer); ok {
+	if learner, ok := player.Scorer.(ai.ValueLearner); ok {
 		player.Learner = learner
 	}
 

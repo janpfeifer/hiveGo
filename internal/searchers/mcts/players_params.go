@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func NewFromParams(scorer ai.BoardScorer, params parameters.Params) (searchers.Searcher, error) {
+func NewFromParams(scorer ai.ValueScorer, params parameters.Params) (searchers.Searcher, error) {
 	isMCTS, err := parameters.PopParamOr(params, "mcts", false)
 	if err != nil {
 		return nil, err

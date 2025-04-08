@@ -20,7 +20,7 @@ import (
 )
 
 // Scorer is a linear model (one weight per feature + bias) on the feature set.
-// It implements ai.BoardScorer.
+// It implements ai.ValueScorer.
 type Scorer struct {
 	name string
 
@@ -57,10 +57,10 @@ func NewWithWeights(weights ...float32) *Scorer {
 }
 
 var (
-	// Assert Scorer is an ai.BoardScorer and an ai.BatchBoardScorer
-	_ ai.BoardScorer      = (*Scorer)(nil)
-	_ ai.BatchBoardScorer = (*Scorer)(nil)
-	_ ai.LearnerScorer    = (*Scorer)(nil)
+	// Assert Scorer is an ai.ValueScorer and an ai.BatchValueScorer
+	_ ai.ValueScorer      = (*Scorer)(nil)
+	_ ai.BatchValueScorer = (*Scorer)(nil)
+	_ ai.ValueLearner     = (*Scorer)(nil)
 )
 
 // String implements fmt.Stringer and ai.Scorer.
@@ -116,8 +116,8 @@ func (s *Scorer) logitScore(features []float32) float32 {
 	return sum
 }
 
-// BoardScore implements ai.BoardScorer.
-func (s *Scorer) BoardScore(board *Board) float32 {
+// BoardScore implements ai.ValueScorer.
+func (s *Scorer) Score(board *Board) float32 {
 	return s.ScoreFeatures(features.ForBoard(board, s.Version()))
 }
 
@@ -127,11 +127,11 @@ func (s *Scorer) ScoreFeatures(rawFeatures []float32) float32 {
 	return ai.SquashScore(logit)
 }
 
-// BatchBoardScore implements ai.BatchBoardScorer.
-func (s *Scorer) BatchBoardScore(boards []*Board) (scores []float32) {
+// BatchBoardScore implements ai.BatchValueScorer.
+func (s *Scorer) BatchScore(boards []*Board) (scores []float32) {
 	scores = make([]float32, len(boards))
 	for ii, board := range boards {
-		scores[ii] = s.BoardScore(board)
+		scores[ii] = s.Score(board)
 	}
 	return
 }
@@ -165,7 +165,7 @@ func (s *Scorer) l2RegularizationLoss() float32 {
 	return sum * s.L2Reg
 }
 
-// Learn implements ai.LearnerScorer, and trains model with the new boards and its labels.
+// Learn implements ai.ValueLearner, and trains model with the new boards and its labels.
 // It returns the loss.
 func (s *Scorer) Learn(boards []*Board, boardLabels []float32) (loss float32) {
 	//fmt.Printf("Learn(%d boards)\n", len(boards))
@@ -274,7 +274,7 @@ func (s *Scorer) lossFromFeatures(boardFeatures [][]float32, boardLabels []float
 	return
 }
 
-// BatchSize returns the recommended batch size and implements ai.LearnerScorer.
+// BatchSize returns the recommended batch size and implements ai.ValueLearner.
 func (s *Scorer) BatchSize() int {
 	return s.batchSize
 }
@@ -306,7 +306,7 @@ func (s *Scorer) Version() int {
 }
 
 // Save model to s.FileName.
-// It implements ai.LearnerScorer.
+// It implements ai.ValueLearner.
 func (s *Scorer) Save() error {
 	s.muSave.Lock()
 	defer s.muSave.Unlock()

@@ -29,24 +29,24 @@ type Player interface {
 	Finalize()
 }
 
-// ScorerBuilder builds an ai.BoardScorer if the corresponding parameter(s) is set. E.g.: "linear" or "linear=v0" would
+// ScorerBuilder builds an ai.ValueScorer if the corresponding parameter(s) is set. E.g.: "linear" or "linear=v0" would
 // create a linear scorer with the default or "v0" models respectively. It should return nil, if its parameter
 // is not present.
 //
 // The parameters used should be removed (popped) from params.
-type ScorerBuilder func(params parameters.Params) (ai.BoardScorer, error)
+type ScorerBuilder func(params parameters.Params) (ai.ValueScorer, error)
 
 // SearcherBuilder builds a searchers.Searcher if the corresponding parameter is set. E.g. "ab" would create
 // an alpha-beta pruning searcher. It should return nil if its parameter is not present.
 //
 // The parameters used should be removed (popped) from params.
-type SearcherBuilder func(scorer ai.BoardScorer, params parameters.Params) (searchers.Searcher, error)
+type SearcherBuilder func(scorer ai.ValueScorer, params parameters.Params) (searchers.Searcher, error)
 
 var (
 	// RegisteredScorers are called in sequence to check if they apply to the params given.
-	// They should either return nil if the params don't refer to them, or the ai.BoardScorer built.
+	// They should either return nil if the params don't refer to them, or the ai.ValueScorer built.
 	//
-	// If the scorer returned also implements an ai.LearnerScorer, it can be used by the trainer
+	// If the scorer returned also implements an ai.ValueLearner, it can be used by the trainer
 	// tool.
 	RegisteredScorers []ScorerBuilder
 
