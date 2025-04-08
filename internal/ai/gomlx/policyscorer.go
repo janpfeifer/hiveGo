@@ -179,38 +179,44 @@ func (s *PolicyScorer) BatchScore(boards []*state.Board) []float32 {
 }
 
 // PolicyScore implements ai.PolicyScorer.
+//
+// It automatically trims the padding (if any) used by the PolicyModel used.
 func (s *PolicyScorer) PolicyScore(board *state.Board) []float32 {
-	inputs := s.model.CreatePolicyInputs(board)
+	inputs := s.model.CreatePolicyInputs([]*state.Board{board})
 	s.muLearning.RLock()
 	defer s.muLearning.RUnlock()
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
 		return graph.DonateTensorBuffer(t, backend())
 	})
-	scoreT := s.policyScoreExec.Call(donatedInputs...)[0]
-	return tensors.CopyFlatData[float32](scoreT)
+	policyScoresT := s.policyScoreExec.Call(donatedInputs...)[1]
+	policyScoresT.Shape().AssertDims( /*batchSize*/ 1 /*paddedNumActions*/, -1)
+	paddedPolicyScores := tensors.CopyFlatData[float32](policyScoresT)
+	return paddedPolicyScores[:board.NumActions()]
 }
 
 // Learn implements ai.ValueLearner, and trains model with the new boards and its labels.
 // It returns the lossExec.
-func (s *PolicyScorer) Learn(boards []*state.Board, boardLabels []float32) (loss float32) {
+func (s *PolicyScorer) Learn(boards []*state.Board, valueLabels []float32, policyLabels [][]float32) (loss float32) {
 	//fmt.Printf("Learn(%d boards)\n", len(boards))
+	inputsAndLabels := s.createInputsAndLabels(boards, valueLabels, policyLabels)
 	s.muLearning.Lock()
 	defer s.muLearning.Unlock()
-	lossT := s.trainStepExec.Call(s.createInputsAndLabels(boards, boardLabels)...)[0]
+	lossT := s.trainStepExec.Call(inputsAndLabels...)[0]
 	return tensors.ToScalar[float32](lossT)
 }
 
 // Loss returns a measure of lossExec for the model -- whatever it is.
-func (s *PolicyScorer) Loss(boards []*state.Board, boardLabels []float32) (loss float32) {
+func (s *PolicyScorer) Loss(boards []*state.Board, valueLabels []float32, policyLabels [][]float32) (loss float32) {
+	inputsAndLabels := s.createInputsAndLabels(boards, valueLabels, policyLabels)
 	s.muLearning.RLock()
 	defer s.muLearning.RUnlock()
-	lossT := s.lossExec.Call(s.createInputsAndLabels(boards, boardLabels)...)[0]
+	lossT := s.lossExec.Call(inputsAndLabels...)[0]
 	return tensors.ToScalar[float32](lossT)
 }
 
-func (s *PolicyScorer) createInputsAndLabels(boards []*state.Board, boardLabels []float32) []any {
-	inputs := s.model.CreateInputs(boards)
-	inputs = append(inputs, s.model.CreateLabels(boardLabels))
+func (s *PolicyScorer) createInputsAndLabels(boards []*state.Board, valueLabels []float32, policyLabels [][]float32) []any {
+	inputs := s.model.CreatePolicyInputs(boards)
+	inputs = append(inputs, s.model.CreatePolicyLabels(valueLabels, policyLabels)...)
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
 		return graph.DonateTensorBuffer(t, backend())
 	})

@@ -18,10 +18,14 @@ type PolicyModel interface {
 
 	// CreatePolicyInputs when evaluating the board's policy: the actions probabilities.
 	// It should include any padding needed by the model.
-	CreatePolicyInputs(board *state.Board) []*tensors.Tensor
+	//
+	// It has to work with batch size of 1 board only (during playing the game), and with
+	// arbitrary batch sizes (during training).
+	CreatePolicyInputs(boards []*state.Board) []*tensors.Tensor
 
 	// CreatePolicyLabels tensors used during training.
-	CreatePolicyLabels(scoreLabel float32, policyLabels []float32) []*tensors.Tensor
+	// Labels are for a batch of boards.
+	CreatePolicyLabels(scoreLabels []float32, policyLabels [][]float32) []*tensors.Tensor
 
 	// ForwardValueGraph outputs only the value score of a board.
 	ForwardValueGraph(ctx *context.Context, valueInputs []*graph.Node) (value *graph.Node)
