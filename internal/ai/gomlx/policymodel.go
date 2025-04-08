@@ -21,10 +21,14 @@ type PolicyModel interface {
 	//
 	// It has to work with batch size of 1 board only (during playing the game), and with
 	// arbitrary batch sizes (during training).
+	//
+	// The number of tensors returned is arbitrary for the model, but they must remain always fixed.
 	CreatePolicyInputs(boards []*state.Board) []*tensors.Tensor
 
 	// CreatePolicyLabels tensors used during training.
 	// Labels are for a batch of boards.
+	//
+	// The number of tensors returned is arbitrary for the model, but they must remain always fixed.
 	CreatePolicyLabels(scoreLabels []float32, policyLabels [][]float32) []*tensors.Tensor
 
 	// ForwardValueGraph outputs only the value score of a board.
@@ -33,11 +37,12 @@ type PolicyModel interface {
 	// ForwardPolicyGraph is the GoMLX model graph function with the forward path that includes
 	// the value score of a board and its policy values (action probabilities).
 	//
-	// The returned policy probabilities may be padded -- just discard the values beyond the number of actions
-	// for the board.
+	// The returned policy probabilities is returned in a "ragged" format: the flat values of the actions probabilities
+	// of all boards densely packed, with padding only in the end -- just discard the values beyond the total number of
+	// actions for all the boards.
 	ForwardPolicyGraph(ctx *context.Context, policyInputs []*graph.Node) (value *graph.Node, policy *graph.Node)
 
 	// LossGraph should calculate the lossExec given the board inputs and the labels (shaped [batch_size, 1]).
-	// It must return a scalar with the lossExec value.
-	LossGraph(ctx *context.Context, inputs []*graph.Node, labels *graph.Node) *[]graph.Node
+	// It must return a scalar with the lossExec value -- if not a scalar, it is reduced with the mean.
+	LossGraph(ctx *context.Context, inputs []*graph.Node, labels []*graph.Node) *graph.Node
 }

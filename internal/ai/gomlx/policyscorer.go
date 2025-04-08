@@ -3,6 +3,7 @@ package gomlx
 import (
 	"bytes"
 	"fmt"
+	"github.com/gomlx/exceptions"
 	_ "github.com/gomlx/gomlx/backends/xla"
 	"github.com/gomlx/gomlx/graph"
 	"github.com/gomlx/gomlx/ml/context"
@@ -20,11 +21,60 @@ import (
 	"sync"
 )
 
+// PolicyScorer implements a generic GoMLX "board scorer" (to use with AlphaBetaPruning or MinMax seachers) for the Hive game.
+// It only models the estimate of the state value (Q).
+//
+// It implements ai.PolicyScorer, ai.BatchPolicyScorer and ai.ValueLearner.
+//
+// It is just a wrapper around on of the models implemented.
+type PolicyScorer struct {
+	Type ModelType
+
+	// model if PolicyScorer is a a PolicyScorer.
+	model PolicyModel
+
+	// Executors.
+	valueScoreExec, policyScoreExec, lossExec, trainStepExec *context.Exec
+
+	// Number of input tensors for the executors: they are defined at the first call to
+	// PolicyModel.CreatePolicyInputs and PolicyModel.CreatePolicyLabels, and must remain constant.
+	// Before they are defined, they are temporarily set as -1.
+	numPolicyInputTensors, numLabelTensors int
+
+	// checkpoint handler, if model is being saved/loaded to/from disk.
+	checkpoint *checkpoints.Handler
+
+	// checkpointsToKeep is the number of copies of older checkpoints to keep around.
+	// Default to 10.
+	checkpointsToKeep int
+
+	// Hyperparameters cached values: they should also be set in modelCtx.
+	batchSize int
+
+	// muLearning "write" for learning, and "read" for scoring.
+	muLearning sync.RWMutex
+
+	// optimizer used when training the model.
+	// ?Should this be owned by the model itself?
+	optimizer optimizers.Interface
+
+	// muSave makes saving sequential.
+	muSave sync.Mutex
+}
+
+var (
+	// Assert PolicyScorer is an ai.PolicyScorer, an ai.BatchPolicyScorer and an ai.ValueLearner.
+	_ ai.PolicyScorer  = (*PolicyScorer)(nil)
+	_ ai.PolicyLearner = (*PolicyScorer)(nil)
+)
+
 // newPolicyScorer returns a gomlx.PolicyScorer for the given ValueModel.
 func newPolicyScorer(modelType ModelType, filePath string, model PolicyModel, params parameters.Params) (*PolicyScorer, error) {
 	s := &PolicyScorer{
-		Type:  modelType,
-		model: model,
+		Type:                  modelType,
+		model:                 model,
+		numPolicyInputTensors: -1,
+		numLabelTensors:       -1,
 	}
 
 	// Help if requested.
@@ -65,20 +115,21 @@ func newPolicyScorer(modelType ModelType, filePath string, model PolicyModel, pa
 	// Setup scoreExec executor.
 	muNewClient.Lock()
 	defer muNewClient.Unlock()
-	s.scoreExec = context.NewExec(backend(), ctx,
-		func(ctx *context.Context, inputs []*graph.Node) *graph.Node {
+	ctx = ctx.Checked(false)
+	s.valueScoreExec = context.NewExec(backend(), ctx,
+		func(ctx *context.Context, valueInputs []*graph.Node) *graph.Node {
 			// Remove last axis with dimension 1.
-			ctx = ctx.Checked(false)
-			return graph.Squeeze(s.model.ForwardGraph(ctx, inputs), -1)
+			return graph.Squeeze(s.model.ForwardValueGraph(ctx, valueInputs), -1)
+		})
+	s.policyScoreExec = context.NewExec(backend(), ctx,
+		func(ctx *context.Context, policyInputs []*graph.Node) []*graph.Node {
+			value, policy := s.model.ForwardPolicyGraph(ctx, policyInputs)
+			return []*graph.Node{value, policy}
 		})
 	s.lossExec = context.NewExec(backend(), ctx,
 		func(ctx *context.Context, inputsAndLabels []*graph.Node) *graph.Node {
-			inputs := inputsAndLabels[:len(inputsAndLabels)-1]
-			labels := inputsAndLabels[len(inputsAndLabels)-1]
-			if labels.Rank() == 1 {
-				// Add the last axes with dimension 1.
-				labels = graph.ExpandAxes(labels, -1)
-			}
+			inputs := inputsAndLabels[:s.numPolicyInputTensors]
+			labels := inputsAndLabels[s.numPolicyInputTensors:]
 			loss := s.model.LossGraph(ctx, inputs, labels)
 			if !loss.IsScalar() {
 				// Some losses may return one value per example of the batch.
@@ -88,9 +139,9 @@ func newPolicyScorer(modelType ModelType, filePath string, model PolicyModel, pa
 		})
 	s.trainStepExec = context.NewExec(backend(), s.model.Context(),
 		func(ctx *context.Context, inputsAndLabels []*graph.Node) *graph.Node {
-			inputs := inputsAndLabels[:len(inputsAndLabels)-1]
-			labels := inputsAndLabels[len(inputsAndLabels)-1]
-			g := labels.Graph()
+			g := inputsAndLabels[0].Graph()
+			inputs := inputsAndLabels[:s.numPolicyInputTensors]
+			labels := inputsAndLabels[s.numPolicyInputTensors:]
 			ctx.SetTraining(g, true)
 			loss := s.model.LossGraph(ctx, inputs, labels)
 			s.optimizer.UpdateGraph(ctx, g, loss)
@@ -105,48 +156,6 @@ func newPolicyScorer(modelType ModelType, filePath string, model PolicyModel, pa
 	return s, nil
 }
 
-// PolicyScorer implements a generic GoMLX "board scorer" (to use with AlphaBetaPruning or MinMax seachers) for the Hive game.
-// It only models the estimate of the state value (Q).
-//
-// It implements ai.PolicyScorer, ai.BatchPolicyScorer and ai.ValueLearner.
-//
-// It is just a wrapper around on of the models implemented.
-type PolicyScorer struct {
-	Type ModelType
-
-	// model if PolicyScorer is a a PolicyScorer.
-	model PolicyModel
-
-	// Executors.
-	valueScoreExec, policyScoreExec, lossExec, trainStepExec *context.Exec
-
-	// checkpoint handler, if model is being saved/loaded to/from disk.
-	checkpoint *checkpoints.Handler
-
-	// checkpointsToKeep is the number of copies of older checkpoints to keep around.
-	// Default to 10.
-	checkpointsToKeep int
-
-	// Hyperparameters cached values: they should also be set in modelCtx.
-	batchSize int
-
-	// muLearning "write" for learning, and "read" for scoring.
-	muLearning sync.RWMutex
-
-	// optimizer used when training the model.
-	// ?Should this be owned by the model itself?
-	optimizer optimizers.Interface
-
-	// muSave makes saving sequential.
-	muSave sync.Mutex
-}
-
-var (
-	// Assert PolicyScorer is an ai.PolicyScorer, an ai.BatchPolicyScorer and an ai.ValueLearner.
-	_ ai.PolicyScorer = (*PolicyScorer)(nil)
-	_ ai.ValueLearner = (*PolicyScorer)(nil)
-)
-
 // String implements fmt.Stringer and ai.PolicyScorer.
 func (s *PolicyScorer) String() string {
 	if s == nil {
@@ -158,7 +167,7 @@ func (s *PolicyScorer) String() string {
 	return fmt.Sprintf("%s[GoMLX]@%s", s.Type, s.checkpoint.Dir())
 }
 
-// BoardScore implements ai.PolicyScorer (which includes ai.ValueScorer).
+// Score implements ai.PolicyScorer (which includes ai.ValueScorer).
 func (s *PolicyScorer) Score(board *state.Board) float32 {
 	inputs := s.model.CreateValueInputs(board)
 	s.muLearning.RLock()
@@ -171,18 +180,32 @@ func (s *PolicyScorer) Score(board *state.Board) float32 {
 	return tensors.ToScalar[float32](scoreT)
 }
 
-// BatchBoardScore implements ai.BatchPolicyScorer.
+// BatchScore implements ai.BatchPolicyScorer.
 func (s *PolicyScorer) BatchScore(boards []*state.Board) []float32 {
 	return generics.SliceMap(boards, func(board *state.Board) float32 {
 		return s.Score(board)
 	})
 }
 
+// createPolicyInputs is a wrapper over s.model.CreatePolicyInputs that asserts the number of inputs hasn't changed.
+func (s *PolicyScorer) createPolicyInputs(boards []*state.Board) []*tensors.Tensor {
+	inputs := s.model.CreatePolicyInputs(boards)
+	if s.numPolicyInputTensors == -1 {
+		s.numPolicyInputTensors = len(inputs)
+	} else {
+		if len(inputs) != s.numPolicyInputTensors {
+			exceptions.Panicf("model %s: expected %d policy inputs, got %d",
+				s, s.numPolicyInputTensors, len(inputs))
+		}
+	}
+	return inputs
+}
+
 // PolicyScore implements ai.PolicyScorer.
 //
 // It automatically trims the padding (if any) used by the PolicyModel used.
 func (s *PolicyScorer) PolicyScore(board *state.Board) []float32 {
-	inputs := s.model.CreatePolicyInputs([]*state.Board{board})
+	inputs := s.createPolicyInputs([]*state.Board{board})
 	s.muLearning.RLock()
 	defer s.muLearning.RUnlock()
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
@@ -191,6 +214,8 @@ func (s *PolicyScorer) PolicyScore(board *state.Board) []float32 {
 	policyScoresT := s.policyScoreExec.Call(donatedInputs...)[1]
 	policyScoresT.Shape().AssertDims( /*batchSize*/ 1 /*paddedNumActions*/, -1)
 	paddedPolicyScores := tensors.CopyFlatData[float32](policyScoresT)
+	// Notice this works because we are scoring only one board, if it were a batch, we would need to deal with the
+	// ragged actions tensor.
 	return paddedPolicyScores[:board.NumActions()]
 }
 
@@ -215,8 +240,16 @@ func (s *PolicyScorer) Loss(boards []*state.Board, valueLabels []float32, policy
 }
 
 func (s *PolicyScorer) createInputsAndLabels(boards []*state.Board, valueLabels []float32, policyLabels [][]float32) []any {
-	inputs := s.model.CreatePolicyInputs(boards)
-	inputs = append(inputs, s.model.CreatePolicyLabels(valueLabels, policyLabels)...)
+	inputs := s.createPolicyInputs(boards)
+	labels := s.model.CreatePolicyLabels(valueLabels, policyLabels)
+	if s.numLabelTensors == -1 {
+		s.numLabelTensors = len(labels)
+	} else {
+		if len(labels) != s.numLabelTensors {
+			exceptions.Panicf("model %s: expected %d policy label tensors, got %d", s, s.numLabelTensors, len(labels))
+		}
+	}
+	inputs = append(inputs, labels...)
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
 		return graph.DonateTensorBuffer(t, backend())
 	})
