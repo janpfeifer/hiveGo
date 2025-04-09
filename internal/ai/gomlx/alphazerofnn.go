@@ -186,14 +186,79 @@ func (fnn *AlphaZeroFNN) CreatePolicyLabels(boardLabels []float32, policyLabels 
 	return []*tensors.Tensor{boardLabelsT, policyLabelsT}
 }
 
-func (fnn *AlphaZeroFNN) ForwardValueGraph(ctx *context.Context, valueInputs []*Node) (value *Node) {
-	//TODO implement me
-	panic("implement me")
+func (fnn *AlphaZeroFNN) ForwardValueGraph(ctx *context.Context, valueInputs []*Node) (values *Node) {
+	boardsFeatures, numBoards := valueInputs[0], valueInputs[1]
+	boardEmbed := fnn.boardEmbedding(ctx, boardsFeatures, numBoards)
+	return fnn.boardValues(ctx, boardEmbed)
 }
 
-func (fnn *AlphaZeroFNN) ForwardPolicyGraph(ctx *context.Context, policyInputs []*Node) (value *Node, policy *Node) {
-	//TODO implement me
-	panic("implement me")
+func (fnn *AlphaZeroFNN) ForwardPolicyGraph(ctx *context.Context, policyInputs []*Node) (values *Node, policy *Node) {
+	boardFeatures, numBoards, actionsFeatures, actionsToBoardIdx, numActions := policyInputs[0], policyInputs[1], policyInputs[2], policyInputs[3], policyInputs[4]
+	numPaddedActions := actionsFeatures.Shape().Dim(0)
+
+	// Base board tower is shared between value and actions (policy) logits.
+	boardEmbed := fnn.boardEmbedding(ctx, boardFeatures, numBoards)
+	actionsEmbed := fnn.boardEmbedding(ctx, actionsFeatures, numActions)
+
+	// One-layer from board embeddings to its values (scores).
+	values = fnn.boardValues(ctx, boardEmbed)
+
+	// Send message (like a MPNN, a type of graph neural network) from boards to actions.
+	actionsBoardEmbed := Gather(boardEmbed, actionsToBoardIdx)
+	actionsBoardEmbed.AssertDims(numPaddedActions, boardEmbed.Shape().Dim(1))
+	actionsEmbed = Concatenate([]*Node{actionsEmbed, actionsBoardEmbed}, -1)
+
+	// actions (policy) tower
+	actionsCtx := ctx.In("actions")
+	var actionsLogits *Node
+	if context.GetParamOr(ctx, "kan", false) {
+		// Use KAN, all configured by context hyperparameters. See createDefaultContext for defaults.
+		actionsLogits = kan.New(actionsCtx.In("kan"), actionsEmbed, 1).Done()
+	} else {
+		// Normal AlphaZeroFNN, all configured by context hyperparameters. See createDefaultContext for defaults.
+		actionsLogits = fnnLayer.New(actionsCtx.In("fnn"), actionsEmbed, 1).Done()
+	}
+	// TODO: policy = RaggedSoftmax(actionsLogits, actionsToBoardIdx)
+	return
+}
+
+func (fnn *AlphaZeroFNN) boardEmbedding(ctx *context.Context, boardFeatures, numBoards *Node) *Node {
+	ctx = ctx.In("base_board_tower")
+	embeddings := boardFeatures
+	boardEmbedDim := context.GetParamOr(ctx, fnnLayer.ParamNumHiddenNodes, 4)
+	// ValueModel itself is an AlphaZeroFNN or a KAN.
+	if context.GetParamOr(ctx, "kan", false) {
+		// Use KAN, all configured by context hyperparameters. See createDefaultContext for defaults.
+		embeddings = kan.New(ctx.In("kan"), embeddings, boardEmbedDim).Done()
+	} else {
+		// Normal AlphaZeroFNN, all configured by context hyperparameters. See createDefaultContext for defaults.
+		embeddings = fnnLayer.New(ctx.In("fnn"), embeddings, boardEmbedDim).Done()
+	}
+
+	// Zero masked out elements.
+	batchSize := embeddings.Shape().Dim(0)
+	if batchSize == 1 {
+		// No padding
+		return embeddings
+	}
+	mask := fnn.getMask(embeddings, numBoards)
+	embeddings = Where(mask, embeddings, ZerosLike(embeddings))
+	return embeddings
+}
+
+func (fnn *AlphaZeroFNN) boardValues(ctx *context.Context, boardEmbed *Node) *Node {
+	ctx = ctx.In("board_output")
+	var logits *Node
+	if context.GetParamOr(ctx, "kan", false) {
+		// Use KAN, all configured by context hyperparameters. See createDefaultContext for defaults.
+		logits = kan.New(ctx.In("kan"), boardEmbed, 1).
+			NumHiddenLayers(0, 0).Done()
+	} else {
+		// Normal AlphaZeroFNN, all configured by context hyperparameters. See createDefaultContext for defaults.
+		logits = fnnLayer.New(ctx.In("kan"), boardEmbed, 1).
+			NumHiddenLayers(0, 0).Done()
+	}
+	return Tanh(logits)
 }
 
 func (fnn *AlphaZeroFNN) LossGraph(ctx *context.Context, inputs []*Node, labels []*Node) *Node {

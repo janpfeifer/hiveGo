@@ -22,6 +22,7 @@ type ModelType int
 const (
 	ModelNone ModelType = iota
 	ModelFNN
+	ModelAlphaZeroFNN
 )
 
 //go:generate go tool enumer -type=ModelType -trimprefix=ValueModel -transform=snake -values -text -json -yaml scorer.go
@@ -87,6 +88,13 @@ func New(params parameters.Params) (ai.ValueScorer, error) {
 			if err != nil {
 				return nil, err
 			}
+		case ModelAlphaZeroFNN:
+			model := NewAlphaZeroFNN()
+			policyScorer, err := newPolicyScorer(modelType, filePath, model, params)
+			if err != nil {
+				return nil, err
+			}
+			boardScorer = policyScorer
 		default:
 			return nil, errors.Errorf("model type %s defined but not implemented", modelType)
 		}
