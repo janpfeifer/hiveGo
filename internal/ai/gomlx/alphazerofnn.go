@@ -8,6 +8,7 @@ import (
 	fnnLayer "github.com/gomlx/gomlx/ml/layers/fnn"
 	"github.com/gomlx/gomlx/ml/layers/kan"
 	"github.com/gomlx/gomlx/ml/layers/regularizers"
+	"github.com/gomlx/gomlx/ml/train/losses"
 	"github.com/gomlx/gomlx/ml/train/optimizers"
 	"github.com/gomlx/gomlx/ml/train/optimizers/cosineschedule"
 	"github.com/gomlx/gomlx/types/shapes"
@@ -160,32 +161,6 @@ func (fnn *AlphaZeroFNN) CreatePolicyInputs(boards []*state.Board) []*tensors.Te
 	return []*tensors.Tensor{boardFeatures, numBoardsT, actionsFeatures, actionsToBoardIdx, numActionsT}
 }
 
-// CreatePolicyLabels implements PolicyModel.
-func (fnn *AlphaZeroFNN) CreatePolicyLabels(boardLabels []float32, policyLabels [][]float32) []*tensors.Tensor {
-	paddedBatchSize := fnn.paddedSize(len(boardLabels) + 1)
-	boardLabelsT := tensors.FromShape(shapes.Make(dtypes.Float32, paddedBatchSize))
-	tensors.MutableFlatData(boardLabelsT, func(flat []float32) {
-		copy(flat, boardLabels)
-	})
-
-	var numActions int
-	for _, boardPolicy := range policyLabels {
-		numActions += len(boardPolicy)
-	}
-	paddedNumActions := fnn.paddedSize(numActions)
-	policyLabelsT := tensors.FromShape(shapes.Make(dtypes.Float32, paddedNumActions))
-	tensors.MutableFlatData(policyLabelsT, func(flat []float32) {
-		actionIdx := 0
-		for _, boardPolicy := range policyLabels {
-			for _, label := range boardPolicy {
-				flat[actionIdx] = label
-				actionIdx++
-			}
-		}
-	})
-	return []*tensors.Tensor{boardLabelsT, policyLabelsT}
-}
-
 func (fnn *AlphaZeroFNN) ForwardValueGraph(ctx *context.Context, valueInputs []*Node) (values *Node) {
 	boardsFeatures, numBoards := valueInputs[0], valueInputs[1]
 	boardEmbed := fnn.boardEmbedding(ctx, boardsFeatures, numBoards)
@@ -194,6 +169,7 @@ func (fnn *AlphaZeroFNN) ForwardValueGraph(ctx *context.Context, valueInputs []*
 
 func (fnn *AlphaZeroFNN) ForwardPolicyGraph(ctx *context.Context, policyInputs []*Node) (values *Node, policy *Node) {
 	boardFeatures, numBoards, actionsFeatures, actionsToBoardIdx, numActions := policyInputs[0], policyInputs[1], policyInputs[2], policyInputs[3], policyInputs[4]
+	numPaddedBoards := boardFeatures.Shape().Dim(0)
 	numPaddedActions := actionsFeatures.Shape().Dim(0)
 
 	// Base board tower is shared between value and actions (policy) logits.
@@ -218,7 +194,8 @@ func (fnn *AlphaZeroFNN) ForwardPolicyGraph(ctx *context.Context, policyInputs [
 		// Normal AlphaZeroFNN, all configured by context hyperparameters. See createDefaultContext for defaults.
 		actionsLogits = fnnLayer.New(actionsCtx.In("fnn"), actionsEmbed, 1).Done()
 	}
-	// TODO: policy = RaggedSoftmax(actionsLogits, actionsToBoardIdx)
+	policyRagged := MakeRagged2D(numPaddedBoards, actionsLogits, actionsToBoardIdx).Softmax()
+	policy = policyRagged.Flat
 	return
 }
 
@@ -261,22 +238,46 @@ func (fnn *AlphaZeroFNN) boardValues(ctx *context.Context, boardEmbed *Node) *No
 	return Tanh(logits)
 }
 
-func (fnn *AlphaZeroFNN) LossGraph(ctx *context.Context, inputs []*Node, labels []*Node) *Node {
-	//predictions := fnn.ForwardGraph(ctx, inputs)
-	//batchMask := fnn.getBatchMask(inputs)
-	//return losses.MeanSquaredError([]*Node{labels, batchMask}, []*Node{predictions})
-	//TODO implement me
-	panic("implement me")
+// CreatePolicyLabels implements PolicyModel.
+func (fnn *AlphaZeroFNN) CreatePolicyLabels(boardLabels []float32, policyLabels [][]float32) []*tensors.Tensor {
+	paddedBatchSize := fnn.paddedSize(len(boardLabels) + 1)
+	boardLabelsT := tensors.FromShape(shapes.Make(dtypes.Float32, paddedBatchSize))
+	tensors.MutableFlatData(boardLabelsT, func(flat []float32) {
+		copy(flat, boardLabels)
+	})
+
+	var numActions int
+	for _, boardPolicy := range policyLabels {
+		numActions += len(boardPolicy)
+	}
+	paddedNumActions := fnn.paddedSize(numActions)
+	policyLabelsT := tensors.FromShape(shapes.Make(dtypes.Float32, paddedNumActions))
+	tensors.MutableFlatData(policyLabelsT, func(flat []float32) {
+		actionIdx := 0
+		for _, boardPolicy := range policyLabels {
+			for _, label := range boardPolicy {
+				flat[actionIdx] = label
+				actionIdx++
+			}
+		}
+	})
+	return []*tensors.Tensor{boardLabelsT, policyLabelsT}
 }
 
-// CreateLabels implements ValueModel.CreateLabels.
-func (fnn *AlphaZeroFNN) CreateLabels(labels []float32) *tensors.Tensor {
-	paddedBatchSize := fnn.paddedSize(len(labels))
-	boardLabels := tensors.FromShape(shapes.Make(dtypes.Float32, paddedBatchSize, 1))
-	tensors.MutableFlatData(boardLabels, func(flat []float32) {
-		copy(flat, labels)
-	})
-	return boardLabels
+func (fnn *AlphaZeroFNN) LossGraph(ctx *context.Context, inputs []*Node, labels []*Node) *Node {
+	numBoards, numActions := inputs[1], inputs[4]
+	predictedValues, predictedPolicies := fnn.ForwardPolicyGraph(ctx, inputs)
+	boardLabels, policyLabels := labels[0], labels[1]
+
+	// Board labels part:
+	boardsMask := fnn.getMask(predictedValues, numBoards)
+	boardLosses := ReduceAllMean(losses.MeanSquaredError([]*Node{boardLabels, boardsMask}, []*Node{predictedValues}))
+
+	// Policy losses: we do the cross-entropy loss manually, to handle the raggedness in the mean.
+	// We want each board to have the same weight on the final loss.
+	policiesMask := fnn.getMask(predictedPolicies, numActions)
+	policyLosses := losses.CategoricalCrossEntropy([]*Node{policyLabels, policiesMask}, []*Node{predictedPolicies})
+	return Add(boardLosses, policyLosses)
 }
 
 // getMask of a batch, given the number of used elements (numUsed, an Int32 scalar) from it.
@@ -285,22 +286,4 @@ func (fnn *AlphaZeroFNN) getMask(batch, numUsed *Node) *Node {
 	batchSize := batch.Shape().Dim(0)
 	batchMask := LessThan(Iota(g, shapes.Make(dtypes.Int32, batchSize, 1), 0), numUsed)
 	return batchMask
-}
-
-// ForwardGraph calculates the scores of the board.
-func (fnn *AlphaZeroFNN) ForwardGraph(ctx *context.Context, inputs []*Node) *Node {
-	logits := inputs[0]
-	batchSize := logits.Shape().Dim(0)
-
-	// ValueModel itself is an AlphaZeroFNN or a KAN.
-	if context.GetParamOr(ctx, "kan", false) {
-		// Use KAN, all configured by context hyperparameters. See createDefaultContext for defaults.
-		logits = kan.New(ctx.In("kan"), logits, 1).Done()
-	} else {
-		// Normal AlphaZeroFNN, all configured by context hyperparameters. See createDefaultContext for defaults.
-		logits = fnnLayer.New(ctx.In("fnn"), logits, 1).Done()
-	}
-	logits.AssertDims(batchSize, 1) // 2-dim tensor, with batch size as the leading dimension.
-	predictions := MulScalar(Tanh(logits), 0.99)
-	return predictions
 }
