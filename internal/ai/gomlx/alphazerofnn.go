@@ -180,7 +180,7 @@ func (fnn *AlphaZeroFNN) ForwardPolicyGraph(ctx *context.Context, policyInputs [
 	values = fnn.boardValues(ctx, boardEmbed)
 
 	// Send message (like a MPNN, a type of graph neural network) from boards to actions.
-	actionsBoardEmbed := Gather(boardEmbed, actionsToBoardIdx)
+	actionsBoardEmbed := Gather(boardEmbed, ExpandAxes(actionsToBoardIdx, -1))
 	actionsBoardEmbed.AssertDims(numPaddedActions, boardEmbed.Shape().Dim(1))
 	actionsEmbed = Concatenate([]*Node{actionsEmbed, actionsBoardEmbed}, -1)
 
@@ -194,7 +194,7 @@ func (fnn *AlphaZeroFNN) ForwardPolicyGraph(ctx *context.Context, policyInputs [
 		// Normal AlphaZeroFNN, all configured by context hyperparameters. See createDefaultContext for defaults.
 		actionsLogits = fnnLayer.New(actionsCtx.In("fnn"), actionsEmbed, 1).Done()
 	}
-	policyRagged := MakeRagged2D(numPaddedBoards, actionsLogits, actionsToBoardIdx).Softmax()
+	policyRagged := MakeRagged2D(numPaddedBoards, Squeeze(actionsLogits, -1), actionsToBoardIdx).Softmax()
 	policy = policyRagged.Flat
 	return
 }
@@ -219,7 +219,7 @@ func (fnn *AlphaZeroFNN) boardEmbedding(ctx *context.Context, boardFeatures, num
 		return embeddings
 	}
 	mask := fnn.getMask(embeddings, numBoards)
-	embeddings = Where(mask, embeddings, ZerosLike(embeddings))
+	embeddings = Where(Squeeze(mask, -1), embeddings, ZerosLike(embeddings))
 	return embeddings
 }
 
@@ -268,6 +268,9 @@ func (fnn *AlphaZeroFNN) LossGraph(ctx *context.Context, inputs []*Node, labels 
 	numBoards, numActions := inputs[1], inputs[4]
 	predictedValues, predictedPolicies := fnn.ForwardPolicyGraph(ctx, inputs)
 	boardLabels, policyLabels := labels[0], labels[1]
+	if boardLabels.Rank() == 1 {
+		boardLabels = ExpandAxes(boardLabels, -1)
+	}
 
 	// Board labels part:
 	boardsMask := fnn.getMask(predictedValues, numBoards)
@@ -275,8 +278,11 @@ func (fnn *AlphaZeroFNN) LossGraph(ctx *context.Context, inputs []*Node, labels 
 
 	// Policy losses: we do the cross-entropy loss manually, to handle the raggedness in the mean.
 	// We want each board to have the same weight on the final loss.
-	policiesMask := fnn.getMask(predictedPolicies, numActions)
-	policyLosses := losses.CategoricalCrossEntropy([]*Node{policyLabels, policiesMask}, []*Node{predictedPolicies})
+	policiesMask := Squeeze(fnn.getMask(policyLabels, numActions), -1)
+	predictedPolicies = ExpandAxes(predictedPolicies, -1)
+	policyLabels = ExpandAxes(policyLabels, -1)
+	policyLosses := losses.CategoricalCrossEntropy([]*Node{policyLabels, policiesMask},
+		[]*Node{predictedPolicies})
 	return Add(boardLosses, policyLosses)
 }
 
