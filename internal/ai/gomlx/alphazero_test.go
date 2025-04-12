@@ -10,6 +10,8 @@ import (
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/stretchr/testify/require"
 	"testing"
+
+	_ "github.com/gomlx/gomlx/backends/xla"
 )
 
 // PieceOnBoard represents a position and ownership of a piece in the board.

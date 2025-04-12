@@ -27,13 +27,13 @@ func NewFromParams(scorer ai.ValueScorer, params parameters.Params) (searchers.S
 	}
 	mcts := &mctsSearcher{
 		scorer:       policyScorer,
-		maxDepth:     10,
 		maxTime:      30 * time.Second,
 		maxTraverses: 300,
-		minTraverses: 0,
+		minTraverses: 10,
 		maxAbsScore:  9.0,
 		cPuct:        1.1,
-		temperature:  0.0,
+		temperature:  1.0,
+		maxRandDepth: 25,
 		parallelized: false,
 		useMCTS:      false,
 	}
@@ -48,15 +48,19 @@ func NewFromParams(scorer ai.ValueScorer, params parameters.Params) (searchers.S
 	if err != nil {
 		return nil, err
 	}
-	mcts.maxDepth, err = parameters.PopParamOr(params, "max_depth", mcts.maxDepth)
-	if err != nil {
-		return nil, err
-	}
 	mcts.maxTraverses, err = parameters.PopParamOr(params, "max_traverses", mcts.maxTraverses)
 	if err != nil {
 		return nil, err
 	}
+	mcts.minTraverses, err = parameters.PopParamOr(params, "min_traverses", mcts.maxTraverses)
+	if err != nil {
+		return nil, err
+	}
 	mcts.temperature, err = parameters.PopParamOr(params, "temperature", mcts.temperature)
+	if err != nil {
+		return nil, err
+	}
+	mcts.maxRandDepth, err = parameters.PopParamOr(params, "maxRandDepth", mcts.maxTraverses)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,7 @@
 // References used, since the original paper doesn't actually provide the formulas:
 //
 //   - https://suragnair.github.io/posts/alphazero.html by Surag Nair
+//   - Paper here: https://github.com/suragnair/alpha-zero-general/blob/master/pretrained_models/writeup.pdf
 //   - https://web.stanford.edu/class/archive/cs/cs221/cs221.1196/sections/Section5.pdf
 //
 // AlphaZero original paper -- that mostly talks about its successes but not the actual
@@ -26,6 +27,7 @@ import (
 	"k8s.io/klog/v2"
 	"log"
 	"math"
+	"math/rand"
 	"time"
 
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
@@ -42,8 +44,12 @@ const (
 )
 
 type mctsSearcher struct {
-	maxDepth                   int
-	maxTime                    time.Duration
+	// maxTime defines the maximum number of time to spend thinking.
+	// Either maxTime or maxTraverses must be defined.
+	maxTime time.Duration
+
+	// maxTraverses, minTraverses define the limit number of traverses to do during the search, if not zero.
+	// Either maxTime or maxTraverses must be defined.
 	maxTraverses, minTraverses int
 	maxAbsScore                float32 // Max absolute score, value above that interrupt the search.
 	cPuct                      float32 // Degree of exploration of alpha-zero.
@@ -53,6 +59,11 @@ type mctsSearcher struct {
 	// always take the best estimate action. AlphaZero Go uses 1 for the first 30 moves.
 	// Larger models will make the play more random.
 	temperature float32
+
+	// maxRandDepth defines the move (in plies) after which temperature is disabled and
+	// it simply takes the best move, as opposed to randomly using th policy distribution.
+	// A value <= 0 means there is no maxRandDepth.
+	maxRandDepth int
 
 	// If to explore paths in parallel. Not yet supported.
 	parallelized bool
@@ -232,6 +243,7 @@ func (mcts *mctsSearcher) Search(board *Board) (bestAction Action, bestBoard *Bo
 	}
 
 	// Keep sampling until the time is over.
+	numTraverses := 0
 	startTime := time.Now()
 	var elapsed time.Duration
 	for {
@@ -239,9 +251,19 @@ func (mcts *mctsSearcher) Search(board *Board) (bestAction Action, bestBoard *Bo
 		if err != nil {
 			return
 		}
-		elapsed = time.Since(startTime)
-		if elapsed > mcts.maxTime {
+		numTraverses++
+
+		if mcts.maxTraverses > 0 && numTraverses >= mcts.maxTraverses {
 			break
+		}
+		if mcts.minTraverses > 0 && numTraverses < mcts.minTraverses {
+			continue
+		}
+		if mcts.maxTime > 0 {
+			elapsed = time.Since(startTime)
+			if elapsed > mcts.maxTime {
+				break
+			}
 		}
 	}
 
@@ -251,19 +273,66 @@ func (mcts *mctsSearcher) Search(board *Board) (bestAction Action, bestBoard *Bo
 		klog.Infof("Search at move #%d: %.2f nodes/s", board.MoveNumber, cacheNodeRate)
 	}
 
-	// Select best action and its estimate.
-	bestActionIdx, mostVisits := -1, -1
-	for actionIdx, nVisits := range rootCacheNode.N {
-		if nVisits > mostVisits {
-			mostVisits = nVisits
-			bestActionIdx = actionIdx
-		}
-	}
+	bestActionIdx := mcts.selectAction(rootCacheNode)
 	bestAction = board.Derived.Actions[bestActionIdx]
 	bestBoard = board.TakeAllActions()[bestActionIdx]
-	// bestScore uses the Q estimate.
-	bestScore = rootCacheNode.sumScores[bestActionIdx] / float32(mostVisits)
+	bestScore = rootCacheNode.sumScores[bestActionIdx] / float32(rootCacheNode.N[bestActionIdx])
 	return
+}
+
+func pow32(x, y float32) float32 {
+	return float32(math.Pow(float64(x), float64(y)))
+}
+
+// selectAction given the root of the MCTS expanded search.
+// If temperature is 0, or maxRandDepth is reached, it is greedy.
+// Otherwise, it picks randomly from a probability distribution based on the number of visits of
+// each sub-tree.
+func (mcts *mctsSearcher) selectAction(rootCacheNode *cacheNode) int {
+	board := rootCacheNode.board
+	if mcts.temperature == 0 || (mcts.maxRandDepth > 0 && board.MoveNumber > mcts.maxRandDepth) {
+		// Greedily pick best action and its estimate.
+		bestActionIdx, mostVisits := -1, -1
+		for actionIdx, nVisits := range rootCacheNode.N {
+			if nVisits > mostVisits {
+				mostVisits = nVisits
+				bestActionIdx = actionIdx
+			}
+		}
+		return bestActionIdx
+	}
+
+	// Calculate policy probability distribution based on visits (not the one returned by the model)
+	numActions := len(rootCacheNode.N)
+	actionsProbs := make([]float32, numActions)
+	temp := mcts.temperature
+	for actionIdx, nVisits := range rootCacheNode.N {
+		actionsProbs[actionIdx] = float32(nVisits) / float32(rootCacheNode.sumN)
+		if temp != 1 {
+			actionsProbs[actionIdx] = pow32(actionsProbs[actionIdx], 1/temp)
+		}
+	}
+	// Normalize probabilities
+	if temp != 1 {
+		sumProbs := float32(0)
+		for _, prob := range actionsProbs {
+			sumProbs += prob
+		}
+		for actionIdx, prob := range actionsProbs {
+			actionsProbs[actionIdx] = prob / sumProbs
+		}
+	}
+	// Pick random action from probability distribution.
+	r := rand.Float32()
+	sumProb := float32(0.0)
+	for actionIdx, prob := range actionsProbs {
+		sumProb += prob
+		if r <= sumProb {
+			return actionIdx
+		}
+	}
+	// Due to rounding errors we may get here, in this case return last action.
+	return len(actionsProbs) - 1
 }
 
 /*
