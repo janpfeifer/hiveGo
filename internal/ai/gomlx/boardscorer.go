@@ -3,7 +3,6 @@ package gomlx
 import (
 	"bytes"
 	"fmt"
-	_ "github.com/gomlx/gomlx/backends/xla"
 	"github.com/gomlx/gomlx/graph"
 	"github.com/gomlx/gomlx/ml/context"
 	"github.com/gomlx/gomlx/ml/context/checkpoints"

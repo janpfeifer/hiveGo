@@ -2,7 +2,7 @@
 
 package main
 
-// Include GoMLX models support.
+// Include GoMLX backend and models support.
 
 import (
 	_ "github.com/gomlx/gomlx/backends/xla"
