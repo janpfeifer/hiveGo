@@ -73,6 +73,11 @@ func NewAlphaZeroFNN() *AlphaZeroFNN {
 	return fnn
 }
 
+// Clone model. Notice the associated checkpoints.Handler is not copied, and have to be set again.
+func (fnn *AlphaZeroFNN) Clone() PolicyModel {
+	return &AlphaZeroFNN{ctx: fnn.ctx.Clone()}
+}
+
 func (fnn *AlphaZeroFNN) Context() *context.Context {
 	return fnn.ctx
 }

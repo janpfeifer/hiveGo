@@ -13,6 +13,9 @@ type PolicyModel interface {
 	// Context used by the model: with both it weights and hyperparameters.
 	Context() *context.Context
 
+	// Clone returns a copy of the model with a cloned Context.
+	Clone() PolicyModel
+
 	// CreateValueInputs when evaluating the board value. No batch supported here.
 	CreateValueInputs(board *state.Board) []*tensors.Tensor
 

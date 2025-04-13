@@ -155,6 +155,33 @@ func newPolicyScorer(modelType ModelType, filePath string, model PolicyModel, pa
 	return s, nil
 }
 
+// CloneLearner implements ai.PolicyLearner.
+func (s *PolicyScorer) CloneLearner() ai.PolicyLearner {
+	s.muLearning.Lock()
+	defer s.muLearning.Unlock()
+	s.muSave.Lock()
+	defer s.muSave.Unlock()
+
+	newS := &PolicyScorer{
+		Type:                  s.Type,
+		model:                 s.model.Clone(),
+		valueScoreExec:        nil,
+		policyScoreExec:       nil,
+		lossExec:              nil,
+		trainStepExec:         nil,
+		numPolicyInputTensors: s.numPolicyInputTensors,
+		numLabelTensors:       s.numLabelTensors,
+		checkpoint:            nil,
+		checkpointsToKeep:     s.checkpointsToKeep,
+		batchSize:             s.batchSize,
+		optimizer:             s.optimizer,
+	}
+	// TODO: Set checkpoint to the same as s.
+	// TODO: Create executors
+
+	return newS
+}
+
 // String implements fmt.Stringer and ai.PolicyScorer.
 func (s *PolicyScorer) String() string {
 	if s == nil {
