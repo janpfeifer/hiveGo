@@ -15,9 +15,11 @@ import (
 // SearcherScorer is a standard set up for an AI: a searcher and a scorer.
 // It implements the Player interface.
 type SearcherScorer struct {
-	Searcher searchers.Searcher
-	Scorer   ai.ValueScorer
-	Learner  ai.ValueLearner
+	Searcher      searchers.Searcher
+	ValueScorer   ai.ValueScorer
+	ValueLearner  ai.ValueLearner
+	PolicyScorer  ai.PolicyScorer
+	PolicyLearner ai.PolicyLearner
 }
 
 // New creates a new AI player given the configuration string.
@@ -66,18 +68,18 @@ func New(config string) (*SearcherScorer, error) {
 			// Not this type of scorer.
 			continue
 		}
-		if player.Scorer != nil {
+		if player.ValueScorer != nil {
 			return nil, errors.Errorf("multiple scorers defined in parameters %q", config)
 		}
-		player.Scorer = s
+		player.ValueScorer = s
 	}
-	if player.Scorer == nil {
+	if player.ValueScorer == nil {
 		return nil, errors.Errorf("no scorers defined in parameters %q", config)
 	}
 
 	// Find searcher.
 	for _, builder := range RegisteredSearchers {
-		s, err := builder(player.Scorer, params)
+		s, err := builder(player.ValueScorer, params)
 		if err != nil {
 			return nil, err
 		}
@@ -94,8 +96,11 @@ func New(config string) (*SearcherScorer, error) {
 	}
 
 	// Check whether the scorer is also a learner.
-	if learner, ok := player.Scorer.(ai.ValueLearner); ok {
-		player.Learner = learner
+	if learner, ok := player.ValueScorer.(ai.ValueLearner); ok {
+		player.ValueLearner = learner
+	}
+	if learner, ok := player.PolicyScorerScorer.(ai.ValueLearner); ok {
+		player.ValueLearner = learner
 	}
 
 	// Check that all parameters were processed.
@@ -118,20 +123,20 @@ func (s *SearcherScorer) Play(b *Board) (
 	}
 	if klog.V(2).Enabled() {
 		klog.Infof("Move #%d: AI (%s) playing %s, score=%.3f",
-			b.MoveNumber, s.Scorer, action, score)
+			b.MoveNumber, s.ValueScorer, action, score)
 	}
 	return
 }
 
 func (s *SearcherScorer) String() string {
-	return fmt.Sprintf("%s (searcher=%s)", s.Scorer, s.Searcher)
+	return fmt.Sprintf("%s (searcher=%s)", s.ValueScorer, s.Searcher)
 }
 
 // Finalize is called at the end of a match.
 func (s *SearcherScorer) Finalize() {
 	if klog.V(1).Enabled() {
-		klog.Infof("Player (scorer=%s) finalized", s.Scorer)
+		klog.Infof("Player (scorer=%s) finalized", s.ValueScorer)
 	}
-	s.Scorer = nil
+	s.ValueScorer = nil
 	s.Searcher = nil
 }

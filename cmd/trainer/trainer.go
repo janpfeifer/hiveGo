@@ -90,7 +90,7 @@ func rescoreMatches(matchesIn <-chan *Match, matchesOut chan *Match) {
 			if *flagDistill {
 				// Distillation: score boards.
 				// TODO: For the scores just use the immediate score. Not action labels.
-				newScores := directRescoreMatch(aiPlayers[1].Scorer, match, from, to)
+				newScores := directRescoreMatch(aiPlayers[1].ValueScorer, match, from, to)
 				if len(newScores) > 0 {
 					maxScore := math.Abs(float64(newScores[0]))
 					for _, v := range newScores {
@@ -160,9 +160,9 @@ func trainFromMatches(matches []*Match) {
 }
 
 func savePlayer0() error {
-	if aiPlayers[0].Learner != nil {
-		klog.Infof("Saving %s", aiPlayers[0].Learner)
-		return aiPlayers[0].Learner.Save()
+	if aiPlayers[0].ValueLearner != nil {
+		klog.Infof("Saving %s", aiPlayers[0].ValueLearner)
+		return aiPlayers[0].ValueLearner.Save()
 	}
 	return nil
 }
@@ -170,12 +170,12 @@ func savePlayer0() error {
 // trainFromExamples: only player[0] is trained.
 func trainFromExamples(leTrain, leValidation *LabeledBoards) {
 	//klog.Infof("Number of labeled examples: train=%d validation=%d", leTrain.Len(), leValidation.Len())
-	//loss, boardLoss, actionsLoss := aiPlayers[0].Learner.Learn(
+	//loss, boardLoss, actionsLoss := aiPlayers[0].ValueLearner.Learn(
 	//	leTrain.Boards, leTrain.Labels, leTrain.ActionsLabels,
 	//	learningRate, epochs, perEpochCallback)
 	for epoch := range *flagTrainLoops {
-		trainLoss := aiPlayers[0].Learner.Loss(leTrain.Boards, leTrain.Labels)
-		validLoss := aiPlayers[0].Learner.Loss(leValidation.Boards, leValidation.Labels)
+		trainLoss := aiPlayers[0].ValueLearner.Loss(leTrain.Boards, leTrain.Labels)
+		validLoss := aiPlayers[0].ValueLearner.Loss(leValidation.Boards, leValidation.Labels)
 		klog.Infof("  Epoch #%d losses: train=%.4g, validation=%.4g", epoch, trainLoss, validLoss)
 	}
 }
@@ -224,7 +224,7 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match) error {
 	labeledBoards := LabeledBoards{
 		MaxSize: *flagTrainBoardsBufferSize,
 	}
-	batchSize := aiPlayers[0].Learner.BatchSize()
+	batchSize := aiPlayers[0].ValueLearner.BatchSize()
 	numLearnSteps := *flagTrainStepsPerMatch
 	if numLearnSteps == 0 {
 		numLearnSteps = (*flagTrainBoardsBufferSize + batchSize - 1) / batchSize
@@ -264,14 +264,14 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match) error {
 		var loss float32
 		err := exceptions.TryCatch[error](func() {
 			// First learn with 0 steps: only evaluation without dropout.
-			//loss, boardLoss, actionsLoss := aiPlayers[0].Learner.Learn(
+			//loss, boardLoss, actionsLoss := aiPlayers[0].ValueLearner.Learn(
 			//	le.Boards, le.Labels,
 			//	le.ActionsLabels, float32(*flagLearningRate),
 			//	0, nil)
 			//klog.V(1).Infof("Evaluation loss: total=%g board=%g actions=%g",
 			//	loss, boardLoss, actionsLoss)
 			if klog.V(1).Enabled() {
-				preTrainLoss := aiPlayers[0].Learner.Loss(labeledBoards.Boards, labeledBoards.Labels)
+				preTrainLoss := aiPlayers[0].ValueLearner.Loss(labeledBoards.Boards, labeledBoards.Labels)
 				klog.Infof("Pre-training loss %.4g", preTrainLoss)
 			}
 
@@ -284,7 +284,7 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match) error {
 					boardsBatch[exampleIdx] = labeledBoards.Boards[idx]
 					labelsBatch[exampleIdx] = labeledBoards.Labels[idx]
 				}
-				loss = aiPlayers[0].Learner.Learn(boardsBatch, labelsBatch)
+				loss = aiPlayers[0].ValueLearner.Learn(boardsBatch, labelsBatch)
 				countLearn++
 				averageLoss = movingAverage(averageLoss, loss, averageLossDecay, countLearn)
 			}
@@ -295,7 +295,7 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match) error {
 		}
 
 		// Evaluate (learn with 0 steps)on training data.
-		//loss, boardLoss, actionsLoss = aiPlayers[0].Learner.Learn(
+		//loss, boardLoss, actionsLoss = aiPlayers[0].ValueLearner.Learn(
 		//	le.Boards, le.Labels,
 		//	le.ActionsLabels, float32(*flagLearningRate),
 		//	0, nil)

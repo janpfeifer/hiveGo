@@ -91,6 +91,10 @@ type PolicyLearner interface {
 
 	// String returns the model/learner name.
 	String() string
+
+	// Clone returns a cloned learner. The new learner will both be pointing to the same checkpoint ... so
+	// the caller has to decide which one to eventually use to save models.
+	CloneLearner() PolicyLearner
 }
 
 // IsEndGameAndScore returns weather it's the end of the game, and the hard-coded score of a win/loss/draw

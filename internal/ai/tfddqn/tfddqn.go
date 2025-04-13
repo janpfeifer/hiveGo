@@ -54,19 +54,19 @@ func (s *Scorer) SetUsage(u UseType) { s.usage = u }
 func (s *Scorer) modelIdx() int             { return s.active ^ int(s.usage) }
 func (s *Scorer) model() *tensorflow.Scorer { return s.models[s.modelIdx()] }
 
-// Score implements ai.Scorer interface by calling the selected model's implementation.
+// Score implements ai.ValueScorer interface by calling the selected model's implementation.
 func (s *Scorer) Score(board *Board, scoreActions bool) (score float32, actionProbs []float32) {
 	model := s.model()
 	return model.Score(board, scoreActions)
 }
 
-// Version implements ai.Scorer interface by calling the selected model's implementation.
+// Version implements ai.ValueScorer interface by calling the selected model's implementation.
 func (s *Scorer) Version() int {
 	model := s.model()
 	return model.Version()
 }
 
-// IsActionsClassifier implements ai.Scorer interface by calling the selected model's implementation.
+// IsActionsClassifier implements ai.ValueScorer interface by calling the selected model's implementation.
 func (s *Scorer) IsActionsClassifier() bool {
 	model := s.model()
 	return model.IsActionsClassifier()

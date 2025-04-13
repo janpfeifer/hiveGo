@@ -20,8 +20,8 @@ func NewParsingData() (data interface{}) {
 func FinalizeParsing(data interface{}, player *players2.SearcherScorer) {
 	d := data.(*ParsingData)
 	if d.UseTensorFlow {
-		player.Learner = New(d.Model, d.SessionPoolSize, d.ForceCPU)
-		player.Scorer = player.Learner
+		player.ValueLearner = New(d.Model, d.SessionPoolSize, d.ForceCPU)
+		player.ValueScorer = player.ValueLearner
 		player.ModelPath = d.Model
 	}
 }

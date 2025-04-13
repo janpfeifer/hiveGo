@@ -138,8 +138,8 @@ func playAndTrain(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	klog.Infof("Saving on exit: %s", aiPlayers[0].Scorer)
-	return trainingAI.Learner.Save()
+	klog.Infof("Saving on exit: %s", aiPlayers[0].ValueScorer)
+	return trainingAI.ValueLearner.Save()
 }
 
 func continuouslyPlay(ctx context.Context, matchIdGen *IdGen, matchStats *MatchStats, matchesChan chan<- *Match) error {

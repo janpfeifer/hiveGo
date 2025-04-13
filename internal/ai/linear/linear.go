@@ -63,7 +63,7 @@ var (
 	_ ai.ValueLearner     = (*Scorer)(nil)
 )
 
-// String implements fmt.Stringer and ai.Scorer.
+// String implements fmt.Stringer and ai.ValueScorer.
 func (s *Scorer) String() string {
 	var fileNameDesc string
 	if s.FileName != "" {

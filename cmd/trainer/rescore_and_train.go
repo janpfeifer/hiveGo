@@ -113,7 +113,7 @@ func (lb *LabeledBoards) AppendMatchAction(matches []*Match, ma MatchAction) {
 func collectMatchActionsAndIssueLearning(matches []*Match, maInput <-chan MatchAction, learnOutput chan<- LabeledBoards) {
 	poolSize := *flagRescoreAndTrainPoolSize
 	//batchSize := *tensorflow.Flag_learnBatchSize
-	batchSize := aiPlayers[0].Learner.BatchSize()
+	batchSize := aiPlayers[0].ValueLearner.BatchSize()
 	issueFreq := *flagRescoreAndTrainIssueLearn
 
 	pool := make([]MatchAction, 0)

@@ -116,7 +116,7 @@ func (m *Match) AppendToLabeledBoardsForPlayers(labeledBoards *LabeledBoards, in
 		return
 	}
 	klog.V(2).Infof("Making LabeledExample, scorer=%s, included players %v",
-		aiPlayers[0].Scorer, includedPlayers)
+		aiPlayers[0].ValueScorer, includedPlayers)
 	for ii := from; ii < to; ii++ {
 		if includedPlayers[m.Boards[ii].NextPlayer] && !m.Boards[ii].IsFinished() &&
 			m.Boards[ii].NumActions() > 1 {
@@ -124,7 +124,7 @@ func (m *Match) AppendToLabeledBoardsForPlayers(labeledBoards *LabeledBoards, in
 			if klog.V(3).Enabled() {
 				fmt.Println("")
 				stepUI.PrintBoard(m.Boards[ii])
-				score := aiPlayers[0].Scorer.Score(m.Boards[ii])
+				score := aiPlayers[0].ValueScorer.Score(m.Boards[ii])
 				fmt.Printf("Score: %g\n\n", score)
 			}
 
@@ -309,7 +309,7 @@ func setAutoBatchSizes(batchSize int) {
 	}
 	/*
 		for _, player := range aiPlayers {
-			if tfscorer, ok := player.Scorer.(*tensorflow.Scorer); ok {
+			if tfscorer, ok := player.ValueScorer.(*tensorflow.ValueScorer); ok {
 				tfscorer.SetBatchSize(batchSize)
 			}
 		}
