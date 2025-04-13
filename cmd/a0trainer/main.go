@@ -50,14 +50,17 @@ func main() {
 
 	// Iterate over playing and training.
 	var currentExamples []Example
+	playerB := aiPlayer
+	if bootstrapAiPlayer != nil {
+		playerB = bootstrapAiPlayer
+	}
 	for i := 0; *flagNumIterations <= 0 || i < *flagNumIterations; i++ {
 		fmt.Printf("\nIteration: %d\n", i)
-		newExamples := must.M1(runMatches(globalCtx))
+		_, _, _, newExamples := must.M4(runMatches(globalCtx, *flagNumMatches, aiPlayer, playerB))
 		if globalCtx.Err() != nil {
 			// Interrupted.
 			return
 		}
-		fmt.Printf("\t- %d new examples\n", len(newExamples))
 		if currentExamples == nil {
 			currentExamples = newExamples
 		} else {

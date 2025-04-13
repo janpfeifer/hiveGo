@@ -5,11 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gomlx/exceptions"
+	"github.com/janpfeifer/hiveGo/internal/ai"
+	"github.com/janpfeifer/hiveGo/internal/ai/gomlx"
 	"github.com/janpfeifer/hiveGo/internal/players"
 	"github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
 	"math/rand"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -61,24 +64,38 @@ func createAIPlayer() error {
 }
 
 func trainAI(ctx context.Context, examples []Example) (success bool, err error) {
+	numTrainSteps := *flagTrainStepsPerIteration
+	if numTrainSteps <= 0 {
+		return true, nil
+	}
 	learner := aiPlayer.PolicyLearner
 	batchSize := learner.BatchSize()
+	// Enough steps to at least see each example on average 10 times.
+	numTrainSteps = max(numTrainSteps, 10*len(examples)/batchSize)
+	fmt.Printf("\t- Training %d steps, batch size %d, pool of %d examples\n", numTrainSteps, batchSize, len(examples))
 	var averageLoss float32
 
-	var numSteps int
+	// Clone learner to a new one, and clear its optimizer before start training.
+	newLearner, err := learner.CloneLearner()
+	if err != nil {
+		return false, errors.WithMessagef(err, "failed to clone learner")
+	}
+	newLearner.ClearOptimizer()
+
+	// Stats of training.
+	var currentStep int
 	start := time.Now()
 	printUpdate := func() {
 		elapsed := time.Since(start)
-		fmt.Printf("\r\tTraining: %d steps, ~loss=%.3f, elpased=%s\x1b[0K", numSteps, averageLoss, elapsed)
+		fmt.Printf("\r\tTraining: %6d steps, ~loss=%.3f, elpased=%s\x1b[0K", currentStep, averageLoss, elapsed)
 	}
 	printUpdate()
 
-	numLearnSteps := *flagTrainStepsPerIteration
 	err = exceptions.TryCatch[error](func() {
 		boardsBatch := make([]*state.Board, batchSize)
 		valueLabelsBatch := make([]float32, batchSize)
 		policyLabelsBatch := make([][]float32, batchSize)
-		for range numLearnSteps {
+		for range numTrainSteps {
 			if ctx.Err() != nil {
 				return
 			}
@@ -89,12 +106,13 @@ func trainAI(ctx context.Context, examples []Example) (success bool, err error) 
 				valueLabelsBatch[batchIdx] = example.valueLabel
 				policyLabelsBatch[batchIdx] = example.policyLabels
 			}
-			loss := learner.Learn(boardsBatch, valueLabelsBatch, policyLabelsBatch)
-			numSteps++
-			averageLoss = movingAverage(averageLoss, loss, averageLossDecay, numSteps)
+			loss := newLearner.Learn(boardsBatch, valueLabelsBatch, policyLabelsBatch)
+			currentStep++
+			averageLoss = movingAverage(averageLoss, loss, averageLossDecay, currentStep)
 			printUpdate()
 		}
 	})
+	printUpdate()
 	fmt.Println()
 	if err != nil {
 		return false, err
@@ -103,11 +121,51 @@ func trainAI(ctx context.Context, examples []Example) (success bool, err error) 
 		// Interrupted.
 		return false, nil
 	}
+	if policyScorer, ok := newLearner.(*gomlx.PolicyScorer); ok {
+		fmt.Printf("\t- Number of cached compiled graphs (for different shapes): %d\n", policyScorer.NumCompilations)
+	}
 
-	// TODO: check trained model is better than previous one.
+	newPlayer := &players.SearcherScorer{
+		Searcher:       aiPlayer.Searcher,
+		PolicySearcher: aiPlayer.PolicySearcher,
+		ValueScorer:    newLearner.(ai.ValueScorer),
+		ValueLearner:   nil,
+		PolicyScorer:   newLearner.(ai.PolicyScorer),
+		PolicyLearner:  newLearner,
+	}
+	currentWins, newWins, draws, _, err := runMatches(ctx, *flagNumCompareMatches, aiPlayer, newPlayer)
+	if err != nil {
+		err = errors.WithMessagef(err, "failed to run matches to compare models after training")
+		return false, err
+	}
+	fmt.Printf("\t- %d draws, %d current model wins, %d updated model wins\n", draws, currentWins, newWins)
+	if newWins <= currentWins+(currentWins+9)/10 {
+		// Didn't win at least >10% more than current model, discard training and instead collect more examples.
+		fmt.Printf("\t- Discarding training, not enough wins to be worth it. Collecting more examples.\n")
+		if policyScorer, ok := newLearner.(*gomlx.PolicyScorer); ok {
+			policyScorer.Finalize()
+		}
+		newLearner = nil
+		newPlayer = nil
+		for _ = range 5 {
+			runtime.GC()
+		}
+		return false, nil
+	}
 
-	// Save model.
-	err = learner.Save()
+	// Free old model.
+	if policyScorer, ok := learner.(*gomlx.PolicyScorer); ok {
+		policyScorer.Finalize()
+	}
+	aiPlayer = nil
+	for _ = range 5 {
+		runtime.GC()
+	}
+
+	// Take update model and save it.
+	aiPlayer = newPlayer
+	fmt.Printf("\t- New model is better than current model, replacing and saving it.\n")
+	err = newLearner.Save()
 	if err != nil {
 		return false, errors.WithMessagef(err, "failed to save model after training")
 	}

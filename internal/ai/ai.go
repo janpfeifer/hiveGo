@@ -77,6 +77,9 @@ type PolicyLearner interface {
 	// It returns the training loss -- mean over batch.
 	Learn(boards []*Board, valueLabels []float32, policyLabels [][]float32) (loss float32)
 
+	// ClearOptimizer variables and global step: momentum, normalizing sums, etc.
+	ClearOptimizer()
+
 	// Loss returns a measure of loss for the model -- whatever it is.
 	Loss(boards []*Board, valueLabels []float32, policyLabels [][]float32) (loss float32)
 
@@ -92,9 +95,9 @@ type PolicyLearner interface {
 	// String returns the model/learner name.
 	String() string
 
-	// Clone returns a cloned learner. The new learner will both be pointing to the same checkpoint ... so
+	// CloneLearner returns a cloned learner. The new learner will both be pointing to the same checkpoint ... so
 	// the caller has to decide which one to eventually use to save models.
-	CloneLearner() PolicyLearner
+	CloneLearner() (PolicyLearner, error)
 }
 
 // IsEndGameAndScore returns weather it's the end of the game, and the hard-coded score of a win/loss/draw

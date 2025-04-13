@@ -29,7 +29,10 @@ import (
 type PolicyScorer struct {
 	Type ModelType
 
-	// model if PolicyScorer is a a PolicyScorer.
+	// filePath passed to the model, where it is saved.
+	filePath string
+
+	// model if PolicyScorer is a PolicyScorer.
 	model PolicyModel
 
 	// Executors.
@@ -57,6 +60,9 @@ type PolicyScorer struct {
 	// ?Should this be owned by the model itself?
 	optimizer optimizers.Interface
 
+	// numCompilations of computation graphs.
+	NumCompilations int
+
 	// muSave makes saving sequential.
 	muSave sync.Mutex
 }
@@ -71,6 +77,7 @@ var (
 func newPolicyScorer(modelType ModelType, filePath string, model PolicyModel, params parameters.Params) (*PolicyScorer, error) {
 	s := &PolicyScorer{
 		Type:                  modelType,
+		filePath:              filePath,
 		model:                 model,
 		numPolicyInputTensors: -1,
 		numLabelTensors:       -1,
@@ -82,19 +89,15 @@ func newPolicyScorer(modelType ModelType, filePath string, model PolicyModel, pa
 		return nil, fmt.Errorf("model type %s help requested", modelType)
 	}
 
-	// Number of checkpoints to keep.
+	// Checkpoint model.
 	var err error
 	s.checkpointsToKeep, err = parameters.PopParamOr(params, "keep", 10)
 	if err != nil {
 		return nil, err
 	}
-
-	// Create checkpoint, and load it if it exists.
-	if filePath != "" {
-		if err = s.createCheckpoint(filePath); err != nil {
-			return nil, errors.WithMessagef(err, "failed to build checkpoint for model %s in path %s",
-				modelType, filePath)
-		}
+	err = s.connectCheckpointHandler()
+	if err != nil {
+		return nil, err
 	}
 
 	// Create the backend.
@@ -110,23 +113,40 @@ func newPolicyScorer(modelType ModelType, filePath string, model PolicyModel, pa
 
 	// Create optimizer to be used in training.
 	s.optimizer = optimizers.FromContext(ctx)
+	s.createExecutors()
+	return s, nil
+}
 
-	// Setup scoreExec executor.
+func (s *PolicyScorer) connectCheckpointHandler() error {
+	if s.filePath == "" {
+		return nil
+	}
+	if err := s.createCheckpoint(s.filePath); err != nil {
+		return errors.WithMessagef(err, "failed to build checkpoint for model %s in path %s",
+			s.Type, s.filePath)
+	}
+	return nil
+}
+
+func (s *PolicyScorer) createExecutors() {
 	muNewClient.Lock()
 	defer muNewClient.Unlock()
-	ctx = ctx.Checked(false)
+	ctx := s.model.Context().Checked(false)
 	s.valueScoreExec = context.NewExec(backend(), ctx,
 		func(ctx *context.Context, valueInputs []*graph.Node) *graph.Node {
 			// Reshape to a scalar.
+			s.NumCompilations++
 			return graph.Reshape(s.model.ForwardValueGraph(ctx, valueInputs))
 		})
 	s.policyScoreExec = context.NewExec(backend(), ctx,
 		func(ctx *context.Context, policyInputs []*graph.Node) []*graph.Node {
+			s.NumCompilations++
 			value, policy := s.model.ForwardPolicyGraph(ctx, policyInputs)
 			return []*graph.Node{value, policy}
 		})
 	s.lossExec = context.NewExec(backend(), ctx,
 		func(ctx *context.Context, inputsAndLabels []*graph.Node) *graph.Node {
+			s.NumCompilations++
 			inputs := inputsAndLabels[:s.numPolicyInputTensors]
 			labels := inputsAndLabels[s.numPolicyInputTensors:]
 			loss := s.model.LossGraph(ctx, inputs, labels)
@@ -136,8 +156,10 @@ func newPolicyScorer(modelType ModelType, filePath string, model PolicyModel, pa
 			}
 			return loss
 		})
+	s.lossExec.SetMaxCache(100)
 	s.trainStepExec = context.NewExec(backend(), s.model.Context(),
 		func(ctx *context.Context, inputsAndLabels []*graph.Node) *graph.Node {
+			s.NumCompilations++
 			g := inputsAndLabels[0].Graph()
 			ctx.SetTraining(g, true)
 			inputs := inputsAndLabels[:s.numPolicyInputTensors]
@@ -147,16 +169,16 @@ func newPolicyScorer(modelType ModelType, filePath string, model PolicyModel, pa
 			train.ExecPerStepUpdateGraphFn(ctx, g)
 			return loss
 		})
+	s.trainStepExec.SetMaxCache(100)
 
 	// Force creating/loading of variables without race conditions first.
 	board := state.NewBoard()
+	_ = s.PolicyScore(board)
 	_ = s.Score(board)
-
-	return s, nil
 }
 
 // CloneLearner implements ai.PolicyLearner.
-func (s *PolicyScorer) CloneLearner() ai.PolicyLearner {
+func (s *PolicyScorer) CloneLearner() (ai.PolicyLearner, error) {
 	s.muLearning.Lock()
 	defer s.muLearning.Unlock()
 	s.muSave.Lock()
@@ -164,6 +186,7 @@ func (s *PolicyScorer) CloneLearner() ai.PolicyLearner {
 
 	newS := &PolicyScorer{
 		Type:                  s.Type,
+		filePath:              s.filePath,
 		model:                 s.model.Clone(),
 		valueScoreExec:        nil,
 		policyScoreExec:       nil,
@@ -175,11 +198,15 @@ func (s *PolicyScorer) CloneLearner() ai.PolicyLearner {
 		checkpointsToKeep:     s.checkpointsToKeep,
 		batchSize:             s.batchSize,
 		optimizer:             s.optimizer,
+		NumCompilations:       s.NumCompilations,
 	}
-	// TODO: Set checkpoint to the same as s.
-	// TODO: Create executors
 
-	return newS
+	newS.createExecutors()
+	err := newS.connectCheckpointHandler()
+	if err != nil {
+		return nil, err
+	}
+	return newS, nil
 }
 
 // String implements fmt.Stringer and ai.PolicyScorer.
@@ -245,6 +272,9 @@ func (s *PolicyScorer) PolicyScore(board *state.Board) []float32 {
 }
 
 // Learn implements ai.ValueLearner, and trains model with the new boards and its labels.
+//
+// The input should be one batch, and this performs one "training step".
+//
 // It returns the lossExec.
 func (s *PolicyScorer) Learn(boards []*state.Board, valueLabels []float32, policyLabels [][]float32) (loss float32) {
 	//fmt.Printf("Learn(%d boards)\n", len(boards))
@@ -253,6 +283,15 @@ func (s *PolicyScorer) Learn(boards []*state.Board, valueLabels []float32, polic
 	defer s.muLearning.Unlock()
 	lossT := s.trainStepExec.Call(inputsAndLabels...)[0]
 	return tensors.ToScalar[float32](lossT)
+}
+
+// ClearOptimizer variables and the global step.
+func (s *PolicyScorer) ClearOptimizer() {
+	s.muLearning.Lock()
+	defer s.muLearning.Unlock()
+	ctx := s.model.Context()
+	optimizers.DeleteGlobalStep(ctx)
+	s.optimizer.Clear(ctx)
 }
 
 // Loss returns a measure of lossExec for the model -- whatever it is.
@@ -317,4 +356,9 @@ func (s *PolicyScorer) createCheckpoint(filePath string) error {
 		Keep(10).
 		Done()
 	return err
+}
+
+// Finalize associated model, and leaves scorer in an invalid state, but immediately frees resources.
+func (s *PolicyScorer) Finalize() {
+	s.model.Context().Finalize()
 }

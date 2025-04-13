@@ -230,6 +230,8 @@ func continuousLearning(ctx context.Context, matchesChan <-chan *Match) error {
 		numLearnSteps = (*flagTrainBoardsBufferSize + batchSize - 1) / batchSize
 	}
 
+	// Reset optimizer before starting to train.
+
 	var countLearn, countMatches int
 	var ratioWins, ratioLosses, ratioDraws float32
 	lastSave := time.Now()
