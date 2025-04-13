@@ -117,8 +117,8 @@ func newPolicyScorer(modelType ModelType, filePath string, model PolicyModel, pa
 	ctx = ctx.Checked(false)
 	s.valueScoreExec = context.NewExec(backend(), ctx,
 		func(ctx *context.Context, valueInputs []*graph.Node) *graph.Node {
-			// Remove last axis with dimension 1.
-			return graph.Squeeze(s.model.ForwardValueGraph(ctx, valueInputs), -1)
+			// Reshape to a scalar.
+			return graph.Reshape(s.model.ForwardValueGraph(ctx, valueInputs))
 		})
 	s.policyScoreExec = context.NewExec(backend(), ctx,
 		func(ctx *context.Context, policyInputs []*graph.Node) []*graph.Node {
@@ -238,7 +238,6 @@ func (s *PolicyScorer) PolicyScore(board *state.Board) []float32 {
 		return graph.DonateTensorBuffer(t, backend())
 	})
 	policyScoresT := s.policyScoreExec.Call(donatedInputs...)[1]
-	policyScoresT.Shape().AssertDims( /*batchSize*/ 1 /*paddedNumActions*/, -1)
 	paddedPolicyScores := tensors.CopyFlatData[float32](policyScoresT)
 	// Notice this works because we are scoring only one board, if it were a batch, we would need to deal with the
 	// ragged actions tensor.

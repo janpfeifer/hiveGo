@@ -199,7 +199,8 @@ func (fnn *AlphaZeroFNN) ForwardPolicyGraph(ctx *context.Context, policyInputs [
 		// Normal AlphaZeroFNN, all configured by context hyperparameters. See createDefaultContext for defaults.
 		actionsLogits = fnnLayer.New(actionsCtx.In("fnn"), actionsEmbed, 1).Done()
 	}
-	policyRagged := MakeRagged2D(numPaddedBoards, Squeeze(actionsLogits, -1), actionsToBoardIdx).Softmax()
+	actionsLogits = Reshape(actionsLogits, -1) // Flatten
+	policyRagged := MakeRagged2D(numPaddedBoards, actionsLogits, actionsToBoardIdx).Softmax()
 	policy = policyRagged.Flat
 	return
 }

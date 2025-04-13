@@ -25,7 +25,7 @@ const (
 	ModelAlphaZeroFNN
 )
 
-//go:generate go tool enumer -type=ModelType -trimprefix=ValueModel -transform=snake -values -text -json -yaml scorer.go
+//go:generate go tool enumer -type=ModelType -trimprefix=Model -transform=snake -values -text -json -yaml gomlx.go
 
 var (
 	// Backend is a singleton, the same for all players.
@@ -45,10 +45,16 @@ const notSpecified = "#<not_specified>"
 // New creates a new GoMLX based scorer/learner if the supported model is selected in parameters.
 // Currently selected model names:
 //
-//   - "fnn": the parameter should map to the file name with the model weights. If the file doesn't
-//     exist, a model is created with random weights. It's a BoardScorer.
+//   - "fnn": Plain board scoring (ai.ValueScorer) model to be used with the "ab" searcher.
+//   - "a0fnn": AlphaZero model, to be used with "mcts" searcher
 //
-// If no known model type is configured, it returns nil, nil.
+// For either type of models, they should be defined with the directory name with the model weights.
+// If the directory doesn't exist, a model is created with random weights.
+//
+// Example configs (parsed in params):
+//
+//   - "fnn=~/tmp/hive_ab,ab,max_depth=3" (AlphaBeta Pruning model)
+//   - "a0fnn=~/tmp/hive_mcts,mcts,max_time=10s" (AlphaZero model)
 func New(params parameters.Params) (ai.ValueScorer, error) {
 	muModelsCache.Lock()
 	defer muModelsCache.Unlock()
@@ -58,6 +64,9 @@ func New(params parameters.Params) (ai.ValueScorer, error) {
 			continue
 		}
 		key := modelType.String()
+		if modelType == ModelAlphaZeroFNN {
+			key = "a0fnn"
+		}
 		filePath, _ := parameters.PopParamOr(params, key, notSpecified)
 		if filePath == notSpecified {
 			continue
