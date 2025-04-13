@@ -49,8 +49,23 @@ func main() {
 	must.M(createAIPlayer())
 
 	// Iterate over playing and training.
-	//var examples []Example
-	newExamples := must.M1(runMatches(globalCtx))
-	fmt.Printf("Example 0: %+v\n", newExamples[0])
-	fmt.Printf("Example 1: %+v\n", newExamples[1])
+	var currentExamples []Example
+	for i := 0; *flagNumIterations <= 0 || i < *flagNumIterations; i++ {
+		fmt.Printf("\nIteration: %d\n", i)
+		newExamples := must.M1(runMatches(globalCtx))
+		if globalCtx.Err() != nil {
+			// Interrupted.
+			return
+		}
+		fmt.Printf("\t- %d new examples\n", len(newExamples))
+		if currentExamples == nil {
+			currentExamples = newExamples
+		} else {
+			currentExamples = append(currentExamples, newExamples...)
+		}
+		if success := must.M1(trainAI(globalCtx, currentExamples)); success {
+			// AI was replaced by the improved one, discard examples before generating new ones.
+			currentExamples = currentExamples[:0]
+		}
+	}
 }

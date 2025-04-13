@@ -7,8 +7,11 @@ import (
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/klog/v2"
+	"runtime"
 	"sync"
+	"time"
 )
 
 var (
@@ -34,20 +37,49 @@ type CollectExamples struct {
 
 // runMatches and collect training examples.
 func runMatches(ctx context.Context) ([]Example, error) {
-	//numMatches := *flagNumMatches
+	numMatches := *flagNumMatches
 	var collect CollectExamples
-
-	err := runMatch(ctx, 0, &collect)
+	var wg errgroup.Group
+	parallelism := getParallelism()
+	wg.SetLimit(parallelism)
+	var count int
+	start := time.Now()
+	printUpdate := func() {
+		elapsed := time.Since(start)
+		fmt.Printf("\r\tRunning matches (parallelism=%d): %5d of %d finished in %s\x1b[0K", parallelism, count, numMatches, elapsed)
+	}
+	printUpdate()
+	for matchIdx := range numMatches {
+		wg.Go(func() error {
+			err := runMatch(ctx, matchIdx, &collect)
+			if err == nil && ctx.Err() == nil {
+				printUpdate()
+				count++
+			}
+			return err
+		})
+	}
+	err := wg.Wait()
 	if err != nil {
+		fmt.Printf("\n")
 		return nil, err
 	}
-
+	if ctx.Err() != nil {
+		fmt.Printf("\nInterrupted: %s\n", ctx.Err())
+		return nil, nil
+	}
+	printUpdate()
+	fmt.Println()
 	return collect.examples, nil
 }
 
 // runMatch from start to end, and send the resulting moves and policies through the given channel.
 // It returns nil is the ctx was cancelled at any point.
 func runMatch(ctx context.Context, matchNum int, output *CollectExamples) error {
+	if ctx.Err() != nil {
+		// Trainer already interrupted.
+		return nil
+	}
 	if klog.V(1).Enabled() {
 		klog.Infof("Starting match %d", matchNum)
 		defer klog.Infof("Finished match %d", matchNum)
@@ -61,6 +93,7 @@ func runMatch(ctx context.Context, matchNum int, output *CollectExamples) error 
 	// Run match.
 	for !board.IsFinished() {
 		if ctx.Err() != nil {
+			klog.Infof("Match %d interrupted: %s", matchNum, ctx.Err())
 			return nil
 		}
 		playerNum := board.NextPlayer
@@ -104,7 +137,6 @@ func runMatch(ctx context.Context, matchNum int, output *CollectExamples) error 
 		var scoresPerPlayers [2]float32
 		scoresPerPlayers[board.NextPlayer] = endScore
 		scoresPerPlayers[1-board.NextPlayer] = -endScore
-		fmt.Printf("End-scores: %v\n", scoresPerPlayers)
 		for ii := range examples {
 			examples[ii].valueLabel = scoresPerPlayers[playerNums[ii]]
 		}
@@ -115,4 +147,13 @@ func runMatch(ctx context.Context, matchNum int, output *CollectExamples) error 
 	defer output.mu.Unlock()
 	output.examples = append(output.examples, examples...)
 	return nil
+}
+
+// getParallelism returns the parallelism.
+func getParallelism() (parallelism int) {
+	parallelism = runtime.GOMAXPROCS(0)
+	if *flagParallelism > 0 {
+		parallelism = *flagParallelism
+	}
+	return
 }

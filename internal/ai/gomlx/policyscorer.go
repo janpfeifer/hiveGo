@@ -139,9 +139,9 @@ func newPolicyScorer(modelType ModelType, filePath string, model PolicyModel, pa
 	s.trainStepExec = context.NewExec(backend(), s.model.Context(),
 		func(ctx *context.Context, inputsAndLabels []*graph.Node) *graph.Node {
 			g := inputsAndLabels[0].Graph()
+			ctx.SetTraining(g, true)
 			inputs := inputsAndLabels[:s.numPolicyInputTensors]
 			labels := inputsAndLabels[s.numPolicyInputTensors:]
-			ctx.SetTraining(g, true)
 			loss := s.model.LossGraph(ctx, inputs, labels)
 			s.optimizer.UpdateGraph(ctx, g, loss)
 			train.ExecPerStepUpdateGraphFn(ctx, g)
