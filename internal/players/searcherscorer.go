@@ -15,7 +15,9 @@ import (
 // SearcherScorer is a standard set up for an AI: a searcher and a scorer.
 // It implements the Player interface.
 type SearcherScorer struct {
-	Searcher      searchers.Searcher
+	Searcher       searchers.Searcher
+	PolicySearcher searchers.SearcherWithPolicy
+
 	ValueScorer   ai.ValueScorer
 	ValueLearner  ai.ValueLearner
 	PolicyScorer  ai.PolicyScorer
@@ -94,13 +96,19 @@ func New(config string) (*SearcherScorer, error) {
 	if player.Searcher == nil {
 		return nil, errors.Errorf("no searchers defined in parameters %q", config)
 	}
+	if policySearcher, ok := player.Searcher.(searchers.SearcherWithPolicy); ok {
+		player.PolicySearcher = policySearcher
+	}
 
 	// Check whether the scorer is also a learner.
 	if learner, ok := player.ValueScorer.(ai.ValueLearner); ok {
 		player.ValueLearner = learner
 	}
-	if learner, ok := player.PolicyScorerScorer.(ai.ValueLearner); ok {
-		player.ValueLearner = learner
+	if policyScorer, ok := player.ValueScorer.(ai.PolicyScorer); ok {
+		player.PolicyScorer = policyScorer
+	}
+	if policyLearner, ok := player.ValueScorer.(ai.PolicyLearner); ok {
+		player.PolicyLearner = policyLearner
 	}
 
 	// Check that all parameters were processed.
@@ -117,7 +125,11 @@ var _ Player = &SearcherScorer{}
 func (s *SearcherScorer) Play(b *Board) (
 	action Action, board *Board, score float32, actionsLabels []float32) {
 	var err error
-	action, board, score, err = s.Searcher.Search(b)
+	if s.PolicySearcher != nil {
+		action, board, score, actionsLabels, err = s.PolicySearcher.SearchWithPolicy(b)
+	} else {
+		action, board, score, err = s.Searcher.Search(b)
+	}
 	if err != nil {
 		klog.Fatal("Searcher error: %+v", err)
 	}

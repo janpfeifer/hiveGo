@@ -17,3 +17,8 @@ type Searcher interface {
 	// and the expected score of taking that action.
 	Search(board *Board) (bestAction Action, bestBoard *Board, bestScore float32, err error)
 }
+
+// SearcherWithPolicy returns also a policy, a probability distribution over the actions.
+type SearcherWithPolicy interface {
+	SearchWithPolicy(board *Board) (action Action, nextBoard *Board, score float32, policy []float32, err error)
+}

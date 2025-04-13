@@ -135,8 +135,8 @@ func (mcts *mctsSearcher) newCacheNode(b *Board, stats *matchStats) (*cacheNode,
 			ui := cli.New(true, false)
 			fmt.Println()
 			ui.PrintBoard(cn.board)
-			fmt.Printf("Available actions: %v", cn.board.Derived.Actions)
-			fmt.Printf("Probabilities: %v", cn.actionsProbs)
+			fmt.Printf("Available actions: %v\n", cn.board.Derived.Actions)
+			fmt.Printf("Probabilities: %v\n", cn.actionsProbs)
 			return nil, errors.Errorf("board scorer returned negative probability %g for board position", prob)
 		}
 		sumProbs += prob
@@ -145,8 +145,8 @@ func (mcts *mctsSearcher) newCacheNode(b *Board, stats *matchStats) (*cacheNode,
 		ui := cli.New(true, false)
 		fmt.Println()
 		ui.PrintBoard(cn.board)
-		fmt.Printf("Available actions: %v", cn.board.Derived.Actions)
-		fmt.Printf("Probabilities: %v", cn.actionsProbs)
+		fmt.Printf("Available actions: %v\n", cn.board.Derived.Actions)
+		fmt.Printf("Probabilities: %v\n", cn.actionsProbs)
 		return nil, errors.Errorf("sum of probabilities=%g != 1.0", sumProbs)
 	}
 
@@ -234,7 +234,17 @@ func (mcts *mctsSearcher) SearchSubtree(cn *cacheNode, stats *matchStats) (score
 // It returns the expected best action, board, and score estimate of the given best action.
 //
 // TODO: implement parallelism in MCTS.
-func (mcts *mctsSearcher) Search(board *Board) (bestAction Action, bestBoard *Board, bestScore float32, err error) {
+func (mcts *mctsSearcher) Search(board *Board) (action Action, nextBoard *Board, score float32, err error) {
+	action, nextBoard, score, _, err = mcts.searchImpl(board, false)
+	return
+}
+
+// SearchWithPolicy search and returns the policy (actionsProbabilities) derived from the search.
+func (mcts *mctsSearcher) SearchWithPolicy(board *Board) (action Action, nextBoard *Board, score float32, policy []float32, err error) {
+	return mcts.searchImpl(board, true)
+}
+
+func (mcts *mctsSearcher) searchImpl(board *Board, withPolicy bool) (action Action, nextBoard *Board, score float32, policy []float32, err error) {
 	var rootCacheNode *cacheNode
 	var stats matchStats
 	rootCacheNode, err = mcts.newCacheNode(board, &stats)
@@ -274,9 +284,12 @@ func (mcts *mctsSearcher) Search(board *Board) (bestAction Action, bestBoard *Bo
 	}
 
 	bestActionIdx := mcts.selectAction(rootCacheNode)
-	bestAction = board.Derived.Actions[bestActionIdx]
-	bestBoard = board.TakeAllActions()[bestActionIdx]
-	bestScore = rootCacheNode.sumScores[bestActionIdx] / float32(rootCacheNode.N[bestActionIdx])
+	action = board.Derived.Actions[bestActionIdx]
+	nextBoard = board.TakeAllActions()[bestActionIdx]
+	score = rootCacheNode.sumScores[bestActionIdx] / float32(rootCacheNode.N[bestActionIdx])
+	if withPolicy {
+		policy = mcts.derivedPolicy(rootCacheNode)
+	}
 	return
 }
 
@@ -333,4 +346,14 @@ func (mcts *mctsSearcher) selectAction(rootCacheNode *cacheNode) int {
 	}
 	// Due to rounding errors we may get here, in this case return last action.
 	return len(actionsProbs) - 1
+}
+
+// derivedPolicy returns the policy used for learning, based on root cacheNode.
+func (mcts *mctsSearcher) derivedPolicy(rootCacheNode *cacheNode) []float32 {
+	numActions := len(rootCacheNode.N)
+	actionsProbs := make([]float32, numActions)
+	for actionIdx, nVisits := range rootCacheNode.N {
+		actionsProbs[actionIdx] = float32(nVisits) / float32(rootCacheNode.sumN)
+	}
+	return actionsProbs
 }
