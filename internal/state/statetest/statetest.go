@@ -3,6 +3,7 @@ package statetest
 
 import (
 	. "github.com/janpfeifer/hiveGo/internal/state"
+	"github.com/janpfeifer/hiveGo/internal/ui/cli"
 )
 
 // PieceOnBoard represents a position and ownership of a piece in the board.
@@ -10,6 +11,16 @@ type PieceOnBoard struct {
 	Pos    Pos
 	Player PlayerNum
 	Piece  PieceType
+}
+
+func PrintBoard(b *Board) {
+	ui := cli.New(true, false)
+	ui.PrintBoard(b)
+}
+
+func PrintActions(board *Board, actionTaken Action, policy []float32) {
+	ui := cli.New(true, false)
+	ui.PrettyPrintActionsWithPolicy(board, policy, actionTaken, 5)
 }
 
 // BuildBoard from a collection of pieces. Their positions may be in "display coordinates".

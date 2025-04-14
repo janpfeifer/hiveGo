@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	. "github.com/janpfeifer/hiveGo/internal/state"
+	. "github.com/janpfeifer/hiveGo/internal/state/statetest"
 	"github.com/stretchr/testify/require"
 	"log"
 	"strings"
@@ -97,7 +98,7 @@ func testRemovableAlternatives(t *testing.T, version int) {
 	for boardIdx, txt := range testBoards {
 		board, want := convertTextToBoard(txt)
 		fmt.Printf("> Board #%d:\n%s\n\n", boardIdx, txt)
-		printBoard(board)
+		PrintBoard(board)
 		startIdx := 0
 		for start := range board.OccupiedPositionsIter() {
 			var removable generics.Set[Pos]

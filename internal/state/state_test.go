@@ -5,7 +5,6 @@ import (
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	. "github.com/janpfeifer/hiveGo/internal/state/statetest"
-	"github.com/janpfeifer/hiveGo/internal/ui/cli"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -33,11 +32,6 @@ func listMovesForPiece(b *Board, piece PieceType, pos Pos) []Pos {
 	}
 	SortPositions(moves)
 	return moves
-}
-
-func printBoard(b *Board) {
-	ui := cli.New(true, false)
-	ui.PrintBoard(b)
 }
 
 func TestEqual(t *testing.T) {
@@ -116,7 +110,7 @@ func TestRemovablePositions(t *testing.T) {
 		{Pos{1, 1}, 0, SPIDER},
 		{Pos{-1, 3}, 1, SPIDER},
 	}, false)
-	printBoard(board)
+	PrintBoard(board)
 	board.BuildDerived()
 
 	want := generics.SetWith(Pos{-1, 3}, Pos{-1, 0}, Pos{2, 0}, Pos{1, 1})
@@ -138,7 +132,7 @@ func TestAct(t *testing.T) {
 		{Pos{2, 0}, 0, ANT},
 	}
 	board := BuildBoard(layout, true)
-	printBoard(board)
+	PrintBoard(board)
 	board.BuildDerived()
 
 	// Player 0: unstack beetle.
@@ -168,7 +162,7 @@ func TestAct(t *testing.T) {
 		t.Errorf("Expected Player's 1 Beetle stacked at (0, -1), got player=%d, piece=%s, stacked=%v, count=%d",
 			player, PieceNames[piece], stacked, count)
 	}
-	// printBoard(board)
+	// PrintBoard(board)
 
 	// Test situation where there are no action possible.
 	layout = []PieceOnBoard{
@@ -208,7 +202,7 @@ func TestInvalidMove(t *testing.T) {
 		fmt.Printf("Move %d (ii=%d), %s, Player %d, Repeats: %d, Hash: %x\n",
 			b.MoveNumber, ii, act, b.NextPlayer, b.Derived.Repeats, b.Derived.Hash)
 	}
-	printBoard(b)
+	PrintBoard(b)
 }
 
 func BenchmarkCalcDerived(b *testing.B) {
