@@ -131,7 +131,7 @@ func (s *SearcherScorer) Play(b *Board) (
 		action, board, score, err = s.Searcher.Search(b)
 	}
 	if err != nil {
-		klog.Fatal("Searcher error: %+v", err)
+		klog.Fatalf("Searcher error: %+v", err)
 	}
 	if klog.V(2).Enabled() {
 		klog.Infof("Move #%d: AI (%s) playing %s, score=%.3f",
