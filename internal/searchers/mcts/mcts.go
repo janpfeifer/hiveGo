@@ -352,13 +352,8 @@ func (mcts *mctsSearcher) selectAction(rootCacheNode *cacheNode) int {
 func (mcts *mctsSearcher) derivedPolicy(rootCacheNode *cacheNode) []float32 {
 	numActions := len(rootCacheNode.N)
 	actionsProbs := make([]float32, numActions)
-	var totalProbs float32
-	var totalCount int
 	for actionIdx, nVisits := range rootCacheNode.N {
 		actionsProbs[actionIdx] = float32(nVisits) / float32(rootCacheNode.sumN)
-		totalCount += nVisits
-		totalProbs += actionsProbs[actionIdx]
 	}
-	fmt.Printf("totalCount=%d, sumN=%d, sumProb=%f\n", totalCount, rootCacheNode.sumN, totalProbs)
 	return actionsProbs
 }

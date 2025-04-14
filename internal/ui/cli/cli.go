@@ -599,8 +599,8 @@ func (ui *UI) PrettyPrintActionsWithPolicy(board *Board, policy []float32, actio
 	})
 
 	rightColumnStart := numActions - numActionsToPrint
-	if numActionsToPrint > 2*numActions {
-		rightColumnStart--
+	if rightColumnStart < numActionsToPrint {
+		rightColumnStart = numActionsToPrint
 	}
 
 	actionToStrFn := func(orderIdx int) string {
@@ -616,7 +616,11 @@ func (ui *UI) PrettyPrintActionsWithPolicy(board *Board, policy []float32, actio
 
 	for rowIdx := range numActionsToPrint {
 		left := actionToStrFn(rowIdx)
-		right := actionToStrFn(rowIdx + rightColumnStart)
+		var right string
+		rightIdx := rowIdx + rightColumnStart
+		if rightIdx < numActions {
+			right = actionToStrFn(rightIdx)
+		}
 		fmt.Printf("\t\t%-40s\t%-40s\n", left, right)
 	}
 }
