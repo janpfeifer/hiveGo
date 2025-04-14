@@ -145,18 +145,18 @@ func runMatch(ctx context.Context, matchNum int, players [2]*players.SearcherSco
 			playerNums = append(playerNums, playerNum)
 		}
 		board.ClearNextBoardsCache()
-		board = nextBoard
 		if *flagPrintSteps {
 			muStepUI.Lock()
-			fmt.Printf("%s, move #%d:\n", matchName, board.MoveNumber)
-			fmt.Printf("\taction:\t%s\n", action)
-			fmt.Printf("\tpolicy:\t%v\n", actionLabels)
+			fmt.Printf("%s, move #%d\n", matchName, board.MoveNumber)
 			fmt.Println()
-			stepUI.PrintBoard(board)
+			stepUI.PrettyPrintActionsWithPolicy(board, actionLabels, action, 5)
+			fmt.Println()
+			stepUI.PrintBoard(nextBoard)
 			fmt.Println()
 			fmt.Println("------------------")
 			muStepUI.Unlock()
 		}
+		board = nextBoard
 	}
 
 	// Re-score examples to whoever won, if it was not a draw.

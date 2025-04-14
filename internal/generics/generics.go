@@ -4,6 +4,7 @@ package generics
 import (
 	"cmp"
 	"context"
+	"golang.org/x/exp/constraints"
 	"iter"
 	"maps"
 	"slices"
@@ -210,4 +211,16 @@ func WriteToChanWithContext[V any](ctx context.Context, ch chan<- V, v V) bool {
 	case ch <- v:
 		return true
 	}
+}
+
+// Iota returns a slice of incremental int values, starting with start and of length len.
+// Eg: Iota(3.0, 2) -> []float64{3.0, 4.0}
+func Iota[T interface {
+	constraints.Integer | constraints.Float
+}](start T, len int) (slice []T) {
+	slice = make([]T, len)
+	for ii := range slice {
+		slice[ii] = start + T(ii)
+	}
+	return
 }

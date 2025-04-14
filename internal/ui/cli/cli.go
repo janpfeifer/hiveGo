@@ -7,12 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/janpfeifer/hiveGo/internal/generics"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"golang.org/x/term"
 	"io"
 	"log"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -571,4 +573,50 @@ func (ui *UI) printMoveActions(b *Board) {
 		PieceNames[examplePiece], exampleSrcPos, exampleTgtPos,
 		exampleSrcPos.X(), exampleSrcPos.Y(),
 		exampleTgtPos.X(), exampleTgtPos.Y())
+}
+
+// PrettyPrintActionsWithPolicy will print the player to move, the action taken and a summary of the
+// best and worst scoring actions.
+func (ui *UI) PrettyPrintActionsWithPolicy(board *Board, policy []float32, actionTaken Action, numActionsToPrint int) {
+	fmt.Printf("\t")
+	ui.PrintPlayer(board)
+	actions := board.Derived.Actions
+	numActions := len(actions)
+	fmt.Printf(" moves, %d actions available, %s taken\n", numActions, actionTaken)
+	fmt.Printf("\t%d top actions:\n", numActionsToPrint)
+	if numActionsToPrint*2 > numActions {
+		numActionsToPrint = (numActionsToPrint + 1) / 2
+	}
+	order := generics.Iota[int](0, numActions)
+	slices.SortFunc(order, func(a, b int) int {
+		if policy[a] > policy[b] {
+			return -1
+		}
+		if policy[a] < policy[b] {
+			return 1
+		}
+		return 0
+	})
+
+	rightColumnStart := numActions - numActionsToPrint
+	if numActionsToPrint > 2*numActions {
+		rightColumnStart--
+	}
+
+	actionToStrFn := func(orderIdx int) string {
+		actionIdx := order[orderIdx]
+		action := actions[actionIdx]
+		var takenStr string
+		if action == actionTaken {
+			takenStr = "(*)"
+		}
+		prob := policy[actionIdx]
+		return fmt.Sprintf("#%2d [%4.3f%%] %s%s", orderIdx, prob, takenStr, action)
+	}
+
+	for rowIdx := range numActionsToPrint {
+		left := actionToStrFn(rowIdx)
+		right := actionToStrFn(rowIdx + rightColumnStart)
+		fmt.Printf("\t\t%-40s\t%-40s\n", left, right)
+	}
 }
