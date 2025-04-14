@@ -360,5 +360,9 @@ func (s *PolicyScorer) createCheckpoint(filePath string) error {
 
 // Finalize associated model, and leaves scorer in an invalid state, but immediately frees resources.
 func (s *PolicyScorer) Finalize() {
+	s.valueScoreExec.Finalize()
+	s.policyScoreExec.Finalize()
+	s.lossExec.Finalize()
+	s.trainStepExec.Finalize()
 	s.model.Context().Finalize()
 }

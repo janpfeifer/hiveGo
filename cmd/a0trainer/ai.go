@@ -8,6 +8,7 @@ import (
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/ai/gomlx"
 	"github.com/janpfeifer/hiveGo/internal/players"
+	"github.com/janpfeifer/hiveGo/internal/searchers/mcts"
 	"github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
@@ -128,32 +129,43 @@ func trainAI(ctx context.Context, examples []Example) (success bool, err error) 
 		fmt.Printf("\t- Number of cached compiled graphs (for different shapes): %d\n", policyScorer.NumCompilations)
 	}
 
+	// Create newPlayer: it requires re-creating the Searcher with the new scorer.
 	newPlayer := &players.SearcherScorer{
-		Searcher:       aiPlayer.Searcher,
-		PolicySearcher: aiPlayer.PolicySearcher,
-		ValueScorer:    newLearner.(ai.ValueScorer),
-		ValueLearner:   nil,
-		PolicyScorer:   newLearner.(ai.PolicyScorer),
-		PolicyLearner:  newLearner,
+		ValueScorer:   newLearner.(ai.ValueScorer),
+		ValueLearner:  nil,
+		PolicyScorer:  newLearner.(ai.PolicyScorer),
+		PolicyLearner: newLearner,
 	}
-	currentWins, newWins, draws, _, err := runMatches(ctx, *flagNumCompareMatches, aiPlayer, newPlayer)
-	if err != nil {
-		err = errors.WithMessagef(err, "failed to run matches to compare models after training")
-		return false, err
+	mctsSearcher, ok := aiPlayer.PolicySearcher.(*mcts.Searcher)
+	if !ok {
+		return false, errors.Errorf("invalid AI config (-ai): a0trainer requires a \"mcts.Searcher\" searcher, " +
+			"but the given searcher is of a different type.")
 	}
-	fmt.Printf("\t- %d draws, %d current model wins, %d updated model wins\n", draws, currentWins, newWins)
-	if newWins <= currentWins+(currentWins+9)/10 {
-		// Didn't win at least >10% more than current model, discard training and instead collect more examples.
-		fmt.Printf("\t- Discarding training, not enough wins to be worth it. Collecting more examples.\n")
-		if policyScorer, ok := newLearner.(*gomlx.PolicyScorer); ok {
-			policyScorer.Finalize()
+	newSearcher := mctsSearcher.Clone().WithScorer(newPlayer.PolicyScorer)
+	newPlayer.PolicySearcher = newSearcher
+	newPlayer.Searcher = newSearcher
+
+	// Check whether new model is better than previous one.
+	if *flagNumCompareMatches > 0 {
+		currentWins, newWins, draws, _, err := runMatches(ctx, *flagNumCompareMatches, aiPlayer, newPlayer)
+		if err != nil {
+			err = errors.WithMessagef(err, "failed to run matches to compare models after training")
+			return false, err
 		}
-		newLearner = nil
-		newPlayer = nil
-		for _ = range 5 {
-			runtime.GC()
+		fmt.Printf("\t- %d draws, %d current model wins, %d updated model wins\n", draws, currentWins, newWins)
+		if newWins <= currentWins+(currentWins+9)/10 {
+			// Didn't win at least >10% more than current model, discard training and instead collect more examples.
+			fmt.Printf("\t- Discarding training, not enough wins to be worth it. Collecting more examples.\n")
+			if policyScorer, ok := newLearner.(*gomlx.PolicyScorer); ok {
+				policyScorer.Finalize()
+			}
+			newLearner = nil
+			newPlayer = nil
+			for _ = range 5 {
+				runtime.GC()
+			}
+			return false, nil
 		}
-		return false, nil
 	}
 
 	// Free old model.

@@ -25,7 +25,7 @@ func NewFromParams(scorer ai.ValueScorer, params parameters.Params) (searchers.S
 		policyScorer = ai.NewPolicyProxy(scorer, scale)
 		//return nil, errors.Errorf("mcts requires a 'policy scorer', a normal scorer (%q) won't work", scorer)
 	}
-	mcts := &mctsSearcher{
+	mcts := &Searcher{
 		scorer:       policyScorer,
 		maxTime:      30 * time.Second,
 		maxTraverses: 300,
@@ -35,7 +35,6 @@ func NewFromParams(scorer ai.ValueScorer, params parameters.Params) (searchers.S
 		temperature:  1.0,
 		maxRandDepth: 25,
 		parallelized: false,
-		useMCTS:      false,
 	}
 	mcts.cPuct, err = parameters.PopParamOr(params, "c_puct", mcts.cPuct)
 	if err != nil {

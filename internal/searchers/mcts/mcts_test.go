@@ -34,11 +34,11 @@ var (
 	_ ai.PolicyScorer = &dummyScorer{}
 )
 
-func buildTestMCTS(t *testing.T, config string) *mctsSearcher {
+func buildTestMCTS(t *testing.T, config string) *Searcher {
 	params := parameters.NewFromConfigString(config)
 	searcher, err := NewFromParams(&dummyScorer{}, params)
 	require.NoError(t, err)
-	return searcher.(*mctsSearcher)
+	return searcher.(*Searcher)
 }
 
 func TestMctsSearcher_Search_EndGame(t *testing.T) {

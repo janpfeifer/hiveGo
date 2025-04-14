@@ -43,7 +43,7 @@ const (
 	DEPTH_CHECK_MAX_ABS_SCORE = 5
 )
 
-type mctsSearcher struct {
+type Searcher struct {
 	// maxTime defines the maximum number of time to spend thinking.
 	// Either maxTime or maxTraverses must be defined.
 	maxTime time.Duration
@@ -70,9 +70,6 @@ type mctsSearcher struct {
 
 	// ValueScorer to use during search.
 	scorer ai.PolicyScorer
-
-	// Player parameter that indicates that MCTS was selected.
-	useMCTS bool
 }
 
 type matchStats struct {
@@ -80,10 +77,16 @@ type matchStats struct {
 	numCacheNodes int
 }
 
-func (mcts *mctsSearcher) Clone() *mctsSearcher {
-	r := &mctsSearcher{}
-	*r = *mcts
-	return r
+// Clone searcher.
+func (s *Searcher) Clone() *Searcher {
+	newMCTS := &Searcher{}
+	*newMCTS = *s
+	return newMCTS
+}
+
+func (s *Searcher) WithScorer(scorer ai.PolicyScorer) *Searcher {
+	s.scorer = scorer
+	return s
 }
 
 // cacheNode holds information about the possible actions of a board.
@@ -111,7 +114,7 @@ type cacheNode struct {
 
 // newCacheNode for the given board position and updated matchStats.
 // root indicates this is a root node for the search, this decides whether the temperature should be used.
-func (mcts *mctsSearcher) newCacheNode(b *Board, stats *matchStats) (*cacheNode, error) {
+func (s *Searcher) newCacheNode(b *Board, stats *matchStats) (*cacheNode, error) {
 	if b.IsFinished() {
 		return nil, errors.Errorf("can't create cacheNode for a finished board state")
 	}
@@ -125,7 +128,7 @@ func (mcts *mctsSearcher) newCacheNode(b *Board, stats *matchStats) (*cacheNode,
 	if stats != nil {
 		stats.numCacheNodes++
 	}
-	cn.actionsProbs = mcts.scorer.PolicyScore(b)
+	cn.actionsProbs = s.scorer.PolicyScore(b)
 
 	// Sanity check:
 	var sumProbs float32
@@ -163,11 +166,11 @@ func (mcts *mctsSearcher) newCacheNode(b *Board, stats *matchStats) (*cacheNode,
 //
 // This is the core of the AlphaZero/MCTS algorithm, based on the estimated
 // upper bounds of each possible action.
-func (mcts *mctsSearcher) SearchSubtree(cn *cacheNode, stats *matchStats) (score float32, err error) {
+func (s *Searcher) SearchSubtree(cn *cacheNode, stats *matchStats) (score float32, err error) {
 	// Find the action with the best upper confidence (U in the description).
 	bestAction := -1
 	bestUpperConfidence := float32(math.Inf(-1))
-	globalFactor := mcts.cPuct * float32(math.Sqrt(float64(cn.sumN)))
+	globalFactor := s.cPuct * float32(math.Sqrt(float64(cn.sumN)))
 	for actionIdx, numVisits := range cn.N {
 		var Q float32 // 0 if we haven't subsampled it yet.
 		if numVisits > 0 {
@@ -190,7 +193,7 @@ func (mcts *mctsSearcher) SearchSubtree(cn *cacheNode, stats *matchStats) (score
 			// 	and there is no alternative play, to accelerate end-game.
 			score = -endScore
 		} else {
-			score = -mcts.scorer.Score(newBoard)
+			score = -s.scorer.Score(newBoard)
 		}
 		cn.N[bestAction] = 1
 		cn.sumN++
@@ -211,14 +214,14 @@ func (mcts *mctsSearcher) SearchSubtree(cn *cacheNode, stats *matchStats) (score
 			return
 		}
 
-		cn.cacheNodes[bestAction], err = mcts.newCacheNode(newBoard, stats)
+		cn.cacheNodes[bestAction], err = s.newCacheNode(newBoard, stats)
 		if err != nil {
 			return
 		}
 	}
 
 	// Recursively sample value of the best action.
-	score, err = mcts.SearchSubtree(cn.cacheNodes[bestAction], stats)
+	score, err = s.SearchSubtree(cn.cacheNodes[bestAction], stats)
 	score = -score
 	if err != nil {
 		return
@@ -234,20 +237,20 @@ func (mcts *mctsSearcher) SearchSubtree(cn *cacheNode, stats *matchStats) (score
 // It returns the expected best action, board, and score estimate of the given best action.
 //
 // TODO: implement parallelism in MCTS.
-func (mcts *mctsSearcher) Search(board *Board) (action Action, nextBoard *Board, score float32, err error) {
-	action, nextBoard, score, _, err = mcts.searchImpl(board, false)
+func (s *Searcher) Search(board *Board) (action Action, nextBoard *Board, score float32, err error) {
+	action, nextBoard, score, _, err = s.searchImpl(board, false)
 	return
 }
 
 // SearchWithPolicy search and returns the policy (actionsProbabilities) derived from the search.
-func (mcts *mctsSearcher) SearchWithPolicy(board *Board) (action Action, nextBoard *Board, score float32, policy []float32, err error) {
-	return mcts.searchImpl(board, true)
+func (s *Searcher) SearchWithPolicy(board *Board) (action Action, nextBoard *Board, score float32, policy []float32, err error) {
+	return s.searchImpl(board, true)
 }
 
-func (mcts *mctsSearcher) searchImpl(board *Board, withPolicy bool) (action Action, nextBoard *Board, score float32, policy []float32, err error) {
+func (s *Searcher) searchImpl(board *Board, withPolicy bool) (action Action, nextBoard *Board, score float32, policy []float32, err error) {
 	var rootCacheNode *cacheNode
 	var stats matchStats
-	rootCacheNode, err = mcts.newCacheNode(board, &stats)
+	rootCacheNode, err = s.newCacheNode(board, &stats)
 	if err != nil {
 		return
 	}
@@ -257,21 +260,21 @@ func (mcts *mctsSearcher) searchImpl(board *Board, withPolicy bool) (action Acti
 	startTime := time.Now()
 	var elapsed time.Duration
 	for {
-		_, err = mcts.SearchSubtree(rootCacheNode, &stats)
+		_, err = s.SearchSubtree(rootCacheNode, &stats)
 		if err != nil {
 			return
 		}
 		numTraverses++
 
-		if mcts.maxTraverses > 0 && numTraverses >= mcts.maxTraverses {
+		if s.maxTraverses > 0 && numTraverses >= s.maxTraverses {
 			break
 		}
-		if mcts.minTraverses > 0 && numTraverses < mcts.minTraverses {
+		if s.minTraverses > 0 && numTraverses < s.minTraverses {
 			continue
 		}
-		if mcts.maxTime > 0 {
+		if s.maxTime > 0 {
 			elapsed = time.Since(startTime)
-			if elapsed > mcts.maxTime {
+			if elapsed > s.maxTime {
 				break
 			}
 		}
@@ -283,12 +286,12 @@ func (mcts *mctsSearcher) searchImpl(board *Board, withPolicy bool) (action Acti
 		klog.Infof("Search at move #%d: %.2f nodes/s", board.MoveNumber, cacheNodeRate)
 	}
 
-	bestActionIdx := mcts.selectAction(rootCacheNode)
+	bestActionIdx := s.selectAction(rootCacheNode)
 	action = board.Derived.Actions[bestActionIdx]
 	nextBoard = board.TakeAllActions()[bestActionIdx]
 	score = rootCacheNode.sumScores[bestActionIdx] / float32(rootCacheNode.N[bestActionIdx])
 	if withPolicy {
-		policy = mcts.derivedPolicy(rootCacheNode)
+		policy = s.derivedPolicy(rootCacheNode)
 	}
 	return
 }
@@ -301,9 +304,9 @@ func pow32(x, y float32) float32 {
 // If temperature is 0, or maxRandDepth is reached, it is greedy.
 // Otherwise, it picks randomly from a probability distribution based on the number of visits of
 // each sub-tree.
-func (mcts *mctsSearcher) selectAction(rootCacheNode *cacheNode) int {
+func (s *Searcher) selectAction(rootCacheNode *cacheNode) int {
 	board := rootCacheNode.board
-	if mcts.temperature == 0 || (mcts.maxRandDepth > 0 && board.MoveNumber > mcts.maxRandDepth) {
+	if s.temperature == 0 || (s.maxRandDepth > 0 && board.MoveNumber > s.maxRandDepth) {
 		// Greedily pick best action and its estimate.
 		bestActionIdx, mostVisits := -1, -1
 		for actionIdx, nVisits := range rootCacheNode.N {
@@ -318,7 +321,7 @@ func (mcts *mctsSearcher) selectAction(rootCacheNode *cacheNode) int {
 	// Calculate policy probability distribution based on visits (not the one returned by the model)
 	numActions := len(rootCacheNode.N)
 	actionsProbs := make([]float32, numActions)
-	temp := mcts.temperature
+	temp := s.temperature
 	for actionIdx, nVisits := range rootCacheNode.N {
 		actionsProbs[actionIdx] = float32(nVisits) / float32(rootCacheNode.sumN)
 		if temp != 1 {
@@ -349,7 +352,7 @@ func (mcts *mctsSearcher) selectAction(rootCacheNode *cacheNode) int {
 }
 
 // derivedPolicy returns the policy used for learning, based on root cacheNode.
-func (mcts *mctsSearcher) derivedPolicy(rootCacheNode *cacheNode) []float32 {
+func (s *Searcher) derivedPolicy(rootCacheNode *cacheNode) []float32 {
 	numActions := len(rootCacheNode.N)
 	actionsProbs := make([]float32, numActions)
 	for actionIdx, nVisits := range rootCacheNode.N {
