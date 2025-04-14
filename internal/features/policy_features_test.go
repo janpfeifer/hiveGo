@@ -63,7 +63,6 @@ func TestPolicyFeatures(t *testing.T) {
 	b.BuildDerived()
 	action := Action{true, GRASSHOPPER, Pos{-1, -1}, Pos{1, 0}}
 	printBoardAction(b, action)
-
 	actionFeatures := features.NewActionFeatures(b, action, 0)
 
 	// Completely unrelated position should be zero.

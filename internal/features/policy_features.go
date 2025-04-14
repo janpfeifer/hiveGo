@@ -119,6 +119,7 @@ func (f *ActionPositionFeatures) neighbourhoodFeatures(b *Board, action Action, 
 	}
 }
 
+// playerToValue return 1 for current player, -1 for the other player.
 func playerToValue(b *Board, player PlayerNum) float32 {
 	if player == b.NextPlayer {
 		return 1

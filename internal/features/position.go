@@ -24,8 +24,8 @@ const (
 	// IsPositionIsPieceRemovable represents whether the piece is removable without breaking the hive.
 	IsPositionIsPieceRemovable
 
-	// IdPositionStackedBeetlesOwner represent the owners of the stacked pieces (from top to bottom), except
-	// very bottom piece. They must all be beetles, hence the name.
+	// IdPositionStackedBeetlesOwner represent the owners of the stacked pieces (from top to bottom),
+	// except the very bottom piece. They must all be beetles, hence the name.
 	// Up to 3 (there are 4 beatles in the game, the first would be on top).
 	// +1 for current player, -1 for opponent player or 0 if there are no pieces
 	// at this position.
@@ -63,14 +63,14 @@ var (
 		{Id: IdPositionPlayerOwner, Dim: 1},
 		{Id: IdPositionPieceOneHot, Dim: int(NumPieceTypes)},
 		{Id: IsPositionIsPieceRemovable, Dim: 1},
-		{Id: IdPositionStackedBeetlesOwner, Dim: 3},
+		{Id: IdPositionStackedBeetlesOwner, Dim: 4},
 		{Id: IdPositionStackBottomPieceOwner, Dim: 1},
 		{Id: IdPositionStackBottomPiece, Dim: int(NumPieceTypes)},
 	}
 
-	// CurrentPositionFeaturesDim is the sum of the dimensions of all position features = sum(PsoitionSpecs.Dim).
+	// PositionFeaturesDim is the sum of the dimensions of all position features = sum(PositionSpecs.Dim).
 	// It is set during initialization.
-	CurrentPositionFeaturesDim int
+	PositionFeaturesDim int
 )
 
 func init() {
@@ -79,7 +79,7 @@ func init() {
 		PositionSpecs[specIdx].Index = featureIdx
 		featureIdx += PositionSpecs[specIdx].Dim
 	}
-
+	PositionFeaturesDim = featureIdx
 }
 
 func idxForPositionId(id PositionId) int {
@@ -102,7 +102,7 @@ func PositionFeatures(b *Board, pos Pos) []float32 {
 }
 
 func stackFeatures(b *Board, pos Pos, stack EncodedStack) (f []float32) {
-	f = make([]float32, IdPositionLast)
+	f = make([]float32, PositionFeaturesDim)
 	idx := func(id PositionId) int { return idxForPositionId(id) }
 	// If there is nothing there, all features related to the pieces are zeroed already.
 	if stack.HasPiece() {
@@ -112,12 +112,14 @@ func stackFeatures(b *Board, pos Pos, stack EncodedStack) (f []float32) {
 
 		// Stack information:
 		var stackPos int
-		for stackPos = 0; stack.HasPiece() && stackPos < 4; stackPos++ {
-			stack, player, piece = stack.PopPiece()
-			f[idx(IdPositionStackedBeetlesOwner)+stackPos] = playerToValue(b, player)
+		for stackPos = 0; stackPos < 4; stackPos++ {
+			if stack.HasPiece() {
+				stack, player, piece = stack.PopPiece()
+				f[idx(IdPositionStackedBeetlesOwner)+stackPos] = playerToValue(b, player)
+			} else {
+				f[idx(IdPositionStackedBeetlesOwner)+stackPos] = 0
+			}
 		}
-		// PieceType at very bottom is stored separately, in the next field:
-		f[idx(IdPositionStackedBeetlesOwner)+stackPos-1] = 0
 
 		// Information about piece at the very bottom of stack -- in most cases the same as the top of the stack.
 		f[idx(IdPositionStackBottomPieceOwner)] = playerToValue(b, player)
@@ -149,9 +151,9 @@ func pieceFeatureToStr(owner float32, piece []float32) string {
 }
 
 func PositionFeaturesToString(rawFeatures []float32) string {
-	if len(rawFeatures) != CurrentPositionFeaturesDim {
+	if len(rawFeatures) != PositionFeaturesDim {
 		msg := fmt.Sprintf("Invalid Position Features: wanted dimension=%d, got dimension=%d",
-			CurrentPositionFeaturesDim, len(rawFeatures))
+			PositionFeaturesDim, len(rawFeatures))
 		klog.Error(msg)
 		return msg
 	}
