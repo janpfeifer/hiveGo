@@ -4,33 +4,13 @@ import (
 	"fmt"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	. "github.com/janpfeifer/hiveGo/internal/state"
+	. "github.com/janpfeifer/hiveGo/internal/state/statetest"
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 var _ = fmt.Printf
-
-// PieceOnBoard represents a position and ownership of a piece in the board.
-type PieceOnBoard struct {
-	pos    Pos
-	player PlayerNum
-	piece  PieceType
-}
-
-// buildBoard from a collection of pieces. Their positions may be in "display coordinates".
-func buildBoard(layout []PieceOnBoard, displayPos bool) (b *Board) {
-	b = NewBoard()
-	for _, p := range layout {
-		pos := p.pos
-		if displayPos {
-			pos = pos.FromDisplayPos()
-		}
-		b.StackPiece(pos, p.player, p.piece)
-		b.SetAvailable(p.player, p.piece, b.Available(p.player, p.piece)-1)
-	}
-	return
-}
 
 // listMovesForPieceDisplayPos takes the piece position in "display coordinates", and returns
 // the moves also in "display coordinates".
@@ -126,7 +106,7 @@ func TestDisplayPos(t *testing.T) {
 }
 
 func TestRemovablePositions(t *testing.T) {
-	board := buildBoard([]PieceOnBoard{
+	board := BuildBoard([]PieceOnBoard{
 		{Pos{0, 0}, 0, ANT},
 		{Pos{-1, 0}, 1, BEETLE},
 		{Pos{1, 0}, 0, SPIDER},
@@ -157,7 +137,7 @@ func TestAct(t *testing.T) {
 		{Pos{2, -1}, 1, SPIDER},
 		{Pos{2, 0}, 0, ANT},
 	}
-	board := buildBoard(layout, true)
+	board := BuildBoard(layout, true)
 	printBoard(board)
 	board.BuildDerived()
 
@@ -195,7 +175,7 @@ func TestAct(t *testing.T) {
 		{Pos{0, 0}, 0, ANT},
 		{Pos{0, 0}, 1, BEETLE},
 	}
-	board = buildBoard(layout, true)
+	board = BuildBoard(layout, true)
 	board.BuildDerived()
 	if len(board.Derived.Actions) != 1 || board.Derived.Actions[0] != SkipAction {
 		t.Errorf("Expected SkipAction (pass action), got %v", board.Derived.Actions)
@@ -252,7 +232,7 @@ func BenchmarkCalcDerived(b *testing.B) {
 		{Pos{7, -1}, 1, ANT},
 		{Pos{7, 0}, 1, GRASSHOPPER},
 	}
-	board := buildBoard(layout, true)
+	board := BuildBoard(layout, true)
 	board.BuildDerived()
 	board.NextPlayer = 1
 	action := Action{SourcePos: Pos{7, -1}, TargetPos: Pos{1, 1}, Piece: ANT}

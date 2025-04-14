@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	. "github.com/janpfeifer/hiveGo/internal/state"
+	. "github.com/janpfeifer/hiveGo/internal/state/statetest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -18,7 +19,7 @@ func TestQueenMoves(t *testing.T) {
 		{Pos{2, 0}, 0, QUEEN},
 		{Pos{-1, 2}, 1, GRASSHOPPER},
 	}
-	board := buildBoard(layout, false)
+	board := BuildBoard(layout, false)
 	board.BuildDerived()
 	printBoard(board)
 
@@ -28,7 +29,7 @@ func TestQueenMoves(t *testing.T) {
 
 	// Now queen can't move because it would break hive.
 	layout = append(layout, PieceOnBoard{Pos{3, 0}, 0, GRASSHOPPER})
-	board = buildBoard(layout, false)
+	board = BuildBoard(layout, false)
 	fmt.Println("\n\t> Test queen can't move because it would break hive")
 	printBoard(board)
 	board.BuildDerived()
@@ -38,7 +39,7 @@ func TestQueenMoves(t *testing.T) {
 	// If we put some pieces around it can move again.
 	layout = append(layout, PieceOnBoard{Pos{1, 1}, 0, BEETLE})
 	layout = append(layout, PieceOnBoard{Pos{2, 1}, 0, BEETLE})
-	board = buildBoard(layout, false)
+	board = BuildBoard(layout, false)
 	fmt.Println("\n\t> Test queen can move again after putting pieces around it")
 	printBoard(board)
 	board.BuildDerived()
@@ -48,7 +49,7 @@ func TestQueenMoves(t *testing.T) {
 
 	// Finally piece is not supposed to squeeze among pieces:
 	layout = append(layout, PieceOnBoard{Pos{2, -1}, 0, ANT})
-	board = buildBoard(layout, false)
+	board = BuildBoard(layout, false)
 	fmt.Println("\n\t> Test queen can't squeeze among pieces")
 	printBoard(board)
 	board.BuildDerived()
@@ -67,7 +68,7 @@ func TestSpiderMoves(t *testing.T) {
 		{Pos{1, 1}, 0, SPIDER},
 		{Pos{-1, 3}, 0, SPIDER},
 	}
-	board := buildBoard(layout, false)
+	board := BuildBoard(layout, false)
 	printBoard(board)
 	board.BuildDerived()
 
@@ -100,7 +101,7 @@ func TestGrasshopperMoves(t *testing.T) {
 		{Pos{1, 1}, 0, GRASSHOPPER},
 		{Pos{-1, 3}, 1, GRASSHOPPER},
 	}
-	board := buildBoard(layout, false)
+	board := BuildBoard(layout, false)
 	printBoard(board)
 
 	tests := [2][]generics.Pair[Pos, []Pos]{
@@ -137,7 +138,7 @@ func TestAntMoves(t *testing.T) {
 		{Pos{-2, 4}, 1, ANT},
 		{Pos{0, 1}, 0, ANT},
 	}
-	board := buildBoard(layout, false)
+	board := BuildBoard(layout, false)
 	printBoard(board)
 
 	tests := [2][]generics.Pair[Pos, []Pos]{
@@ -189,7 +190,7 @@ func TestBeetleMoves(t *testing.T) {
 		{Pos{2, -2}, 1, SPIDER},
 		{Pos{2, -1}, 0, ANT},
 	}
-	board := buildBoard(layout, false)
+	board := BuildBoard(layout, false)
 	printBoard(board)
 	board.BuildDerived()
 	pieceType := BEETLE
@@ -229,7 +230,7 @@ func TestBeetleMoves(t *testing.T) {
 		{Pos{0, -2}, 1, ANT},
 		{Pos{-2, 0}, 1, QUEEN},
 	}
-	board = buildBoard(layout, false)
+	board = BuildBoard(layout, false)
 	printBoard(board)
 	board.NextPlayer = 0
 	board.BuildDerived()
