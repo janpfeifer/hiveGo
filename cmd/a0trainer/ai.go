@@ -22,7 +22,7 @@ var (
 		"a0trainer plays against itself, so only one configuration is accepted.")
 	flagBootstrapAI = flag.String("bootstrap", "", "Configure an AI to bootstrap an AlphaZero model. "+
 		"This is needed because randomly initialized models will never reach a win condition, and never learn anything.")
-	flagTrainStepsPerIteration = flag.Int("train_steps", 1000, "Number of training steps to perform per iteration.")
+	flagTrainStepsPerExample = flag.Int("train_steps", 10, "Average number of times that each example (board move) is seen during a training round.")
 
 	// aiPlayer being trained.
 	aiPlayer          *players.SearcherScorer
@@ -64,14 +64,17 @@ func createAIPlayer() error {
 }
 
 func trainAI(ctx context.Context, examples []Example) (success bool, err error) {
-	numTrainSteps := *flagTrainStepsPerIteration
-	if numTrainSteps <= 0 {
+	if *flagTrainStepsPerExample <= 0 {
+		// No training, probably just a debug run.
 		return true, nil
 	}
 	learner := aiPlayer.PolicyLearner
 	batchSize := learner.BatchSize()
-	// Enough steps to at least see each example on average 10 times.
-	numTrainSteps = max(numTrainSteps, 10*len(examples)/batchSize)
+	numTrainSteps := *flagTrainStepsPerExample * len(examples) / batchSize
+	if numTrainSteps <= 0 {
+		// Not enough examples for even one batch.
+		return false, nil
+	}
 	fmt.Printf("\t- Training %d steps, batch size %d, pool of %d examples\n", numTrainSteps, batchSize, len(examples))
 	var averageLoss float32
 
