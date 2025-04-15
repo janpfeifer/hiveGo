@@ -583,6 +583,9 @@ func (ui *UI) PrettyPrintActionsWithPolicy(board *Board, policy []float32, actio
 	actions := board.Derived.Actions
 	numActions := len(actions)
 	fmt.Printf(" moves, %d actions available, %s taken\n", numActions, actionTaken)
+	if len(policy) == 0 {
+		return
+	}
 	fmt.Printf("\t%d top actions:\n", numActionsToPrint)
 	if numActionsToPrint*2 > numActions {
 		numActionsToPrint = (numActionsToPrint + 1) / 2

@@ -37,7 +37,6 @@ var (
 	globalCtx = context.Background()
 )
 
-// main orchestrates playing, loading, rescoring, saving and training of matches.
 func main() {
 	klog.InitFlags(nil)
 	flag.Parse()
