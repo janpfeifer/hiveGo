@@ -17,6 +17,7 @@ import (
 	"flag"
 	"fmt"
 	_ "github.com/janpfeifer/hiveGo/internal/players/default"
+	"github.com/janpfeifer/hiveGo/internal/profilers"
 	"github.com/janpfeifer/hiveGo/internal/ui/spinning"
 	"github.com/janpfeifer/must"
 	"k8s.io/klog/v2"
@@ -48,17 +49,16 @@ func main() {
 	defer globalCancel()
 
 	// Profilers: HTTP profiler server and CPU profile.
-	if *flagProfiler >= 0 {
-		setupHTTPProfiler()
-		defer httpProfilerOnQuit()
-	}
-	if *flagCPUProfile != "" {
-		stopCPUProfile := createCPUProfile()
-		defer stopCPUProfile()
-	}
+	profilers.Setup(globalCtx)
+	defer profilers.OnQuit()
 
 	// Create AI player.
 	must.M(createAIPlayer())
+	defer func() {
+		// Clean up -- before stopping at the profiler, if it is enabled.
+		aiPlayer = nil
+		bootstrapAiPlayer = nil
+	}()
 
 	// Iterate over playing and training.
 	var currentExamples []Example
