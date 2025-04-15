@@ -71,5 +71,8 @@ func main() {
 			// AI was replaced by the improved one, discard examples before generating new ones.
 			currentExamples = currentExamples[:0]
 		}
+		if globalCtx.Err() != nil {
+			return
+		}
 	}
 }

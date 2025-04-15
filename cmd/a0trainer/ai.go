@@ -152,6 +152,10 @@ func trainAI(ctx context.Context, examples []Example) (success bool, err error) 
 			err = errors.WithMessagef(err, "failed to run matches to compare models after training")
 			return false, err
 		}
+		if ctx.Err() != nil {
+			// Interrupted.
+			return false, nil
+		}
 		fmt.Printf("\t- %d draws, %d current model wins, %d updated model wins\n", draws, currentWins, newWins)
 		if newWins <= currentWins+(currentWins+9)/10 {
 			// Didn't win at least >10% more than current model, discard training and instead collect more examples.
