@@ -92,7 +92,7 @@ func (r *Results) String() string {
 				playerIdx+1, r.winsAs1st[playerIdx]+r.winsAs2nd[playerIdx],
 				r.winsAs1st[playerIdx], r.winsAs2nd[playerIdx]))
 	}
-	parts = append(parts, fmt.Sprintf("%d draws (%d P1 as 1st, %d P2 as 1st) - ",
+	parts = append(parts, fmt.Sprintf("%d draws (%d AI-1 as 1st, %d AI-2 as 1st) - ",
 		r.draws[0]+r.draws[1], r.draws[0], r.draws[1]))
 	parts = append(parts, fmt.Sprintf("%s", time.Since(r.start)))
 	parts = append(parts, "[0K")
