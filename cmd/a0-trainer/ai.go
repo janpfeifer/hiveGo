@@ -23,7 +23,7 @@ var (
 		"a0trainer plays against itself, so only one configuration is accepted.")
 	flagBootstrapAI = flag.String("bootstrap", "", "Configure an AI to bootstrap an AlphaZero model. "+
 		"This is needed because randomly initialized models will never reach a win condition, and never learn anything.")
-	flagTrainStepsPerExample = flag.Int("train_steps", 10, "Average number of times that each example (board move) is seen during a training round.")
+	flagTrainStepsPerExample = flag.Int("train_steps", 20, "Average number of times that each example (board move) is seen during a training round.")
 
 	// aiPlayer being trained.
 	aiPlayer          *players.SearcherScorer

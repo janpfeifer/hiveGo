@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	flagNumMatches = flag.Int("num_matches", 100, "Number of matches to play per iteration, "+
+	flagNumMatches = flag.Int("num_matches", 400, "Number of matches to play per iteration, "+
 		"between training the model. If the new model is not better than the old, repeat again. ")
 	flagNumCompareMatches = flag.Int("num_compare", 40, "Number of matches to play to check whether a model is better than another.")
 	flagMaxMoves          = flag.Int(
@@ -120,7 +120,7 @@ func runMatch(ctx context.Context, matchNum int, players [2]*players.SearcherSco
 	// Run match.
 	for !board.IsFinished() {
 		if ctx.Err() != nil {
-			klog.Infof("Match %d interrupted: %s", matchNum, ctx.Err())
+			klog.V(1).Infof("Match %d interrupted: %s", matchNum, ctx.Err())
 			return PlayerInvalid, nil
 		}
 		playerNum := board.NextPlayer

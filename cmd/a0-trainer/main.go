@@ -60,6 +60,10 @@ func main() {
 	}()
 
 	// Iterate over playing and training.
+	if *flagNumIterations <= 0 {
+		fmt.Println("Training indefinitely (use -num_iterations to limit it):")
+		fmt.Println("\t- It saves after each iteration, and you can simply interrupt (Control+C) when you want to stop.")
+	}
 	var currentExamples []Example
 	for i := 0; *flagNumIterations <= 0 || i < *flagNumIterations; i++ {
 		fmt.Printf("\nIteration: %d\n", i)
