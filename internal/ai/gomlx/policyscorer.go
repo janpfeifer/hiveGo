@@ -20,7 +20,7 @@ import (
 	"sync"
 )
 
-// PolicyScorer implements a generic GoMLX "board scorer" (to use with AlphaBetaPruning or MinMax seachers) for the Hive game.
+// PolicyScorer implements a generic GoMLX "board scorer" (to use with AlphaBetaPruning or MinMax searchers) for the Hive game.
 // It only models the estimate of the state value (Q).
 //
 // It implements ai.PolicyScorer, ai.BatchPolicyScorer and ai.ValueLearner.
@@ -338,24 +338,26 @@ func (s *PolicyScorer) BatchSize() int {
 func (s *PolicyScorer) writeHyperparametersHelp() {
 	buf := &bytes.Buffer{}
 	_, _ = fmt.Fprintf(buf, "ValueModel %s parameters:\n", s.Type)
+	_, _ = fmt.Fprintf(buf, "\ta0fnn=<path_to_model> to use the model saved at the given directory, or\n")
+	_, _ = fmt.Fprintf(buf, "\ta0fnn=#0 to use pretrained model number 0 (there are %d pretrained models) or\n", len(PretrainedModels[ModelAlphaZeroFNN]))
+	_, _ = fmt.Fprintf(buf, "\ta0fnn=-help to show this help message\n")
 	s.model.Context().EnumerateParams(func(scope, key string, value any) {
 		if scope != context.RootScope {
 			return
 		}
 		_, _ = fmt.Fprintf(buf, "\t%q: default value is %v\n", key, value)
 	})
+
 	klog.Info(buf)
 }
 
 func (s *PolicyScorer) createCheckpoint(filePath string) error {
-	var err error
-	s.checkpoint, err = checkpoints.
-		Build(s.model.Context()).
-		Dir(filePath).
-		Immediate().
-		Keep(10).
-		Done()
-	return err
+	checkpoint, err := genericCreateCheckpoint(s.model.Context(), ModelAlphaZeroFNN, filePath)
+	if err != nil {
+		return err
+	}
+	s.checkpoint = checkpoint
+	return nil
 }
 
 // Finalize associated model, and leaves scorer in an invalid state, but immediately frees resources.

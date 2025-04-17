@@ -16,6 +16,8 @@ import (
 	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -224,6 +226,9 @@ func (s *BoardScorer) BatchSize() int {
 func (s *BoardScorer) writeHyperparametersHelp() {
 	buf := &bytes.Buffer{}
 	_, _ = fmt.Fprintf(buf, "ValueModel %s parameters:\n", s.Type)
+	_, _ = fmt.Fprintf(buf, "\tfnn=<path_to_model> to use the model saved at the given directory, or\n")
+	_, _ = fmt.Fprintf(buf, "\tfnn=#0 to use pretrained model number 0 (there are %d pretrained models) or\n", len(PretrainedModels[ModelFNN]))
+	_, _ = fmt.Fprintf(buf, "\tfnn=-help to show this help message\n")
 	s.model.Context().EnumerateParams(func(scope, key string, value any) {
 		if scope != context.RootScope {
 			return
@@ -234,12 +239,38 @@ func (s *BoardScorer) writeHyperparametersHelp() {
 }
 
 func (s *BoardScorer) createCheckpoint(filePath string) error {
-	var err error
-	s.checkpoint, err = checkpoints.
-		Build(s.model.Context()).
-		Dir(filePath).
+	checkpoint, err := genericCreateCheckpoint(s.model.Context(), ModelFNN, filePath)
+	if err != nil {
+		return err
+	}
+	s.checkpoint = checkpoint
+	return nil
+}
+
+func genericCreateCheckpoint(ctx *context.Context, modelType ModelType, filePath string) (*checkpoints.Handler, error) {
+	checkpointConfig := checkpoints.
+		Build(ctx).
 		Immediate().
-		Keep(10).
-		Done()
-	return err
+		Keep(10)
+
+	if strings.HasPrefix(filePath, "#") {
+		// Load pre-trained model.
+		pretrainedIdx, err := strconv.Atoi(filePath[1:])
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to parse the pretrained model index from %q", filePath)
+		}
+		numPretrained := len(PretrainedModels[modelType])
+		if pretrainedIdx < 0 || pretrainedIdx >= numPretrained {
+			return nil, errors.Errorf("model type %s only have %d pretrained models included, please select a number from 0 to %d",
+				modelType, numPretrained, numPretrained-1)
+		}
+		checkpointConfig = checkpointConfig.FromEmbed(
+			PretrainedModels[modelType][pretrainedIdx].Json,
+			PretrainedModels[modelType][pretrainedIdx].Binary)
+	} else {
+		// Load/Save model from/to disk.
+		checkpointConfig = checkpointConfig.Dir(filePath)
+	}
+	checkpoint, err := checkpointConfig.Done()
+	return checkpoint, err
 }
