@@ -1,0 +1,327 @@
+{
+	"Params": [
+		{
+			"Scope": "/",
+			"Key": "activation",
+			"Value": "sigmoid",
+			"ValueType": "string"
+		},
+		{
+			"Scope": "/",
+			"Key": "adam_dtype",
+			"Value": "",
+			"ValueType": "string"
+		},
+		{
+			"Scope": "/",
+			"Key": "adam_epsilon",
+			"Value": 1e-7,
+			"ValueType": "float64"
+		},
+		{
+			"Scope": "/",
+			"Key": "batch_size",
+			"Value": 128,
+			"ValueType": "int"
+		},
+		{
+			"Scope": "/",
+			"Key": "cosine_schedule_steps",
+			"Value": 0,
+			"ValueType": "int"
+		},
+		{
+			"Scope": "/",
+			"Key": "dropout_rate",
+			"Value": 0,
+			"ValueType": "float64"
+		},
+		{
+			"Scope": "/",
+			"Key": "features_version",
+			"Value": 54,
+			"ValueType": "int"
+		},
+		{
+			"Scope": "/",
+			"Key": "fnn_normalization",
+			"Value": "layer",
+			"ValueType": "string"
+		},
+		{
+			"Scope": "/",
+			"Key": "fnn_num_hidden_layers",
+			"Value": 3,
+			"ValueType": "int"
+		},
+		{
+			"Scope": "/",
+			"Key": "fnn_num_hidden_nodes",
+			"Value": 128,
+			"ValueType": "int"
+		},
+		{
+			"Scope": "/",
+			"Key": "fnn_residual",
+			"Value": true,
+			"ValueType": "bool"
+		},
+		{
+			"Scope": "/",
+			"Key": "kan",
+			"Value": false,
+			"ValueType": "bool"
+		},
+		{
+			"Scope": "/",
+			"Key": "kan_bspline_degree",
+			"Value": 2,
+			"ValueType": "int"
+		},
+		{
+			"Scope": "/",
+			"Key": "kan_bspline_magnitude_l1",
+			"Value": 0.00001,
+			"ValueType": "float64"
+		},
+		{
+			"Scope": "/",
+			"Key": "kan_bspline_magnitude_l2",
+			"Value": 0,
+			"ValueType": "float64"
+		},
+		{
+			"Scope": "/",
+			"Key": "kan_discrete",
+			"Value": false,
+			"ValueType": "bool"
+		},
+		{
+			"Scope": "/",
+			"Key": "kan_discrete_perturbation",
+			"Value": "triangular",
+			"ValueType": "string"
+		},
+		{
+			"Scope": "/",
+			"Key": "kan_discrete_softness",
+			"Value": 0.1,
+			"ValueType": "float64"
+		},
+		{
+			"Scope": "/",
+			"Key": "kan_discrete_softness_schedule",
+			"Value": "none",
+			"ValueType": "string"
+		},
+		{
+			"Scope": "/",
+			"Key": "kan_discrete_splits_trainable",
+			"Value": true,
+			"ValueType": "bool"
+		},
+		{
+			"Scope": "/",
+			"Key": "kan_num_hidden_layers",
+			"Value": 1,
+			"ValueType": "int"
+		},
+		{
+			"Scope": "/",
+			"Key": "kan_num_hidden_nodes",
+			"Value": 4,
+			"ValueType": "int"
+		},
+		{
+			"Scope": "/",
+			"Key": "kan_num_points",
+			"Value": 20,
+			"ValueType": "int"
+		},
+		{
+			"Scope": "/",
+			"Key": "kan_residual",
+			"Value": true,
+			"ValueType": "bool"
+		},
+		{
+			"Scope": "/",
+			"Key": "l1_regularization",
+			"Value": 0.00001,
+			"ValueType": "float64"
+		},
+		{
+			"Scope": "/",
+			"Key": "l2_regularization",
+			"Value": 0.00001,
+			"ValueType": "float64"
+		},
+		{
+			"Scope": "/",
+			"Key": "learning_rate",
+			"Value": 0.001,
+			"ValueType": "float64"
+		},
+		{
+			"Scope": "/",
+			"Key": "optimizer",
+			"Value": "adam",
+			"ValueType": "string"
+		}
+	],
+	"Variables": [
+		{
+			"ParameterName": "var:/fnn/fnn_hidden_layer_1/layer_normalization/offset",
+			"Dimensions": [
+				128
+			],
+			"DType": "Float32",
+			"Pos": 0,
+			"Length": 512
+		},
+		{
+			"ParameterName": "var:/fnn/fnn_hidden_layer_2/biases",
+			"Dimensions": [
+				128
+			],
+			"DType": "Float32",
+			"Pos": 512,
+			"Length": 512
+		},
+		{
+			"ParameterName": "var:/fnn/fnn_output_layer/weights",
+			"Dimensions": [
+				128,
+				1
+			],
+			"DType": "Float32",
+			"Pos": 1024,
+			"Length": 512
+		},
+		{
+			"ParameterName": "var:/optimizers/learning_rate",
+			"Dimensions": null,
+			"DType": "Float32",
+			"Pos": 1536,
+			"Length": 4
+		},
+		{
+			"ParameterName": "var://#rngState",
+			"Dimensions": [
+				3
+			],
+			"DType": "Uint64",
+			"Pos": 1540,
+			"Length": 24
+		},
+		{
+			"ParameterName": "var:/fnn/fnn_hidden_layer_2/layer_normalization/gain",
+			"Dimensions": [
+				128
+			],
+			"DType": "Float32",
+			"Pos": 1564,
+			"Length": 512
+		},
+		{
+			"ParameterName": "var://global_step",
+			"Dimensions": null,
+			"DType": "Int64",
+			"Pos": 2076,
+			"Length": 8
+		},
+		{
+			"ParameterName": "var:/fnn/fnn_hidden_layer_1/layer_normalization/gain",
+			"Dimensions": [
+				128
+			],
+			"DType": "Float32",
+			"Pos": 2084,
+			"Length": 512
+		},
+		{
+			"ParameterName": "var:/fnn/fnn_hidden_layer_2/layer_normalization/offset",
+			"Dimensions": [
+				128
+			],
+			"DType": "Float32",
+			"Pos": 2596,
+			"Length": 512
+		},
+		{
+			"ParameterName": "var:/fnn/fnn_hidden_layer_0/biases",
+			"Dimensions": [
+				128
+			],
+			"DType": "Float32",
+			"Pos": 3108,
+			"Length": 512
+		},
+		{
+			"ParameterName": "var:/fnn/fnn_hidden_layer_2/weights",
+			"Dimensions": [
+				128,
+				128
+			],
+			"DType": "Float32",
+			"Pos": 3620,
+			"Length": 65536
+		},
+		{
+			"ParameterName": "var:/fnn/fnn_output_layer/layer_normalization/gain",
+			"Dimensions": [
+				128
+			],
+			"DType": "Float32",
+			"Pos": 69156,
+			"Length": 512
+		},
+		{
+			"ParameterName": "var:/fnn/fnn_hidden_layer_1/biases",
+			"Dimensions": [
+				128
+			],
+			"DType": "Float32",
+			"Pos": 69668,
+			"Length": 512
+		},
+		{
+			"ParameterName": "var:/fnn/fnn_output_layer/layer_normalization/offset",
+			"Dimensions": [
+				128
+			],
+			"DType": "Float32",
+			"Pos": 70180,
+			"Length": 512
+		},
+		{
+			"ParameterName": "var:/fnn/fnn_hidden_layer_1/weights",
+			"Dimensions": [
+				128,
+				128
+			],
+			"DType": "Float32",
+			"Pos": 70692,
+			"Length": 65536
+		},
+		{
+			"ParameterName": "var:/fnn/fnn_hidden_layer_0/weights",
+			"Dimensions": [
+				54,
+				128
+			],
+			"DType": "Float32",
+			"Pos": 136228,
+			"Length": 27648
+		},
+		{
+			"ParameterName": "var:/fnn/fnn_output_layer/biases",
+			"Dimensions": [
+				1
+			],
+			"DType": "Float32",
+			"Pos": 163876,
+			"Length": 4
+		}
+	]
+}
