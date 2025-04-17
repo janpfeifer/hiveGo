@@ -24,6 +24,7 @@ var (
 	flagBootstrapAI = flag.String("bootstrap", "", "Configure an AI to bootstrap an AlphaZero model. "+
 		"This is needed because randomly initialized models will never reach a win condition, and never learn anything.")
 	flagTrainStepsPerExample = flag.Int("train_steps", 20, "Average number of times that each example (board move) is seen during a training round.")
+	flagClearOptimizer       = flag.Bool("clear_optimizer", true, "Whether to clear optimizer information (global step, normalizations) between each training session.")
 
 	// aiPlayer being trained.
 	aiPlayer          *players.SearcherScorer
@@ -84,7 +85,9 @@ func trainAI(ctx context.Context, examples []Example) (success bool, err error) 
 	if err != nil {
 		return false, errors.WithMessagef(err, "failed to clone learner")
 	}
-	newLearner.ClearOptimizer()
+	if *flagClearOptimizer {
+		newLearner.ClearOptimizer()
+	}
 
 	// Stats of training.
 	var currentStep int
