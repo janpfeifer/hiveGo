@@ -73,7 +73,9 @@ type Searcher struct {
 }
 
 type matchStats struct {
-	// Number of candidate nodes generated during search: used for performance measures.
+	// numEvaluations of board positions, should be equal to the number of traverses.
+	numEvaluations int
+	// numCacheNodes created.
 	numCacheNodes int
 }
 
@@ -198,6 +200,7 @@ func (s *Searcher) SearchSubtree(cn *cacheNode, stats *matchStats) (score float3
 		cn.N[bestAction] = 1
 		cn.sumN++
 		cn.sumScores[bestAction] += score
+		stats.numEvaluations++
 		return
 	}
 
@@ -211,6 +214,7 @@ func (s *Searcher) SearchSubtree(cn *cacheNode, stats *matchStats) (score float3
 			cn.N[bestAction]++
 			cn.sumN++
 			cn.sumScores[bestAction] += score
+			stats.numEvaluations++
 			return
 		}
 
@@ -282,8 +286,9 @@ func (s *Searcher) searchImpl(board *Board, withPolicy bool) (action Action, nex
 
 	// Log performance.
 	if klog.V(1).Enabled() {
-		cacheNodeRate := float64(stats.numCacheNodes) / elapsed.Seconds()
-		klog.Infof("Search at move #%d: %.2f nodes/s", board.MoveNumber, cacheNodeRate)
+		elapsed = time.Since(startTime)
+		evaluationsRate := float64(stats.numEvaluations) / elapsed.Seconds()
+		klog.Infof("Move #%d MCTS searched %d nodes at %.2f nodes/s", board.MoveNumber, stats.numEvaluations, evaluationsRate)
 	}
 
 	bestActionIdx := s.selectAction(rootCacheNode)

@@ -5,7 +5,6 @@ import (
 	"github.com/janpfeifer/hiveGo/internal/parameters"
 	"github.com/janpfeifer/hiveGo/internal/searchers"
 	"github.com/pkg/errors"
-	"time"
 )
 
 func NewFromParams(scorer ai.ValueScorer, params parameters.Params) (searchers.Searcher, error) {
@@ -27,8 +26,6 @@ func NewFromParams(scorer ai.ValueScorer, params parameters.Params) (searchers.S
 	}
 	mcts := &Searcher{
 		scorer:       policyScorer,
-		maxTime:      30 * time.Second,
-		maxTraverses: 300,
 		minTraverses: 10,
 		maxAbsScore:  9.0,
 		cPuct:        1.1,
@@ -62,6 +59,10 @@ func NewFromParams(scorer ai.ValueScorer, params parameters.Params) (searchers.S
 	mcts.maxRandDepth, err = parameters.PopParamOr(params, "maxRandDepth", mcts.maxTraverses)
 	if err != nil {
 		return nil, err
+	}
+
+	if mcts.maxTraverses == 0 && mcts.maxTime == 0 {
+		return nil, errors.Errorf("\"mcts\" searcher requires max_time or max_traverses (or both) to be set")
 	}
 	return mcts, nil
 }
