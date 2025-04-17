@@ -223,7 +223,7 @@ func (ab *Searcher) Search(board *Board) (bestAction Action, bestBoard *Board, b
 		board.BuildDerived()
 	}
 
-	if ab.maxDepth > 0 {
+	if ab.maxTime == 0 {
 		// Search to fixed maxDepth:
 		bestAction, bestBoard, bestScore = ab.searchToMaxDepth(nil, board, ab.maxDepth, board.NextPlayer)
 	} else {
@@ -237,6 +237,9 @@ func (ab *Searcher) Search(board *Board) (bestAction Action, bestBoard *Board, b
 		// Loop iteratively increasing the depth:
 		currentDepth := 2
 		for {
+			if ab.maxDepth > 0 && currentDepth > ab.maxDepth {
+				break
+			}
 			depthStart = time.Now()
 			if deadline.Sub(depthStart) < 5*lastDepthDuration {
 				// Not enough time for next iteration, just interrupt.
