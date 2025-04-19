@@ -1,4 +1,3 @@
-// Package pretrained embed GoMLX models.
 package gomlx
 
 import (
@@ -23,6 +22,7 @@ var (
 	}
 )
 
+// List of embedded pretrained model files.
 var (
 	//go:embed pretrained/fnn0.json
 	fnn0Json string
