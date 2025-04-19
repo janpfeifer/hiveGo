@@ -17,11 +17,22 @@ var (
 		ModelFNN: {
 			Checkpoint{fnn0Json, fnn0Bin},
 		},
+		ModelAlphaZeroFNN: {
+			Checkpoint{a0fnn0Json, a0fnn0Bin},
+		},
 	}
 )
 
-//go:embed pretrained/fnn0.json
-var fnn0Json string
+var (
+	//go:embed pretrained/fnn0.json
+	fnn0Json string
 
-//go:embed pretrained/fnn0.bin
-var fnn0Bin []byte
+	//go:embed pretrained/fnn0.bin
+	fnn0Bin []byte
+
+	//go:embed pretrained/a0fnn0.json
+	a0fnn0Json string
+
+	//go:embed pretrained/a0fnn0.bin
+	a0fnn0Bin []byte
+)
