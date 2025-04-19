@@ -150,6 +150,7 @@ func trainAI(ctx context.Context, examples []Example) (success bool, err error) 
 
 	// Check whether new model is better than previous one.
 	if *flagNumCompareMatches > 0 {
+		fmt.Printf("\t- Compare: A - Current model / B - Updated model\n")
 		currentWins, newWins, draws, _, err := runMatches(ctx, *flagNumCompareMatches, aiPlayer, newPlayer)
 		if err != nil {
 			err = errors.WithMessagef(err, "failed to run matches to compare models after training")

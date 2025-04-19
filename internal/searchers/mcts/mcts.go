@@ -288,7 +288,7 @@ func (s *Searcher) searchImpl(board *Board, withPolicy bool) (action Action, nex
 	if klog.V(1).Enabled() {
 		elapsed = time.Since(startTime)
 		evaluationsRate := float64(stats.numEvaluations) / elapsed.Seconds()
-		klog.Infof("Move #%d MCTS searched %d nodes at %.2f nodes/s", board.MoveNumber, stats.numEvaluations, evaluationsRate)
+		klog.Infof("Move #%d MCTS searched %d nodes at %.2f nodes/s in %s", board.MoveNumber, stats.numEvaluations, evaluationsRate, elapsed)
 	}
 
 	bestActionIdx := s.selectAction(rootCacheNode)
