@@ -198,7 +198,7 @@ func (s *PolicyScorer) CloneLearner() (ai.PolicyLearner, error) {
 		checkpointsToKeep:     s.checkpointsToKeep,
 		batchSize:             s.batchSize,
 		optimizer:             s.optimizer,
-		NumCompilations:       s.NumCompilations,
+		NumCompilations:       0, // New model has no compiled computations graphs yet.
 	}
 
 	newS.createExecutors()
