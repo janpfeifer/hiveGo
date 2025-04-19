@@ -180,96 +180,14 @@
 			"Length": 24
 		},
 		{
-			"ParameterName": "var:/optimizers/learning_rate",
-			"Dimensions": null,
-			"DType": "Float32",
-			"Pos": 24,
-			"Length": 4
-		},
-		{
-			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_2/weights",
-			"Dimensions": [
-				16,
-				16
-			],
-			"DType": "Float32",
-			"Pos": 28,
-			"Length": 1024
-		},
-		{
 			"ParameterName": "var:/base_board_tower/fnn/fnn_output_layer/weights",
 			"Dimensions": [
 				16,
 				16
 			],
 			"DType": "Float32",
-			"Pos": 1052,
+			"Pos": 24,
 			"Length": 1024
-		},
-		{
-			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_2/weights",
-			"Dimensions": [
-				16,
-				16
-			],
-			"DType": "Float32",
-			"Pos": 2076,
-			"Length": 1024
-		},
-		{
-			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_2/layer_normalization/gain",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 3100,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_1/biases",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 3164,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/base_board_tower/fnn/fnn_output_layer/biases",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 3228,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_2/layer_normalization/offset",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 3292,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_1/weights",
-			"Dimensions": [
-				16,
-				16
-			],
-			"DType": "Float32",
-			"Pos": 3356,
-			"Length": 1024
-		},
-		{
-			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_1/layer_normalization/gain",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 4380,
-			"Length": 64
 		},
 		{
 			"ParameterName": "var:/base_board_tower/fnn/fnn_output_layer/layer_normalization/gain",
@@ -277,16 +195,25 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 4444,
+			"Pos": 1048,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_1/biases",
+			"ParameterName": "var:/base_board_tower/fnn/fnn_output_layer/layer_normalization/offset",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 4508,
+			"Pos": 1112,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_1/layer_normalization/gain",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 1176,
 			"Length": 64
 		},
 		{
@@ -295,16 +222,44 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 4572,
+			"Pos": 1240,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_2/layer_normalization/offset",
+			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_2/biases",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 4636,
+			"Pos": 1304,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/board_output/kan/fnn_output_layer/biases",
+			"Dimensions": [
+				1
+			],
+			"DType": "Float32",
+			"Pos": 1368,
+			"Length": 4
+		},
+		{
+			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_1/weights",
+			"Dimensions": [
+				16,
+				16
+			],
+			"DType": "Float32",
+			"Pos": 1372,
+			"Length": 1024
+		},
+		{
+			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_1/layer_normalization/gain",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 2396,
 			"Length": 64
 		},
 		{
@@ -313,11 +268,58 @@
 				1
 			],
 			"DType": "Float32",
-			"Pos": 4700,
+			"Pos": 2460,
 			"Length": 4
 		},
 		{
-			"ParameterName": "var:/base_board_tower/fnn/fnn_output_layer/layer_normalization/offset",
+			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_2/layer_normalization/gain",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 2464,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/actions/fnn/fnn_output_layer/layer_normalization/offset",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 2528,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/base_board_tower/fnn/fnn_output_layer/biases",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 2592,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_2/weights",
+			"Dimensions": [
+				16,
+				16
+			],
+			"DType": "Float32",
+			"Pos": 2656,
+			"Length": 1024
+		},
+		{
+			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_1/weights",
+			"Dimensions": [
+				16,
+				16
+			],
+			"DType": "Float32",
+			"Pos": 3680,
+			"Length": 1024
+		},
+		{
+			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_2/biases",
 			"Dimensions": [
 				16
 			],
@@ -336,23 +338,32 @@
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_2/biases",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 4832,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_1/weights",
+			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_2/weights",
 			"Dimensions": [
 				16,
 				16
 			],
 			"DType": "Float32",
-			"Pos": 4896,
+			"Pos": 4832,
 			"Length": 1024
+		},
+		{
+			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_1/layer_normalization/offset",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 5856,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_2/layer_normalization/offset",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 5920,
+			"Length": 64
 		},
 		{
 			"ParameterName": "var:/board_output/kan/fnn_output_layer/weights",
@@ -361,25 +372,32 @@
 				1
 			],
 			"DType": "Float32",
-			"Pos": 5920,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_2/layer_normalization/gain",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
 			"Pos": 5984,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_1/layer_normalization/offset",
+			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_0/biases",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
 			"Pos": 6048,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/optimizers/learning_rate",
+			"Dimensions": null,
+			"DType": "Float32",
+			"Pos": 6112,
+			"Length": 4
+		},
+		{
+			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_2/layer_normalization/offset",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 6116,
 			"Length": 64
 		},
 		{
@@ -389,62 +407,8 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 6112,
+			"Pos": 6180,
 			"Length": 2048
-		},
-		{
-			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_0/biases",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 8160,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/actions/fnn/fnn_output_layer/layer_normalization/gain",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 8224,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_1/layer_normalization/gain",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 8288,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/board_output/kan/fnn_output_layer/biases",
-			"Dimensions": [
-				1
-			],
-			"DType": "Float32",
-			"Pos": 8352,
-			"Length": 4
-		},
-		{
-			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_2/biases",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 8356,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/actions/fnn/fnn_output_layer/layer_normalization/offset",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 8420,
-			"Length": 64
 		},
 		{
 			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_0/weights",
@@ -453,11 +417,47 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 8484,
+			"Pos": 8228,
 			"Length": 3456
 		},
 		{
 			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_1/layer_normalization/offset",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 11684,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_2/layer_normalization/gain",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 11748,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/actions/fnn/fnn_hidden_layer_1/biases",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 11812,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/base_board_tower/fnn/fnn_hidden_layer_1/biases",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 11876,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/actions/fnn/fnn_output_layer/layer_normalization/gain",
 			"Dimensions": [
 				16
 			],
@@ -480,7 +480,7 @@
 			"Length": 8
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/weights_1st_moment",
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/weights_1st_moment",
 			"Dimensions": [
 				16,
 				16
@@ -490,7 +490,7 @@
 			"Length": 1024
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/weights_2nd_moment",
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/weights_2nd_moment",
 			"Dimensions": [
 				16,
 				16
@@ -500,116 +500,112 @@
 			"Length": 1024
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/weights_1st_moment",
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/layer_normalization/gain_1st_moment",
 			"Dimensions": [
-				16,
 				16
 			],
 			"DType": "Float32",
 			"Pos": 14068,
-			"Length": 1024
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/weights_2nd_moment",
-			"Dimensions": [
-				16,
-				16
-			],
-			"DType": "Float32",
-			"Pos": 15092,
-			"Length": 1024
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/weights_1st_moment",
-			"Dimensions": [
-				16,
-				16
-			],
-			"DType": "Float32",
-			"Pos": 16116,
-			"Length": 1024
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/weights_2nd_moment",
-			"Dimensions": [
-				16,
-				16
-			],
-			"DType": "Float32",
-			"Pos": 17140,
-			"Length": 1024
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/layer_normalization/gain_1st_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 18164,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/layer_normalization/gain_2nd_moment",
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/layer_normalization/gain_2nd_moment",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 18228,
+			"Pos": 14132,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_1/biases_1st_moment",
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/layer_normalization/offset_1st_moment",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 18292,
+			"Pos": 14196,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_1/biases_2nd_moment",
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/layer_normalization/offset_2nd_moment",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 18356,
+			"Pos": 14260,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/biases_1st_moment",
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_1/layer_normalization/gain_1st_moment",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 18420,
+			"Pos": 14324,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/biases_2nd_moment",
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_1/layer_normalization/gain_2nd_moment",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 18484,
+			"Pos": 14388,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/layer_normalization/offset_1st_moment",
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_0/biases_1st_moment",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 18548,
+			"Pos": 14452,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/layer_normalization/offset_2nd_moment",
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_0/biases_2nd_moment",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 18612,
+			"Pos": 14516,
 			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/biases_1st_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 14580,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/biases_2nd_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 14644,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/board_output/kan/fnn_output_layer/biases_1st_moment",
+			"Dimensions": [
+				1
+			],
+			"DType": "Float32",
+			"Pos": 14708,
+			"Length": 4
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/board_output/kan/fnn_output_layer/biases_2nd_moment",
+			"Dimensions": [
+				1
+			],
+			"DType": "Float32",
+			"Pos": 14712,
+			"Length": 4
 		},
 		{
 			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_1/weights_1st_moment",
@@ -618,7 +614,7 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 18676,
+			"Pos": 14716,
 			"Length": 1024
 		},
 		{
@@ -628,7 +624,7 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 19700,
+			"Pos": 15740,
 			"Length": 1024
 		},
 		{
@@ -637,7 +633,7 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 20724,
+			"Pos": 16764,
 			"Length": 64
 		},
 		{
@@ -646,79 +642,7 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 20788,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/layer_normalization/gain_1st_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 20852,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/layer_normalization/gain_2nd_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 20916,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_1/biases_1st_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 20980,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_1/biases_2nd_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 21044,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_0/biases_1st_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 21108,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_0/biases_2nd_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 21172,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/layer_normalization/offset_1st_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 21236,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/layer_normalization/offset_2nd_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 21300,
+			"Pos": 16828,
 			"Length": 64
 		},
 		{
@@ -727,7 +651,7 @@
 				1
 			],
 			"DType": "Float32",
-			"Pos": 21364,
+			"Pos": 16892,
 			"Length": 4
 		},
 		{
@@ -736,64 +660,82 @@
 				1
 			],
 			"DType": "Float32",
-			"Pos": 21368,
+			"Pos": 16896,
 			"Length": 4
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/layer_normalization/offset_1st_moment",
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/layer_normalization/gain_1st_moment",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 21372,
+			"Pos": 16900,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/layer_normalization/offset_2nd_moment",
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/layer_normalization/gain_2nd_moment",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 21436,
+			"Pos": 16964,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_output_layer/weights_1st_moment",
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_output_layer/layer_normalization/offset_1st_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 17028,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_output_layer/layer_normalization/offset_2nd_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 17092,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/biases_1st_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 17156,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_output_layer/biases_2nd_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 17220,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/weights_1st_moment",
 			"Dimensions": [
 				16,
-				1
+				16
 			],
 			"DType": "Float32",
-			"Pos": 21500,
-			"Length": 64
+			"Pos": 17284,
+			"Length": 1024
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_output_layer/weights_2nd_moment",
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/weights_2nd_moment",
 			"Dimensions": [
 				16,
-				1
-			],
-			"DType": "Float32",
-			"Pos": 21564,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/biases_1st_moment",
-			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 21628,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/biases_2nd_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 21692,
-			"Length": 64
+			"Pos": 18308,
+			"Length": 1024
 		},
 		{
 			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_1/weights_1st_moment",
@@ -802,7 +744,7 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 21756,
+			"Pos": 19332,
 			"Length": 1024
 		},
 		{
@@ -812,8 +754,102 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 22780,
+			"Pos": 20356,
 			"Length": 1024
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/biases_1st_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 21380,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/biases_2nd_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 21444,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_output_layer/weights_1st_moment",
+			"Dimensions": [
+				16,
+				1
+			],
+			"DType": "Float32",
+			"Pos": 21508,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_output_layer/weights_2nd_moment",
+			"Dimensions": [
+				16,
+				1
+			],
+			"DType": "Float32",
+			"Pos": 21572,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/weights_1st_moment",
+			"Dimensions": [
+				16,
+				16
+			],
+			"DType": "Float32",
+			"Pos": 21636,
+			"Length": 1024
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/weights_2nd_moment",
+			"Dimensions": [
+				16,
+				16
+			],
+			"DType": "Float32",
+			"Pos": 22660,
+			"Length": 1024
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_1/layer_normalization/offset_1st_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 23684,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_1/layer_normalization/offset_2nd_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 23748,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/layer_normalization/offset_1st_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 23812,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/layer_normalization/offset_2nd_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 23876,
+			"Length": 64
 		},
 		{
 			"ParameterName": "var:/AdamOptimizer/board_output/kan/fnn_output_layer/weights_1st_moment",
@@ -822,7 +858,7 @@
 				1
 			],
 			"DType": "Float32",
-			"Pos": 23804,
+			"Pos": 23940,
 			"Length": 64
 		},
 		{
@@ -832,43 +868,43 @@
 				1
 			],
 			"DType": "Float32",
-			"Pos": 23868,
+			"Pos": 24004,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/layer_normalization/gain_1st_moment",
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_0/biases_1st_moment",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 23932,
+			"Pos": 24068,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/layer_normalization/gain_2nd_moment",
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_0/biases_2nd_moment",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 23996,
+			"Pos": 24132,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_1/layer_normalization/offset_1st_moment",
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/layer_normalization/offset_1st_moment",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 24060,
+			"Pos": 24196,
 			"Length": 64
 		},
 		{
-			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_1/layer_normalization/offset_2nd_moment",
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/layer_normalization/offset_2nd_moment",
 			"Dimensions": [
 				16
 			],
 			"DType": "Float32",
-			"Pos": 24124,
+			"Pos": 24260,
 			"Length": 64
 		},
 		{
@@ -878,7 +914,7 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 24188,
+			"Pos": 24324,
 			"Length": 2048
 		},
 		{
@@ -888,116 +924,8 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 26236,
+			"Pos": 26372,
 			"Length": 2048
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_0/biases_1st_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 28284,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_0/biases_2nd_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 28348,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_output_layer/layer_normalization/gain_1st_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 28412,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_output_layer/layer_normalization/gain_2nd_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 28476,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_1/layer_normalization/gain_1st_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 28540,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_1/layer_normalization/gain_2nd_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 28604,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/board_output/kan/fnn_output_layer/biases_1st_moment",
-			"Dimensions": [
-				1
-			],
-			"DType": "Float32",
-			"Pos": 28668,
-			"Length": 4
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/board_output/kan/fnn_output_layer/biases_2nd_moment",
-			"Dimensions": [
-				1
-			],
-			"DType": "Float32",
-			"Pos": 28672,
-			"Length": 4
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/biases_1st_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 28676,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_2/biases_2nd_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 28740,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_output_layer/layer_normalization/offset_1st_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 28804,
-			"Length": 64
-		},
-		{
-			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_output_layer/layer_normalization/offset_2nd_moment",
-			"Dimensions": [
-				16
-			],
-			"DType": "Float32",
-			"Pos": 28868,
-			"Length": 64
 		},
 		{
 			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_0/weights_1st_moment",
@@ -1006,7 +934,7 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 28932,
+			"Pos": 28420,
 			"Length": 3456
 		},
 		{
@@ -1016,7 +944,7 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 32388,
+			"Pos": 31876,
 			"Length": 3456
 		},
 		{
@@ -1025,11 +953,83 @@
 				16
 			],
 			"DType": "Float32",
-			"Pos": 35844,
+			"Pos": 35332,
 			"Length": 64
 		},
 		{
 			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_1/layer_normalization/offset_2nd_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 35396,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/layer_normalization/gain_1st_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 35460,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_2/layer_normalization/gain_2nd_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 35524,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_1/biases_1st_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 35588,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_hidden_layer_1/biases_2nd_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 35652,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_1/biases_1st_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 35716,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/base_board_tower/fnn/fnn_hidden_layer_1/biases_2nd_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 35780,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_output_layer/layer_normalization/gain_1st_moment",
+			"Dimensions": [
+				16
+			],
+			"DType": "Float32",
+			"Pos": 35844,
+			"Length": 64
+		},
+		{
+			"ParameterName": "var:/AdamOptimizer/actions/fnn/fnn_output_layer/layer_normalization/gain_2nd_moment",
 			"Dimensions": [
 				16
 			],
