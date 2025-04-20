@@ -66,7 +66,7 @@ func main() {
 	}
 	var currentExamples []Example
 	for i := 0; *flagNumIterations <= 0 || i < *flagNumIterations; i++ {
-		fmt.Printf("\nIteration: %d\n", i)
+		fmt.Printf("\nIteration #%d - %s\n", i, time.Now().Format("2006/02/12 15:04:05"))
 		var newExamples []Example
 		if bootstrapAiPlayer != nil {
 			_, _, _, newExamples = must.M4(runMatches(globalCtx, *flagNumMatches, aiPlayer, bootstrapAiPlayer))
