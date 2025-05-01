@@ -16,6 +16,7 @@ type Searcher interface {
 	// Search returns the next action to take on the given board, along with the updated Board (after taking the action)
 	// and the expected score of taking that action.
 	Search(board *Board) (bestAction Action, bestBoard *Board, bestScore float32, err error)
+	String() string
 }
 
 // SearcherWithPolicy returns also a policy, a probability distribution over the actions.

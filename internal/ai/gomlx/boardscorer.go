@@ -154,18 +154,19 @@ func (s *BoardScorer) String() string {
 	if s == nil {
 		return "<nil>[GoMLX]"
 	}
+	gomlxName := fmt.Sprintf("[GoMLX/%s]", backend().Name())
 	if s.checkpoint == nil {
-		return fmt.Sprintf("%s[GoMLX]", s.Type)
+		return fmt.Sprintf("%s%s", s.Type, gomlxName)
 	}
-	return fmt.Sprintf("%s[GoMLX]@%s", s.Type, s.checkpoint.Dir())
+	return fmt.Sprintf("%s%s@%s", s.Type, gomlxName, s.checkpoint.Dir())
 }
 
-// BoardScore implements ai.ValueScorer.
+// Score implements ai.ValueScorer.
 func (s *BoardScorer) Score(board *state.Board) float32 {
 	return s.BatchScore([]*state.Board{board})[0]
 }
 
-// BatchBoardScore implements ai.BatchValueScorer.
+// BatchScore implements ai.BatchValueScorer.
 func (s *BoardScorer) BatchScore(boards []*state.Board) []float32 {
 	inputs := s.model.CreateInputs(boards)
 

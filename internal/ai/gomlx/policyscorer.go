@@ -214,10 +214,12 @@ func (s *PolicyScorer) String() string {
 	if s == nil {
 		return "<nil>[GoMLX]"
 	}
-	if s.checkpoint == nil {
-		return fmt.Sprintf("%s[GoMLX]", s.Type)
+	gomlxName := fmt.Sprintf("[GoMLX/%s]", backend().Name())
+	if s.checkpoint == nil || s.checkpoint.Dir() == "" {
+		return fmt.Sprintf("%s%s", s.Type, gomlxName)
 	}
-	return fmt.Sprintf("%s[GoMLX]@%s", s.Type, s.checkpoint.Dir())
+
+	return fmt.Sprintf("%s%s@%s", s.Type, gomlxName, s.checkpoint.Dir())
 }
 
 // Score implements ai.PolicyScorer (which includes ai.ValueScorer).

@@ -28,6 +28,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/janpfeifer/hiveGo/internal/ui/cli"
@@ -112,6 +113,21 @@ type cacheNode struct {
 	// sumScores of the score of taking the corresponding action at the current board.
 	// If N[a] > 0, we have $Q(s, a) = sumScores[a]/N[a]$.
 	sumScores []float32
+}
+
+// String implements searchers.Searcher.
+func (s *Searcher) String() string {
+	parts := []string{"MCTS"}
+	if s.maxTime > 0 {
+		parts = append(parts, fmt.Sprintf("max_time=%s", s.maxTime))
+	}
+	if s.maxTraverses > 0 {
+		parts = append(parts, fmt.Sprintf("max_traverses=%s", s.maxTraverses))
+	}
+	if s.temperature != 1 {
+		parts = append(parts, fmt.Sprintf("temperature=%g", s.temperature))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // newCacheNode for the given board position and updated matchStats.

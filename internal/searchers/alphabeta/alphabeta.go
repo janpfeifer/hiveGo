@@ -13,6 +13,7 @@ import (
 	"k8s.io/klog/v2"
 	"math"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 
@@ -67,11 +68,6 @@ func New(scorer ai.ValueScorer) *Searcher {
 		discount:          DefaultDiscount,
 		maxMoveRandomness: 10,
 	}
-}
-
-// String returns the searcher name.
-func (ab *Searcher) String() string {
-	return "alpha-beta"
 }
 
 const (
@@ -131,6 +127,21 @@ func NewFromParams(scorer ai.ValueScorer, params parameters.Params) (searchers.S
 		return nil, errors.Errorf("invalid \"ab\" configuration: either max_depth or max_time must be set (Alpha-Beta Pruning)")
 	}
 	return ab, nil
+}
+
+// String implements searchers.Searcher.
+func (ab *Searcher) String() string {
+	parts := []string{"αβ-prunning"}
+	if ab.maxTime > 0 {
+		parts = append(parts, fmt.Sprintf("max_time=%s", ab.maxTime))
+	}
+	if ab.maxDepth > 0 {
+		parts = append(parts, fmt.Sprintf("max_depth=%s", ab.maxDepth))
+	}
+	if ab.randomness != 1 {
+		parts = append(parts, fmt.Sprintf("randomness=%f", ab.randomness))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // WithMaxDepth sets a default max depth of search: the unit here are plies (ply singular). Each player
