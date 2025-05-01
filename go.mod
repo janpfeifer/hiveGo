@@ -6,7 +6,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/chewxy/math32 v1.11.1
 	github.com/gomlx/exceptions v0.0.3
-	github.com/gomlx/gomlx v0.19.1
+	github.com/gomlx/gomlx v0.19.2
 	github.com/gomlx/gopjrt v0.7.0
 	github.com/gotk3/gotk3 v0.6.4
 	github.com/janpfeifer/must v0.2.0
