@@ -3,24 +3,9 @@
 # hiveGo <br/>
 
 [Hive game](https://en.wikipedia.org/wiki/Hive_(game)), backed by an [AlphaZero](https://en.wikipedia.org/wiki/AlphaZero) 
-based AI.
+based AI, using [GoMLX](https://github.com/gomlx/gomlx)(ML framework for Go).
 
 <img align="right" src="images/Ant.png" alt="Ant" width="100px"/>
-
-This was an experimental / educative project to learn the AlphaZero algorithm and RL in general.
-
-It was originally a 2018 project using TensorFlow, refreshed in 2025 to use [GoMLX](https://github.com/gomlx/gomlx), 
-a feature-full ML framework for Go.
-
-What is working right now:
-
-1. The command-line UI, see below.
-2. AIs, using a basic set of features for the board (lots that can be improved here)
-   a. AlphaBeta-Pruning: using a straight forward FNN (Feedforward Neural Network) model.
-   b. Alpha-Zero: using a tiny GNN (Graph Neural Network) model. Still, very simple features.
-
-It already beats me every time, and when I pitched it against some commercially available Hive game, both AIs won
-every time.
 
 ## Command-line UI
 
@@ -71,6 +56,22 @@ TODO: use Fyne to make it portable?
 The Gnome version works nicely ... but asking anyone to install it is cruel. And I wouldn't want to distribute a binary -- then I would have to try to compile everything statically.
 So instead, why not a web version ... duh, I should have done this first, but I wanted to try out coding for Gnome.
 
+## About The Project
+
+This is an experimental / educative project to learn the AlphaZero algorithm and RL in general.
+
+It was originally a 2018 project using TensorFlow, refreshed in 2025 to use [GoMLX](https://github.com/gomlx/gomlx),
+a feature-full ML framework for Go.
+
+What is working right now:
+
+1. The command-line UI, see below.
+2. AIs, using a basic set of features for the board (lots that can be improved here)
+   a. AlphaBeta-Pruning: using a straight forward FNN (Feedforward Neural Network) model.
+   b. Alpha-Zero: using a tiny GNN (Graph Neural Network) model. Still, very simple features.
+
+It already beats me every time, and when I pitched it against some commercially available Hive game, both AIs won
+every time.
 
 ## Trainers
 
