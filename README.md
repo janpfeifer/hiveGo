@@ -2,8 +2,8 @@
 
 # hiveGo <br/>
 
-[Hive game](https://en.wikipedia.org/wiki/Hive_(game)), backed by an [AlphaZero](https://en.wikipedia.org/wiki/AlphaZero) 
-based AI, using [GoMLX](https://github.com/gomlx/gomlx) (an ML framework for Go).
+[Hive game (wikipedia)](https://en.wikipedia.org/wiki/Hive_(game)), backed by an [AlphaZero (wikipedia)](https://en.wikipedia.org/wiki/AlphaZero) 
+based AI, using [GoMLX (an ML framework for Go)](https://github.com/gomlx/gomlx) .
 
 <img align="right" src="images/Ant.png" alt="Ant" width="100px"/>
 
