@@ -8,16 +8,13 @@ import (
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/janpfeifer/hiveGo/internal/players"
 
-	//"github.com/janpfeifer/hiveGo/ai/players"
-	//_ "github.com/janpfeifer/hiveGo/ai/search/ab"
-	//_ "github.com/janpfeifer/hiveGo/ai/search/mcts"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"io"
 	"k8s.io/klog/v2"
 	"log"
 	"os"
 	//"github.com/janpfeifer/hiveGo/ai/tensorflow"
-	_ "github.com/janpfeifer/hiveGo/ai"
+	_ "github.com/janpfeifer/hiveGo/internal/ai/linear"
 )
 
 var _ = fmt.Printf
