@@ -21,7 +21,7 @@ based AI, using [GoMLX (an ML framework for Go)](https://github.com/gomlx/gomlx)
 ![image](https://github.com/user-attachments/assets/f67d8ad5-f047-4154-843e-4319aa55b794)
 
 It uses the [GoMLX](https://github.com/gomlx/gomlx) Go backend  by default, so nothing else is needed to install. 
-If you want the "accelerated" version, based on [OpenXLA](https://openxla.org/), install the XLA
+If you want the "accelerated" version, based on [OpenXLA](https://openxla.org/), including GPU support, install the XLA
 libraries (see [GoMLX Installation](https://github.com/gomlx/gomlx?tab=readme-ov-file#installation)), and install **hive** command with:
 
 ```
