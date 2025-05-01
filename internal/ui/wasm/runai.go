@@ -2,42 +2,62 @@ package main
 
 import (
 	"github.com/gopherjs/gopherjs/js"
-	"github.com/janpfeifer/hiveGo/ai/search"
-	players2 "github.com/janpfeifer/hiveGo/internal/players"
+	"github.com/janpfeifer/hiveGo/internal/players"
+	"github.com/janpfeifer/hiveGo/internal/state"
+
+	_ "github.com/janpfeifer/hiveGo/internal/players/default"
 )
 
 var (
-	IsAIPlaying, IsAITurn bool
-	AIPlayerNum           uint8
-	BusyBox               = jq("img#busy")
-
-	aiPlayer *players2.SearcherScorer
+	AIPlayerNum state.PlayerNum
+	BusyBox     = jq("img#busy")
 )
 
-func StartAI(config string, aiPlayerNum int) {
-	IsAIPlaying = true
-	AIPlayerNum = uint8(aiPlayerNum)
-	aiPlayer = players2.New(config, false)
-	ScheduleAIPlay()
-	AdjustBusyBoxPosition()
+// CooperativeConcurrency is an optional interface that Searchers can implement to play nicely
+// with the browser (not freeze it).
+type CooperativeConcurrency interface {
+	// SetIdleChan sets a channel that should be listened to before every chunk of work
+	// is done. It works as a time-sharing mechanism between the browser and the Go code.
+	SetIdleChan(idleChan <-chan bool)
 }
 
-func ScheduleAIPlay() {
-	if search.IdleChan == nil {
-		search.IdleChan = make(chan bool, 1)
+// StartAI creates the AI player.
+func (g *Game) StartAI(config string, aiPlayerNum state.PlayerNum) error {
+	g.IsAIPlaying = true
+	AIPlayerNum = aiPlayerNum
+	var err error
+	g.aiPlayer, err = players.New(config)
+	if err != nil {
+		return err
 	}
-	RequestIdleCallback()
-	IsAIPlaying = (!Board.IsFinished() && Board.NextPlayer == AIPlayerNum)
-	if IsAIPlaying {
+
+	if cooperative, ok := g.aiPlayer.Searcher.(CooperativeConcurrency); ok {
+		g.isCooperative = true
+		g.idleChan = make(chan bool, 1)
+		cooperative.SetIdleChan(g.idleChan)
+		g.RequestIdleCallback()
+	}
+
+	g.ScheduleAIPlay()
+	AdjustBusyBoxPosition()
+	return nil
+}
+
+func (g *Game) ScheduleAIPlay() {
+	if g.isCooperative {
+		g.RequestIdleCallback()
+	}
+	g.IsAIPlaying = (!g.board.IsFinished() && g.board.NextPlayer == AIPlayerNum)
+	if g.IsAIPlaying {
 		BusyBox.SetCss("display", "block")
-		go AIPlay()
+		go g.AIPlay()
 	} else {
 		BusyBox.SetCss("display", "none")
 	}
 }
 
 func AdjustBusyBoxPosition() {
-	scale := IMAGE_BASE_SIZE * 1025 * ui.PixelRatio
+	scale := ImageBaseSize * 1025 * ui.PixelRatio
 	height, width := int(scale), int(1.5*scale)
 	SetAttrs(Obj(BusyBox), Attrs{
 		"width":  width,
@@ -53,37 +73,36 @@ func AdjustBusyBoxPosition() {
 	BusyBox.SetCss("left", left)
 }
 
-func AIPlay() {
-	action, _, _, _ := aiPlayer.Play(Board, "wasm_match")
-	ExecuteAction(action)
+func (g *Game) AIPlay() {
+	action, _, _, _ := g.aiPlayer.Play(g.board)
+	g.ExecuteAction(action)
 }
 
 var waitingIdleProcessing = false
 
-func IdleCallback() {
-	if search.IdleChan == nil {
+func (g *Game) IdleCallback() {
+	if !g.isCooperative {
 		return
 	}
 
-	// Send a signal to process a chunk, but doesn't block. So if there
-	// is already a signal in IdleChan another one is not sent.
+	// Send a signal to process a chunk but doesn't block.
 	select {
-	case search.IdleChan <- true:
+	case g.idleChan <- true:
 		// Process a chunk.
 	default:
-		// Nothing to do.
+		// Nothing to do: nobody is listening on the other side.
 	}
 
-	if IsAIPlaying {
+	if g.IsAIPlaying {
 		// While AI is still thinking, reschedule the callback.
-		RequestIdleCallback()
+		g.RequestIdleCallback()
 	}
 }
 
-func RequestIdleCallback() {
+func (g *Game) RequestIdleCallback() {
 	window.Call("requestIdleCallback", js.MakeFunc(
 		func(this *js.Object, arguments []*js.Object) interface{} {
-			IdleCallback()
+			g.IdleCallback()
 			return nil
 		}))
 }

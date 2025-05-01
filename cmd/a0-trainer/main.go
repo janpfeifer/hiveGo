@@ -16,12 +16,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"time"
+
 	_ "github.com/janpfeifer/hiveGo/internal/players/default"
 	"github.com/janpfeifer/hiveGo/internal/profilers"
 	"github.com/janpfeifer/hiveGo/internal/ui/spinning"
 	"github.com/janpfeifer/must"
 	"k8s.io/klog/v2"
-	"time"
 )
 
 // Flags

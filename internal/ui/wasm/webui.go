@@ -2,34 +2,34 @@ package main
 
 import (
 	"fmt"
-	state2 "github.com/janpfeifer/hiveGo/internal/state"
-	"log"
+	"github.com/janpfeifer/hiveGo/internal/players"
 	"math"
 
 	"github.com/gopherjs/gopherjs/js"
 	"github.com/gopherjs/jquery"
+	"github.com/janpfeifer/hiveGo/internal/state"
 )
 
 // Convenience:
 var jq = jquery.NewJQuery
 
 const (
-	CANVAS_SVG = "svg#canvas"
-	SVG_DEFS   = "defs#svgdefs"
+	SVGCanvas = "svg#canvas"
+	SVGDefs   = "defs#svgdefs"
 
-	STANDARD_FACE = 33.0
+	StandardFace = 33.0
 )
 
 var (
 	window   = js.Global
 	document = js.Global.Get("document")
-	Canvas   = jq(CANVAS_SVG)
-	SvgDefs  = jq(SVG_DEFS)
+	Canvas   = jq(SVGCanvas)
+	SvgDefs  = jq(SVGDefs)
 )
 
 type UIParams struct {
 	// PixelRatio gives a sense of how dense are pixels, where
-	// 1.0 is "standard". It affects the zoom level of pieces off-board.
+	// 1.0 is "standard". It affects the zoom level of pieces off-g.board.
 	PixelRatio float64
 
 	// UI size: typically the window size, but could be
@@ -38,7 +38,7 @@ type UIParams struct {
 	Width, Height int
 
 	// Scale is controlled by the mouse wheel. It affects
-	// only the board, not the pieces offboard.
+	// only the board, not the pieces offg.board.
 	Scale float64
 
 	// How much the board has been dragged around.
@@ -67,10 +67,10 @@ func NewUIParams() *UIParams {
 // Face returns the size of a face of an hexagon for the
 // UI configuration.
 func (ui *UIParams) Face() float64 {
-	return STANDARD_FACE * ui.Scale
+	return StandardFace * ui.Scale
 }
 
-// OffBoard height for UI.
+// OffBoardHeight for UI.
 func (ui *UIParams) OffBoardHeight() int {
 	return int(128.0 * ui.PixelRatio)
 }
@@ -80,8 +80,8 @@ func hexTriangleHeight(face float64) float64 {
 	return 0.866 * face // sqrt(3)/2 * face
 }
 
-// Convert board positions to screen position.
-func (ui *UIParams) PosToXY(pos state2.Pos, stackCount int) (x, y float64) {
+// PosToXY converts board positions to screen position.
+func (ui *UIParams) PosToXY(pos state.Pos, stackCount int) (x, y float64) {
 	face := ui.Face()
 	hexWidth := 1.5 * face
 	triangleHeight := hexTriangleHeight(face)
@@ -115,7 +115,7 @@ func CreateSVG(elemType string, attrs Attrs) *js.Object {
 	return elem
 }
 
-// Control Zooming of board.
+// ZoomOnWheel responds to mouse wheel movement to control zoom.
 func ZoomOnWheel(e jquery.Event) {
 	wheelEvent := e.Object.Get("originalEvent")
 	scrollAmount := wheelEvent.Get("deltaY").Float()
@@ -123,7 +123,7 @@ func ZoomOnWheel(e jquery.Event) {
 	OnChangeOfUIParams()
 }
 
-// Variables that control the drag of the board.
+// Variables that control the drag of the g.board.
 var (
 	DragStarted  = false
 	DragX, DragY int
@@ -155,7 +155,7 @@ var (
 	OffBoardRects  [2]*js.Object
 )
 
-func createBoardRects() {
+func (g *Game) createBoardRects() {
 	BoardGroup = jq(CreateSVG("g", Attrs{
 		"x":      0,
 		"y":      0,
@@ -178,24 +178,24 @@ func createBoardRects() {
 		})
 		OffBoardGroups[ii].Append(OffBoardRects[ii])
 	}
-	MarkNextPlayer()
+	g.MarkNextPlayer()
 }
 
-func MarkNextPlayer() {
-	for ii := uint8(0); ii < state2.NumPlayers; ii++ {
+func (g *Game) MarkNextPlayer() {
+	for player := range state.PlayerNum(state.NumPlayers) {
 		width := 2.0 * ui.PixelRatio
 		stroke := "firebrick"
-		if Board.IsFinished() {
-			if Board.Draw() || Board.Winner() == ii {
+		if g.board.IsFinished() {
+			if g.board.Draw() || g.board.Winner() == player {
 				stroke = "url(#colors)"
 				width = 12 * ui.PixelRatio
 			}
 		} else {
-			if Board.NextPlayer == ii {
+			if g.board.NextPlayer == player {
 				width = 6 * ui.PixelRatio
 			}
 		}
-		SetAttrs(OffBoardRects[ii], Attrs{
+		SetAttrs(OffBoardRects[player], Attrs{
 			"stroke-width": width,
 			"stroke":       stroke,
 		})
@@ -203,7 +203,8 @@ func MarkNextPlayer() {
 }
 
 var (
-	// Reference to splash screen objects. Created at the beginning.
+	// References to splash screen objects created at the beginning of the program.
+
 	HasSplashScreen                        = false
 	SplashRect, SplashPattern, SplashImage jquery.JQuery
 )
@@ -287,8 +288,10 @@ func OpenStartGameDialog() {
 
 func StartGameDialogDone() {
 	// TODO: clean and restart board and UI pieces.
-	Board = state2.NewBoard()
-	IsRunning = true
+	g := &Game{
+		board:     state.NewBoard(),
+		IsRunning: true,
+	}
 
 	// Prepare game.
 	gameType := jq("input[name=game_type]:checked").Val()
@@ -297,11 +300,15 @@ func StartGameDialogDone() {
 		aiConfig := jq("input[name=ai_config]").Val()
 		fmt.Printf("AI: config=%s, starts=%s\n", aiConfig,
 			jq("input[name=ai_starts]:checked").Val())
-		aiPlayer := 1
+		aiPlayer := state.PlayerSecond
 		if jq("input[name=ai_starts]:checked").Val() == "on" {
-			aiPlayer = 0
+			aiPlayer = state.PlayerFirst
 		}
-		StartAI(aiConfig, aiPlayer)
+		err := g.StartAI(aiConfig, aiPlayer)
+		if err != nil {
+			fmt.Printf("Failed to create an AI player:\n%+v\n", err)
+			Alert(err.Error())
+		}
 	}
 }
 
@@ -310,7 +317,7 @@ var (
 	EndGameMessage    jquery.JQuery
 )
 
-func ShowEndGameMessage(text string) {
+func (g *Game) ShowEndGameMessage(text string) {
 	EndGameMessage = jq(CreateSVG("text", Attrs{
 		"id":                 "end_game_message",
 		"fill":               "url(#colors)",
@@ -322,15 +329,15 @@ func ShowEndGameMessage(text string) {
 	EndGameMessage.Append(text)
 	Canvas.Append(EndGameMessage)
 	HasEndGameMessage = true
-	AdjustEndGameMessagePosition()
+	g.AdjustEndGameMessagePosition()
 }
 
-func AdjustEndGameMessagePosition() {
+func (g *Game) AdjustEndGameMessagePosition() {
 	if HasEndGameMessage {
 		var y float64
-		if Board.Draw() {
+		if g.board.Draw() {
 			y = float64(ui.Height) / 2.0
-		} else if Board.Winner() == 0 {
+		} else if g.board.Winner() == 0 {
 			y = float64(ui.OffBoardHeight()) + 50*ui.PixelRatio
 		} else {
 			y = float64(ui.Height-ui.OffBoardHeight()) - 50*ui.PixelRatio
@@ -342,16 +349,17 @@ func AdjustEndGameMessagePosition() {
 	}
 }
 
-// Tools
+// Alert window with given messate.
 func Alert(msg string) {
 	js.Global.Call("alert", msg)
 }
 
+// GetDocumentById from the DOM.
 func GetDocumentById(id string) *js.Object {
 	return document.Call("getElementById", id)
 }
 
-func OnCanvasResize() {
+func (g *Game) OnCanvasResize() {
 	ui.Width = Canvas.InnerWidth()
 	ui.Height = Canvas.InnerHeight()
 
@@ -370,10 +378,10 @@ func OnCanvasResize() {
 		"width":  ui.Width,
 		"height": offboardHeight,
 	})
-	MarkNextPlayer()
+	g.MarkNextPlayer()
 	AdjustOffBoardPieces()
 	AdjustSplashScreen()
-	AdjustEndGameMessagePosition()
+	g.AdjustEndGameMessagePosition()
 	AdjustBusyBoxPosition()
 
 	// Adjust all elements on page.
@@ -389,55 +397,57 @@ func Obj(jo jquery.JQuery) *js.Object {
 	return jo.Underlying().Index(0)
 }
 
-// Game information.
-var (
-	Board     *state2.Board
-	IsRunning = false
-)
+// Game holds together the game information: current board, current player,
+// and the AI player.
+type Game struct {
+	board     *state.Board
+	IsRunning bool
 
-func ExecuteAction(action state2.Action) {
+	aiPlayer              *players.SearcherScorer
+	IsAIPlaying, IsAITurn bool
+
+	//idleChan allows cooperative goroutines to yield the focus.
+	idleChan      chan bool
+	isCooperative bool // Whether idleChan is being used.
+}
+
+func (g *Game) ExecuteAction(action state.Action) {
 	// Animate action.
-	if action.Piece != state2.NoPiece {
-		player := Board.NextPlayer
+	if !action.IsSkipAction() {
+		player := g.board.NextPlayer
 		if action.Move {
 			RemovePiece(action)
 		} else {
 			RemoveOffBoardPiece(player, action)
 		}
-		Place(player, action)
+		g.Place(player, action)
 	}
 
-	Board = Board.Act(action)
-	if Board.IsFinished() {
-		MarkNextPlayer()
+	g.board = g.board.Act(action)
+	if g.board.IsFinished() {
+		g.MarkNextPlayer()
 		var msg string
-		if Board.Draw() {
+		if g.board.Draw() {
 			msg = "Draw !!!"
-		} else if Board.Winner() == 0 {
+		} else if g.board.Winner() == state.PlayerFirst {
 			msg = "Top Player Wins !!!"
 		} else {
 			msg = "Bottom Player Wins !!!"
 		}
-		ShowEndGameMessage(msg)
-		IsRunning = false
+		g.ShowEndGameMessage(msg)
+		g.IsRunning = false
 		return
 	}
 
-	if len(Board.Derived.Actions) == 0 {
-		// Auto-execute skip action.
-		if action.Piece == state2.NoPiece {
-			// Two skip actions in a row.
-			log.Fatal("No moves avaialble to either players !?")
-			return
-		}
+	if len(g.board.Derived.Actions) == 1 && g.board.Derived.Actions[0].IsSkipAction() {
 		// Recurse to a skip action.
-		ExecuteAction(state2.Action{Piece: state2.NoPiece})
+		g.ExecuteAction(g.board.Derived.Actions[0])
 		return
 	}
 
-	// Select next player.
-	MarkNextPlayer()
-	ScheduleAIPlay()
+	// Select the next player.
+	g.MarkNextPlayer()
+	g.ScheduleAIPlay()
 }
 
 func main() {
@@ -445,20 +455,22 @@ func main() {
 	print("Your current jQuery version is: " + jq().Jquery)
 
 	// Create board parts.
-	Board = state2.NewBoard()
-	IsRunning = false
+	g := &Game{
+		board:     state.NewBoard(),
+		IsRunning: true,
+	}
 
 	// Create UIParams.
 	ui = NewUIParams()
-	createBoardRects()
+	g.createBoardRects()
 	CreateSplashScreen()
-	PlaceOffBoardPieces(Board)
-	OnCanvasResize()
+	g.PlaceOffBoardPieces()
+	g.OnCanvasResize()
 
 	Canvas.On("wheel", ZoomOnWheel)
 	Canvas.On(jquery.MOUSEDOWN, DragOnMouseDown)
 	Canvas.On(jquery.MOUSEUP, DragOnMouseUp)
 	Canvas.On(jquery.MOUSEMOVE, DragOnMouseMove)
-	jq(window).On(jquery.RESIZE, OnCanvasResize)
+	jq(window).On(jquery.RESIZE, g.OnCanvasResize)
 
 }

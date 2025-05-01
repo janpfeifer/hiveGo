@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	state2 "github.com/janpfeifer/hiveGo/internal/state"
+	"github.com/janpfeifer/hiveGo/internal/state"
 
 	"github.com/gopherjs/jquery"
 )
@@ -13,7 +13,7 @@ var (
 	SourceOnBoardPOnS, SourceOffBoardPOnS *PieceOnScreen
 	SourceOnBoardHex, SourceOffBoardHex   jquery.JQuery
 	TargetHexes                           []jquery.JQuery
-	TargetActions                         []state2.Action
+	TargetActions                         []state.Action
 )
 
 func Unselect() {
@@ -35,8 +35,8 @@ func Unselect() {
 	TargetActions = nil
 }
 
-func (pons *PieceOnScreen) OnSelectOffBoard() {
-	if !IsRunning || IsAITurn {
+func (g *Game) OnSelectOffBoard(pons *PieceOnScreen) {
+	if !g.IsRunning || g.IsAITurn {
 		return
 	}
 
@@ -44,17 +44,17 @@ func (pons *PieceOnScreen) OnSelectOffBoard() {
 	// than one is selected.
 	pieces := piecesOffBoard[pons.Player][pons.Piece]
 	stackPos := len(pieces) - 1
-	pieces[stackPos].stackTopOnSelectOffBoard(stackPos)
+	g.stackTopOnSelectOffBoard(pieces[stackPos], stackPos)
 }
 
-func (pons *PieceOnScreen) stackTopOnSelectOffBoard(stackPos int) {
+func (g *Game) stackTopOnSelectOffBoard(pons *PieceOnScreen, stackPos int) {
 	deselect := SourceOffBoardPOnS == pons
 
 	// First deselect previous selection, if any.
 	Unselect()
 
 	// If the wrong player's turn, then just deselect.
-	if pons.Player != Board.NextPlayer {
+	if pons.Player != g.board.NextPlayer {
 		return
 	}
 
@@ -66,8 +66,8 @@ func (pons *PieceOnScreen) stackTopOnSelectOffBoard(stackPos int) {
 
 	// Collects valid target positions and checks if piece
 	// can actually be put into play.
-	validTargets := make(map[state2.Pos]state2.Action)
-	for _, action := range Board.Derived.Actions {
+	validTargets := make(map[state.Pos]state.Action)
+	for _, action := range g.board.Derived.Actions {
 		if !action.Move && action.Piece == pons.Piece {
 			validTargets[action.TargetPos] = action
 		}
@@ -81,7 +81,7 @@ func (pons *PieceOnScreen) stackTopOnSelectOffBoard(stackPos int) {
 	SourceOffBoardPOnS = pons
 	SourceOffBoardHex = jq(CreateSVG("polygon", Attrs{
 		"stroke":         "darkviolet",
-		"stroke-width":   2 * HEX_STROKE_WIDTH * ui.PixelRatio,
+		"stroke-width":   2 * HexStrokeWidth * ui.PixelRatio,
 		"fill-opacity":   0,
 		"pointer-events": "none",
 	}))
@@ -89,12 +89,12 @@ func (pons *PieceOnScreen) stackTopOnSelectOffBoard(stackPos int) {
 	moveHexToXYFace(Obj(SourceOffBoardHex), xc, yc, face)
 	OffBoardGroups[pons.Player].Append(SourceOffBoardHex)
 
-	MarkTargetActions(validTargets)
+	g.MarkTargetActions(validTargets)
 }
 
 // OnSelectOnBoard first picks the top piece of the stack selected.
-func (pons *PieceOnScreen) OnSelectOnBoard(pos state2.Pos) {
-	if !IsRunning || IsAITurn {
+func (g *Game) OnSelectOnBoard(pons *PieceOnScreen, pos state.Pos) {
+	if !g.IsRunning || g.IsAITurn {
 		return
 	}
 
@@ -102,17 +102,17 @@ func (pons *PieceOnScreen) OnSelectOnBoard(pos state2.Pos) {
 	// than one is selected.
 	pieces := piecesOnBoard[pos]
 	stackPos := len(pieces) - 1
-	pieces[stackPos].stackTopOnSelectOnBoard(pos, stackPos)
+	g.stackTopOnSelectOnBoard(pieces[stackPos], pos, stackPos)
 }
 
-func (pons *PieceOnScreen) stackTopOnSelectOnBoard(pos state2.Pos, stackPos int) {
+func (g *Game) stackTopOnSelectOnBoard(pons *PieceOnScreen, pos state.Pos, stackPos int) {
 	deselect := SourceOnBoardPOnS == pons
 
 	// First deselect previous selection, if any.
 	Unselect()
 
 	// If the wrong player's turn, then just deselect.
-	if pons.Player != Board.NextPlayer {
+	if pons.Player != g.board.NextPlayer {
 		return
 	}
 
@@ -124,8 +124,8 @@ func (pons *PieceOnScreen) stackTopOnSelectOnBoard(pos state2.Pos, stackPos int)
 
 	// Collects valid target positions and checks if piece
 	// can actually be moved.
-	validTargets := make(map[state2.Pos]state2.Action)
-	for _, action := range Board.Derived.Actions {
+	validTargets := make(map[state.Pos]state.Action)
+	for _, action := range g.board.Derived.Actions {
 		if action.Move && action.SourcePos == pos {
 			validTargets[action.TargetPos] = action
 		}
@@ -138,7 +138,7 @@ func (pons *PieceOnScreen) stackTopOnSelectOnBoard(pos state2.Pos, stackPos int)
 	SourceOnBoardPOnS = pons
 	SourceOnBoardHex = jq(CreateSVG("polygon", Attrs{
 		"stroke":         "darkviolet",
-		"stroke-width":   2 * HEX_STROKE_WIDTH * ui.PixelRatio,
+		"stroke-width":   2 * HexStrokeWidth * ui.PixelRatio,
 		"fill-opacity":   0,
 		"pointer-events": "none",
 	}))
@@ -147,14 +147,14 @@ func (pons *PieceOnScreen) stackTopOnSelectOnBoard(pos state2.Pos, stackPos int)
 	moveHexToXYFace(Obj(SourceOnBoardHex), xc, yc, face)
 	BoardGroup.Append(SourceOnBoardHex)
 
-	MarkTargetActions(validTargets)
+	g.MarkTargetActions(validTargets)
 }
 
 func FaceForTargetSelection() float64 {
-	return ui.Face() - HEX_STROKE_WIDTH*ui.PixelRatio
+	return ui.Face() - HexStrokeWidth*ui.PixelRatio
 }
 
-func MarkTargetActions(validTargets map[state2.Pos]state2.Action) {
+func (g *Game) MarkTargetActions(validTargets map[state.Pos]state.Action) {
 	// List valid target positions on board.
 	TargetActions = nil
 	for pos, action := range validTargets {
@@ -164,10 +164,10 @@ func MarkTargetActions(validTargets map[state2.Pos]state2.Action) {
 		face := FaceForTargetSelection()
 		hex := jq(CreateSVG("polygon", Attrs{
 			"stroke":       "darkviolet",
-			"stroke-width": 1.5 * HEX_STROKE_WIDTH * ui.PixelRatio,
+			"stroke-width": 1.5 * HexStrokeWidth * ui.PixelRatio,
 			"stroke-dasharray": fmt.Sprintf("%d,%d",
-				int(HEX_STROKE_WIDTH*ui.PixelRatio),
-				int(HEX_STROKE_WIDTH*ui.PixelRatio)),
+				int(HexStrokeWidth*ui.PixelRatio),
+				int(HexStrokeWidth*ui.PixelRatio)),
 			"fill-opacity": 0,
 		}))
 		moveHexToXYFace(Obj(hex), xc, yc, face)
@@ -175,7 +175,7 @@ func MarkTargetActions(validTargets map[state2.Pos]state2.Action) {
 		TargetHexes = append(TargetHexes, hex)
 		thisAction := action // Local copy of action for closure below.
 		jq(hex).On(jquery.MOUSEUP, func(e jquery.Event) {
-			OnTargetClick(thisAction)
+			g.OnTargetClick(thisAction)
 		})
 	}
 }
@@ -198,8 +198,8 @@ func SelectionsOnChangeOfUIParams() {
 	}
 }
 
-func OnTargetClick(action state2.Action) {
+func (g *Game) OnTargetClick(action state.Action) {
 	Unselect()
 	fmt.Printf("Selected action: %v\n", action)
-	ExecuteAction(action)
+	g.ExecuteAction(action)
 }

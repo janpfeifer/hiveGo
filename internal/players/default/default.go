@@ -5,7 +5,8 @@
 //
 //	import _ "github.com/janpfeifer/hiveGo/internal/players/default"
 //
-// Currently, it includes a linear model + alpha-beta pruning.
+// Currently, it includes a linear model and GoMLX for Go (but not XLA).
+// It includes both searchers: Alpha-Beta pruning and Monte Carlo Tree Search (MCTS).
 package _default
 
 import (
@@ -13,6 +14,9 @@ import (
 	"github.com/janpfeifer/hiveGo/internal/players"
 	"github.com/janpfeifer/hiveGo/internal/searchers/alphabeta"
 	"github.com/janpfeifer/hiveGo/internal/searchers/mcts"
+
+	_ "github.com/gomlx/gomlx/backends/simplego"
+	_ "github.com/janpfeifer/hiveGo/internal/ai/gomlx"
 )
 
 func init() {

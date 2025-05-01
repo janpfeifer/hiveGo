@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	state2 "github.com/janpfeifer/hiveGo/internal/state"
+	"github.com/janpfeifer/hiveGo/internal/state"
 
 	"github.com/gopherjs/gopherjs/js"
 	"github.com/gopherjs/jquery"
@@ -16,22 +16,23 @@ var (
 	OffBoardPiecesImages   []*js.Object
 
 	// Map of all pieces currently on board.
-	piecesOnBoard      = make(map[state2.Pos][]*PieceOnScreen)
+	piecesOnBoard      = make(map[state.Pos][]*PieceOnScreen)
 	piecesOnBoardIndex = 0
 )
 
 const (
-	// Interface visual constants.
-	PIECE_DRAWING_SCALE = 1.464
-	HEX_STROKE_WIDTH    = 2.0
-	IMAGE_BASE_SIZE     = 0.0488
+	// Interface visual constants:
+
+	PieceDrawingScale = 1.464
+	HexStrokeWidth    = 2.0
+	ImageBaseSize     = 0.0488
 )
 
 type PieceOnScreen struct {
 	Index     int
-	Player    uint8
+	Player    state.PlayerNum
 	StackPos  int
-	Piece     state2.PieceType
+	Piece     state.PieceType
 	Hex, Rect jquery.JQuery
 }
 
@@ -40,8 +41,8 @@ const (
 	OFFBOARD = "offboard_"
 )
 
-func PieceToPatternId(prefix string, p state2.PieceType) string {
-	return prefix + state2.PieceNames[p]
+func PieceToPatternId(prefix string, p state.PieceType) string {
+	return prefix + state.PieceNames[p]
 }
 
 func init() {
@@ -52,7 +53,7 @@ func init() {
 }
 
 func createPiecesPatternsAndImages(prefix string) (patterns []*js.Object, images []*js.Object) {
-	for ii := state2.ANT; ii < state2.LastPiece; ii++ {
+	for ii := state.ANT; ii < state.LastPiece; ii++ {
 		pattern := CreateSVG("pattern", Attrs{
 			"id":           PieceToPatternId(prefix, ii),
 			"patternUnits": "objectBoundingBox",
@@ -65,7 +66,7 @@ func createPiecesPatternsAndImages(prefix string) (patterns []*js.Object, images
 		image := CreateSVG("image", Attrs{
 			"href": fmt.Sprintf(
 				"/github.com/janpfeifer/hiveGo/images/%s.png",
-				state2.PieceNames[ii]),
+				state.PieceNames[ii]),
 			"width":  1024,
 			"height": 1024,
 		})
@@ -77,14 +78,14 @@ func createPiecesPatternsAndImages(prefix string) (patterns []*js.Object, images
 }
 
 func moveHexToXYFace(hex *js.Object, xc, yc, face float64) {
-	// Move hexagon around piece: six points in a polygon, start
-	// on left corner and move clockwise.
-	const POINT_FORMAT = "%f,%f "
-	const HEX_POINTS_FORMAT = POINT_FORMAT + POINT_FORMAT +
-		POINT_FORMAT + POINT_FORMAT + POINT_FORMAT + POINT_FORMAT
+	// Move hexagon around the piece: six points in a polygon, start
+	// on the left corner and move clockwise.
+	const PointFormat = "%f,%f "
+	const HexPointsFormat = PointFormat + PointFormat +
+		PointFormat + PointFormat + PointFormat + PointFormat
 	height := hexTriangleHeight(face)
 	attrs := Attrs{
-		"points": fmt.Sprintf(HEX_POINTS_FORMAT,
+		"points": fmt.Sprintf(HexPointsFormat,
 			xc-face, yc,
 			xc-face/2.0, yc-height,
 			xc+face/2.0, yc-height,
@@ -98,8 +99,7 @@ func (pons *PieceOnScreen) moveToXYFace(xc, yc, face float64) {
 	moveHexToXYFace(Obj(pons.Hex), xc, yc, face)
 
 	// Move rectangle.
-	//rectSize := face * 1.22
-	rectSize := face * PIECE_DRAWING_SCALE
+	rectSize := face * PieceDrawingScale
 	attrs := Attrs{
 		"x": xc - rectSize/2.0, "y": yc - rectSize/2.0,
 		"width": rectSize, "height": rectSize,
@@ -107,15 +107,15 @@ func (pons *PieceOnScreen) moveToXYFace(xc, yc, face float64) {
 	SetAttrs(Obj(pons.Rect), attrs)
 }
 
-func (pons *PieceOnScreen) MoveTo(pos state2.Pos, stackPos int) {
+func (pons *PieceOnScreen) MoveTo(pos state.Pos, stackPos int) {
 	xc, yc := ui.PosToXY(pos, stackPos)
 	face := ui.Face()
 	pons.moveToXYFace(xc, yc, face)
 }
 
 func (pons *PieceOnScreen) OffBoardXYFace(stackPos int) (xc, yc, face float64) {
-	face = STANDARD_FACE * ui.PixelRatio
-	xc = (float64(pons.Piece)-float64(state2.GRASSHOPPER))*4*face + float64(ui.Width)/2
+	face = StandardFace * ui.PixelRatio
+	xc = (float64(pons.Piece)-float64(state.GRASSHOPPER))*4*face + float64(ui.Width)/2
 	offBoardHeight := float64(ui.OffBoardHeight())
 	yc = offBoardHeight / 2.0
 	if pons.Player == 1 {
@@ -134,8 +134,8 @@ func (pons *PieceOnScreen) OffBoardMove(stackPos int) {
 }
 
 func PiecesOnChangeOfUIParams() {
-	// Scale papterns.
-	scale := IMAGE_BASE_SIZE * ui.Scale
+	// Scale the patterns.
+	scale := ImageBaseSize * ui.Scale
 	for _, image := range boardPiecesImages {
 		SetAttrs(image, Attrs{
 			"width":  scale * 1024,
@@ -148,14 +148,14 @@ func PiecesOnChangeOfUIParams() {
 		for stackPos, pons := range slice {
 			pons.MoveTo(pos, stackPos)
 			SetAttrs(Obj(pons.Hex), Attrs{
-				"stroke-width": HEX_STROKE_WIDTH * ui.Scale,
+				"stroke-width": HexStrokeWidth * ui.Scale,
 			})
 		}
 	}
 }
 
-func PlayerBackgroundColor(player uint8) string {
-	if player == 0 {
+func PlayerBackgroundColor(player state.PlayerNum) string {
+	if player == state.PlayerFirst {
 		return "cornsilk"
 	} else {
 		return "darkkhaki"
@@ -163,7 +163,7 @@ func PlayerBackgroundColor(player uint8) string {
 
 }
 
-func Place(player uint8, action state2.Action) {
+func (g *Game) Place(player state.PlayerNum, action state.Action) {
 	pos := action.TargetPos
 	stack := piecesOnBoard[pos]
 	pons := &PieceOnScreen{
@@ -172,7 +172,7 @@ func Place(player uint8, action state2.Action) {
 		Piece:  action.Piece,
 		Hex: jq(CreateSVG("polygon", Attrs{
 			"stroke":       "black",
-			"stroke-width": HEX_STROKE_WIDTH * ui.Scale,
+			"stroke-width": HexStrokeWidth * ui.Scale,
 			"fill":         PlayerBackgroundColor(player),
 			"fill-opacity": 1.0,
 		})),
@@ -190,7 +190,7 @@ func Place(player uint8, action state2.Action) {
 	stackPos := len(stack)
 	piecesOnBoardIndex++
 
-	// Make sure new piece is under other pieces that are higher.
+	// Make sure the new piece is under other pieces that are higher.
 	var ponsAbove *PieceOnScreen
 	for _, pieces := range piecesOnBoard {
 		if len(pieces) > stackPos+1 {
@@ -213,11 +213,11 @@ func Place(player uint8, action state2.Action) {
 
 	// Connect click to selection.
 	pons.Hex.On(jquery.MOUSEUP, func(e jquery.Event) {
-		pons.OnSelectOnBoard(pos)
+		g.OnSelectOnBoard(pons, pos)
 	})
 }
 
-func RemovePiece(action state2.Action) {
+func RemovePiece(action state.Action) {
 	pos := action.SourcePos
 	stack := piecesOnBoard[pos]
 	if len(stack) == 0 {
@@ -227,7 +227,7 @@ func RemovePiece(action state2.Action) {
 	if len(stack) == 1 {
 		delete(piecesOnBoard, pos)
 	} else {
-		// Pop piece from the top.
+		// Pop the top piece.
 		piecesOnBoard[pos] = stack[0 : len(stack)-1]
 
 	}
@@ -236,24 +236,24 @@ func RemovePiece(action state2.Action) {
 }
 
 var (
-	piecesOffBoard [state2.NumPlayers]map[state2.PieceType][]*PieceOnScreen
+	piecesOffBoard [state.NumPlayers]map[state.PieceType][]*PieceOnScreen
 )
 
-func PlaceOffBoardPieces(b *state2.Board) {
+func (g *Game) PlaceOffBoardPieces() {
 	index := 0
-	for player := uint8(0); player < state2.NumPlayers; player++ {
-		piecesOffBoard[player] = make(map[state2.PieceType][]*PieceOnScreen)
-		for piece := state2.ANT; piece < state2.LastPiece; piece++ {
-			num_pieces := b.Available(player, piece)
-			pieces := make([]*PieceOnScreen, 0, num_pieces)
-			for stack := 0; stack < int(num_pieces); stack++ {
+	for player := state.PlayerNum(0); player < state.NumPlayers; player++ {
+		piecesOffBoard[player] = make(map[state.PieceType][]*PieceOnScreen)
+		for piece := state.ANT; piece < state.LastPiece; piece++ {
+			numPieces := g.board.Available(player, piece)
+			pieces := make([]*PieceOnScreen, 0, numPieces)
+			for stack := 0; stack < int(numPieces); stack++ {
 				pons := &PieceOnScreen{
 					Index:  index,
 					Player: player,
 					Piece:  piece,
 					Hex: jq(CreateSVG("polygon", Attrs{
 						"stroke":       "black",
-						"stroke-width": HEX_STROKE_WIDTH * ui.PixelRatio,
+						"stroke-width": HexStrokeWidth * ui.PixelRatio,
 						"fill":         PlayerBackgroundColor(player),
 						"fill-opacity": 1.0,
 					})),
@@ -268,7 +268,7 @@ func PlaceOffBoardPieces(b *state2.Board) {
 				OffBoardGroups[player].Append(pons.Hex)
 				OffBoardGroups[player].Append(pons.Rect)
 				pons.Hex.On(jquery.MOUSEUP, func(e jquery.Event) {
-					pons.OnSelectOffBoard()
+					g.OnSelectOffBoard(pons)
 				})
 				pieces = append(pieces, pons)
 			}
@@ -279,8 +279,8 @@ func PlaceOffBoardPieces(b *state2.Board) {
 
 func AdjustOffBoardPieces() {
 	// Adjust pieces positions.
-	for player := uint8(0); player < state2.NumPlayers; player++ {
-		for piece := state2.ANT; piece < state2.LastPiece; piece++ {
+	for player := range state.PlayerNum(2) {
+		for piece := state.ANT; piece < state.LastPiece; piece++ {
 			pieces := piecesOffBoard[player][piece]
 			for stackPos, pons := range pieces {
 				pons.OffBoardMove(stackPos)
@@ -289,7 +289,7 @@ func AdjustOffBoardPieces() {
 	}
 
 	// Adjust pattern sizes.
-	scale := IMAGE_BASE_SIZE * ui.PixelRatio
+	scale := ImageBaseSize * ui.PixelRatio
 	for _, image := range OffBoardPiecesImages {
 		SetAttrs(image, Attrs{
 			"width":  scale * 1024,
@@ -298,7 +298,7 @@ func AdjustOffBoardPieces() {
 	}
 }
 
-func RemoveOffBoardPiece(player uint8, action state2.Action) {
+func RemoveOffBoardPiece(player state.PlayerNum, action state.Action) {
 	stackPos := len(piecesOffBoard[player][action.Piece]) - 1
 	pons := piecesOffBoard[player][action.Piece][stackPos]
 	piecesOffBoard[player][action.Piece] = piecesOffBoard[player][action.Piece][0:stackPos]
