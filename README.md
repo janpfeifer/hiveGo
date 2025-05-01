@@ -9,6 +9,8 @@ based AI, using [GoMLX (an ML framework for Go)](https://github.com/gomlx/gomlx)
 
 ## Command-line UI
 
+Tested on Linux and Windows, probably work in most platforms:
+
 ```
     go install github/janpfeifer/hiveGo/cmd/hive@latest
 ```
