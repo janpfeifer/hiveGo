@@ -1,7 +1,7 @@
 // Package mcts is a Monte Carlo Tree Search implementation of searchers.Searcher for
 // the Alpha-Zero algorithm.
 //
-// References used, since the original paper doesn't actually provide the formulas:
+// References used, since the original paper doesn't provide the formulas:
 //
 //   - https://suragnair.github.io/posts/alphazero.html by Surag Nair
 //   - Paper here: https://github.com/suragnair/alpha-zero-general/blob/master/pretrained_models/writeup.pdf
@@ -22,6 +22,7 @@ package mcts
 import (
 	"fmt"
 	"github.com/janpfeifer/hiveGo/internal/ai"
+	"github.com/janpfeifer/hiveGo/internal/searchers"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
@@ -39,13 +40,11 @@ var (
 	_ = fmt.Printf
 )
 
-const (
-	DECAY                     = float32(0.999)
-	DEPTH_CHECK_MAX_ABS_SCORE = 5
-)
-
+// Searcher implements the searchers.SearcherWithPolicy API.
+// It implements the Monte Carlo Tree Search (mcts) algorithm with an Alpha-Zero scoring approach.
+// It takes as input an ai.PolicyScorer to score the individual positions and policy during the search.
 type Searcher struct {
-	// maxTime defines the maximum number of time to spend thinking.
+	// maxTime defines the maximum amount of time to spend thinking.
 	// Either maxTime or maxTraverses must be defined.
 	maxTime time.Duration
 
@@ -53,16 +52,17 @@ type Searcher struct {
 	// Either maxTime or maxTraverses must be defined.
 	maxTraverses, minTraverses int
 	maxAbsScore                float32 // Max absolute score, value above that interrupt the search.
-	cPuct                      float32 // Degree of exploration of alpha-zero.
+	cPuct                      float32 // Degree of exploration.
 
-	// temperature (usually represented as the greek letter τ) is an exponent applied
-	// to the counts used in the policy distribution (π) formula. If set to zero, it will
-	// always take the best estimate action. AlphaZero Go uses 1 for the first 30 moves.
+	// temperature (usually represented as the Greek letter τ) is an exponent applied
+	// to the counts used in the policy distribution (π) formula.
+	// If it is set to zero, it will always take the best estimate action.
+	// AlphaZero Go uses 1 for the first 30 moves.
 	// Larger models will make the play more random.
 	temperature float32
 
-	// maxRandDepth defines the move (in plies) after which temperature is disabled and
-	// it simply takes the best move, as opposed to randomly using th policy distribution.
+	// maxRandDepth defines the move (in plies) after which temperature is disabled, and
+	// it simply takes the best move, as opposed to randomly using the policy distribution.
 	// A value <= 0 means there is no maxRandDepth.
 	maxRandDepth int
 
@@ -73,8 +73,11 @@ type Searcher struct {
 	scorer ai.PolicyScorer
 }
 
+// Compile-time check that Searcher implements searchers.SearcherWithPolicy.
+var _ searchers.SearcherWithPolicy = &Searcher{}
+
 type matchStats struct {
-	// numEvaluations of board positions, should be equal to the number of traverses.
+	// numEvaluations of board positions should be equal to the number of traverses.
 	numEvaluations int
 	// numCacheNodes created.
 	numCacheNodes int
@@ -107,7 +110,7 @@ type cacheNode struct {
 	// If nil, it is assumed to be 0 for all actions.
 	N []int
 
-	// sumN holds the sum of all values of N.
+	// sumN holds the sum of the N values.
 	sumN int
 
 	// sumScores of the score of taking the corresponding action at the current board.
@@ -122,7 +125,7 @@ func (s *Searcher) String() string {
 		parts = append(parts, fmt.Sprintf("max_time=%s", s.maxTime))
 	}
 	if s.maxTraverses > 0 {
-		parts = append(parts, fmt.Sprintf("max_traverses=%s", s.maxTraverses))
+		parts = append(parts, fmt.Sprintf("max_traverses=%d", s.maxTraverses))
 	}
 	if s.temperature != 1 {
 		parts = append(parts, fmt.Sprintf("temperature=%g", s.temperature))
@@ -178,7 +181,7 @@ func (s *Searcher) newCacheNode(b *Board, stats *matchStats) (*cacheNode, error)
 //
 // It returns the new sampled score for the "next player" (to play) of cacheNode's board.
 //
-// Notice it doesn't return the score estimate (Q) of all samples in the sub-tree, but simply
+// Notice it doesn't return the score estimate (Q) of all samples in the subtree, but simply
 // the score of the individual new sample (the value returned by the scorer on the leaf-node
 // of the recursion).
 //
@@ -201,7 +204,7 @@ func (s *Searcher) SearchSubtree(cn *cacheNode, stats *matchStats) (score float3
 		}
 	}
 
-	// For the first time an action is considered, just get the plain score estimate
+	// For the first time an action is considered, use the plain score (value) estimate
 	// for the new board.
 	if cn.N[bestAction] == 0 {
 		// Notice TakeAllActions is cached in the board.
@@ -240,7 +243,7 @@ func (s *Searcher) SearchSubtree(cn *cacheNode, stats *matchStats) (score float3
 		}
 	}
 
-	// Recursively sample value of the best action.
+	// Recursively sample the value of the best action.
 	score, err = s.SearchSubtree(cn.cacheNodes[bestAction], stats)
 	score = -score
 	if err != nil {
@@ -262,7 +265,7 @@ func (s *Searcher) Search(board *Board) (action Action, nextBoard *Board, score 
 	return
 }
 
-// SearchWithPolicy search and returns the policy (actionsProbabilities) derived from the search.
+// SearchWithPolicy searches and returns the policy (actionsProbabilities) derived from the search.
 func (s *Searcher) SearchWithPolicy(board *Board) (action Action, nextBoard *Board, score float32, policy []float32, err error) {
 	return s.searchImpl(board, true)
 }
@@ -322,13 +325,13 @@ func pow32(x, y float32) float32 {
 }
 
 // selectAction given the root of the MCTS expanded search.
-// If temperature is 0, or maxRandDepth is reached, it is greedy.
-// Otherwise, it picks randomly from a probability distribution based on the number of visits of
-// each sub-tree.
+// If the temperature is 0, or maxRandDepth is reached, it is greedy.
+// Otherwise, it picks randomly from a probability distribution based on the number
+// of traverses performed in each subtree.
 func (s *Searcher) selectAction(rootCacheNode *cacheNode) int {
 	board := rootCacheNode.board
 	if s.temperature == 0 || (s.maxRandDepth > 0 && board.MoveNumber > s.maxRandDepth) {
-		// Greedily pick best action and its estimate.
+		// Greedily pick the best action and its estimate.
 		bestActionIdx, mostVisits := -1, -1
 		for actionIdx, nVisits := range rootCacheNode.N {
 			if nVisits > mostVisits {
@@ -359,7 +362,7 @@ func (s *Searcher) selectAction(rootCacheNode *cacheNode) int {
 			actionsProbs[actionIdx] = prob / sumProbs
 		}
 	}
-	// Pick random action from probability distribution.
+	// Pick a random action from the generated probability distribution.
 	r := rand.Float32()
 	sumProb := float32(0.0)
 	for actionIdx, prob := range actionsProbs {

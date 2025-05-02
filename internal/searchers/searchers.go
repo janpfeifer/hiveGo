@@ -5,7 +5,8 @@ import (
 )
 
 var (
-	// IdleChan if created is read before each chunk of search is done.
+	// IdleChan is used for collaborative concurrency (in Wasm), and if used,
+	// should be read in between every "chunk of processing".
 	// This allows for processing to happen in the idle callbacks when running in javascript (via GopherJS).
 	IdleChan chan bool
 )

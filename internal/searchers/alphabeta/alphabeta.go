@@ -136,10 +136,10 @@ func (ab *Searcher) String() string {
 		parts = append(parts, fmt.Sprintf("max_time=%s", ab.maxTime))
 	}
 	if ab.maxDepth > 0 {
-		parts = append(parts, fmt.Sprintf("max_depth=%s", ab.maxDepth))
+		parts = append(parts, fmt.Sprintf("max_depth=%d", ab.maxDepth))
 	}
 	if ab.randomness != 1 {
-		parts = append(parts, fmt.Sprintf("randomness=%f", ab.randomness))
+		parts = append(parts, fmt.Sprintf("randomness=%g", ab.randomness))
 	}
 	return strings.Join(parts, ", ")
 }
