@@ -1,10 +1,11 @@
-package main
+package Old
 
 import (
 	"fmt"
-	"github.com/janpfeifer/hiveGo/internal/state"
+	Old2 "github.com/janpfeifer/hiveGo/www/Old"
 
 	"github.com/gopherjs/jquery"
+	"github.com/janpfeifer/hiveGo/internal/state"
 )
 
 var (
@@ -35,7 +36,7 @@ func Unselect() {
 	TargetActions = nil
 }
 
-func (g *Game) OnSelectOffBoard(pons *PieceOnScreen) {
+func (g *Old2.Game) OnSelectOffBoard(pons *PieceOnScreen) {
 	if !g.IsRunning || g.IsAITurn {
 		return
 	}
@@ -47,7 +48,7 @@ func (g *Game) OnSelectOffBoard(pons *PieceOnScreen) {
 	g.stackTopOnSelectOffBoard(pieces[stackPos], stackPos)
 }
 
-func (g *Game) stackTopOnSelectOffBoard(pons *PieceOnScreen, stackPos int) {
+func (g *Old2.Game) stackTopOnSelectOffBoard(pons *PieceOnScreen, stackPos int) {
 	deselect := SourceOffBoardPOnS == pons
 
 	// First deselect previous selection, if any.
@@ -79,21 +80,21 @@ func (g *Game) stackTopOnSelectOffBoard(pons *PieceOnScreen, stackPos int) {
 
 	// Select piece to put on board.
 	SourceOffBoardPOnS = pons
-	SourceOffBoardHex = jq(CreateSVG("polygon", Attrs{
+	SourceOffBoardHex = jq(Old2.CreateSVG("polygon", Old2.Attrs{
 		"stroke":         "darkviolet",
 		"stroke-width":   2 * HexStrokeWidth * ui.PixelRatio,
 		"fill-opacity":   0,
 		"pointer-events": "none",
 	}))
 	xc, yc, face := pons.OffBoardXYFace(stackPos)
-	moveHexToXYFace(Obj(SourceOffBoardHex), xc, yc, face)
-	OffBoardGroups[pons.Player].Append(SourceOffBoardHex)
+	moveHexToXYFace(Old2.Obj(SourceOffBoardHex), xc, yc, face)
+	Old2.OffBoardGroups[pons.Player].Append(SourceOffBoardHex)
 
 	g.MarkTargetActions(validTargets)
 }
 
 // OnSelectOnBoard first picks the top piece of the stack selected.
-func (g *Game) OnSelectOnBoard(pons *PieceOnScreen, pos state.Pos) {
+func (g *Old2.Game) OnSelectOnBoard(pons *PieceOnScreen, pos state.Pos) {
 	if !g.IsRunning || g.IsAITurn {
 		return
 	}
@@ -105,7 +106,7 @@ func (g *Game) OnSelectOnBoard(pons *PieceOnScreen, pos state.Pos) {
 	g.stackTopOnSelectOnBoard(pieces[stackPos], pos, stackPos)
 }
 
-func (g *Game) stackTopOnSelectOnBoard(pons *PieceOnScreen, pos state.Pos, stackPos int) {
+func (g *Old2.Game) stackTopOnSelectOnBoard(pons *PieceOnScreen, pos state.Pos, stackPos int) {
 	deselect := SourceOnBoardPOnS == pons
 
 	// First deselect previous selection, if any.
@@ -136,7 +137,7 @@ func (g *Game) stackTopOnSelectOnBoard(pons *PieceOnScreen, pos state.Pos, stack
 
 	// Select piece to put on board.
 	SourceOnBoardPOnS = pons
-	SourceOnBoardHex = jq(CreateSVG("polygon", Attrs{
+	SourceOnBoardHex = jq(Old2.CreateSVG("polygon", Old2.Attrs{
 		"stroke":         "darkviolet",
 		"stroke-width":   2 * HexStrokeWidth * ui.PixelRatio,
 		"fill-opacity":   0,
@@ -144,8 +145,8 @@ func (g *Game) stackTopOnSelectOnBoard(pons *PieceOnScreen, pos state.Pos, stack
 	}))
 	xc, yc := ui.PosToXY(pos, stackPos)
 	face := ui.Face()
-	moveHexToXYFace(Obj(SourceOnBoardHex), xc, yc, face)
-	BoardGroup.Append(SourceOnBoardHex)
+	moveHexToXYFace(Old2.Obj(SourceOnBoardHex), xc, yc, face)
+	Old2.BoardGroup.Append(SourceOnBoardHex)
 
 	g.MarkTargetActions(validTargets)
 }
@@ -154,7 +155,7 @@ func FaceForTargetSelection() float64 {
 	return ui.Face() - HexStrokeWidth*ui.PixelRatio
 }
 
-func (g *Game) MarkTargetActions(validTargets map[state.Pos]state.Action) {
+func (g *Old2.Game) MarkTargetActions(validTargets map[state.Pos]state.Action) {
 	// List valid target positions on board.
 	TargetActions = nil
 	for pos, action := range validTargets {
@@ -162,7 +163,7 @@ func (g *Game) MarkTargetActions(validTargets map[state.Pos]state.Action) {
 		stackPos := len(piecesOnBoard[pos])
 		xc, yc := ui.PosToXY(pos, stackPos)
 		face := FaceForTargetSelection()
-		hex := jq(CreateSVG("polygon", Attrs{
+		hex := jq(Old2.CreateSVG("polygon", Old2.Attrs{
 			"stroke":       "darkviolet",
 			"stroke-width": 1.5 * HexStrokeWidth * ui.PixelRatio,
 			"stroke-dasharray": fmt.Sprintf("%d,%d",
@@ -170,8 +171,8 @@ func (g *Game) MarkTargetActions(validTargets map[state.Pos]state.Action) {
 				int(HexStrokeWidth*ui.PixelRatio)),
 			"fill-opacity": 0,
 		}))
-		moveHexToXYFace(Obj(hex), xc, yc, face)
-		BoardGroup.Append(hex)
+		moveHexToXYFace(Old2.Obj(hex), xc, yc, face)
+		Old2.BoardGroup.Append(hex)
 		TargetHexes = append(TargetHexes, hex)
 		thisAction := action // Local copy of action for closure below.
 		jq(hex).On(jquery.MOUSEUP, func(e jquery.Event) {
@@ -186,7 +187,7 @@ func SelectionsOnChangeOfUIParams() {
 		pons := SourceOffBoardPOnS
 		stackPos := len(piecesOffBoard[pons.Player][pons.Piece]) - 1
 		xc, yc, face := pons.OffBoardXYFace(stackPos)
-		moveHexToXYFace(Obj(SourceOffBoardHex), xc, yc, face)
+		moveHexToXYFace(Old2.Obj(SourceOffBoardHex), xc, yc, face)
 	}
 
 	// Candidate target actions.
@@ -194,11 +195,11 @@ func SelectionsOnChangeOfUIParams() {
 		stackPos := len(piecesOnBoard[action.TargetPos])
 		xc, yc := ui.PosToXY(action.TargetPos, stackPos)
 		face := FaceForTargetSelection()
-		moveHexToXYFace(Obj(TargetHexes[ii]), xc, yc, face)
+		moveHexToXYFace(Old2.Obj(TargetHexes[ii]), xc, yc, face)
 	}
 }
 
-func (g *Game) OnTargetClick(action state.Action) {
+func (g *Old2.Game) OnTargetClick(action state.Action) {
 	Unselect()
 	fmt.Printf("Selected action: %v\n", action)
 	g.ExecuteAction(action)

@@ -11,6 +11,7 @@ require (
 	github.com/gopherjs/gopherjs v1.17.2
 	github.com/gopherjs/jquery v0.0.0-20191017083323-73f4c7416038
 	github.com/gotk3/gotk3 v0.6.4
+	github.com/gowebapi/webapi v0.0.0-20221221115732-41cedfc27a0b
 	github.com/janpfeifer/must v0.2.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.10.0

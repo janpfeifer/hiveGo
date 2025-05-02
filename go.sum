@@ -192,6 +192,8 @@ github.com/gopherjs/jquery v0.0.0-20191017083323-73f4c7416038 h1:/gx6joY4PjXUu6m
 github.com/gopherjs/jquery v0.0.0-20191017083323-73f4c7416038/go.mod h1:xKR3tvLne+vYYPH9d4DM8X9MKlNV2yXDEomxulcK218=
 github.com/gotk3/gotk3 v0.6.4 h1:5ur/PRr86PwCG8eSj98D1eXvhrNNK6GILS2zq779dCg=
 github.com/gotk3/gotk3 v0.6.4/go.mod h1:/hqFpkNa9T3JgNAE2fLvCdov7c5bw//FHNZrZ3Uv9/Q=
+github.com/gowebapi/webapi v0.0.0-20221221115732-41cedfc27a0b h1:ziwlwRTFt5kSst3238Ndwce+wHZh3BC05nxBThB08XE=
+github.com/gowebapi/webapi v0.0.0-20221221115732-41cedfc27a0b/go.mod h1:idYMKBl+9tqA6sZrzVqN+3XGWANtIRP6CLZsxZOiIFg=
 github.com/grpc-ecosystem/grpc-gateway v1.16.0/go.mod h1:BDjrQk3hbvj6Nolgz8mAMFbcEtjT1g+wF4CSlocrBnw=
 github.com/hashicorp/consul/api v1.1.0/go.mod h1:VmuI/Lkw1nC05EYQWNKwWGbkg+FbDBtguAZLlVdkD9Q=
 github.com/hashicorp/consul/sdk v0.1.1/go.mod h1:VKf9jXwCTEY1QZP2MOLRhb5i/I/ssyNV1vwHyQBF0x8=

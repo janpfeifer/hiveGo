@@ -1,9 +1,11 @@
-package main
+package Old
 
 import (
 	"github.com/gopherjs/gopherjs/js"
 	"github.com/janpfeifer/hiveGo/internal/players"
 	"github.com/janpfeifer/hiveGo/internal/state"
+	Old2 "github.com/janpfeifer/hiveGo/www/Old"
+	"github.com/janpfeifer/hiveGo/www/hive"
 
 	_ "github.com/janpfeifer/hiveGo/internal/players/default"
 )
@@ -22,7 +24,7 @@ type CooperativeConcurrency interface {
 }
 
 // StartAI creates the AI player.
-func (g *Game) StartAI(config string, aiPlayerNum state.PlayerNum) error {
+func (g *Old2.Game) StartAI(config string, aiPlayerNum state.PlayerNum) error {
 	g.IsAIPlaying = true
 	AIPlayerNum = aiPlayerNum
 	var err error
@@ -43,7 +45,7 @@ func (g *Game) StartAI(config string, aiPlayerNum state.PlayerNum) error {
 	return nil
 }
 
-func (g *Game) ScheduleAIPlay() {
+func (g *Old2.Game) ScheduleAIPlay() {
 	if g.isCooperative {
 		g.RequestIdleCallback()
 	}
@@ -59,7 +61,7 @@ func (g *Game) ScheduleAIPlay() {
 func AdjustBusyBoxPosition() {
 	scale := ImageBaseSize * 1025 * ui.PixelRatio
 	height, width := int(scale), int(1.5*scale)
-	SetAttrs(Obj(BusyBox), Attrs{
+	Old2.SetAttrs(Old2.Obj(BusyBox), Old2.Attrs{
 		"width":  width,
 		"height": height,
 	})
@@ -73,14 +75,14 @@ func AdjustBusyBoxPosition() {
 	BusyBox.SetCss("left", left)
 }
 
-func (g *Game) AIPlay() {
+func (g *Old2.Game) AIPlay() {
 	action, _, _, _ := g.aiPlayer.Play(g.board)
 	g.ExecuteAction(action)
 }
 
 var waitingIdleProcessing = false
 
-func (g *Game) IdleCallback() {
+func (g *Old2.Game) IdleCallback() {
 	if !g.isCooperative {
 		return
 	}
@@ -99,8 +101,8 @@ func (g *Game) IdleCallback() {
 	}
 }
 
-func (g *Game) RequestIdleCallback() {
-	window.Call("requestIdleCallback", js.MakeFunc(
+func (g *Old2.Game) RequestIdleCallback() {
+	main.Window.Call("requestIdleCallback", js.MakeFunc(
 		func(this *js.Object, arguments []*js.Object) interface{} {
 			g.IdleCallback()
 			return nil

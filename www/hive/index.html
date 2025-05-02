@@ -7,7 +7,34 @@
 	  src="https://code.jquery.com/jquery-2.2.4.min.js"
 	  integrity="sha256-BbhdlvQf/xTY9gja0Dq3HiwQF8LaCRTXxZKRutelT44="
 	  crossorigin="anonymous"></script>
-    <link rel="icon" href="/github.com/janpfeifer/hiveGo/images/Icon.png"/>
+    <script src="./wasm/wasm_exec.js"></script>
+    <script>
+        async function runWasm() {
+            try {
+                if (!WebAssembly.instantiateStreaming) { // polyfill
+                    WebAssembly.instantiateStreaming = async (resp, importObject) => {
+                        const source = await (await resp).arrayBuffer();
+                        return await WebAssembly.instantiate(source, importObject);
+                    };
+                }
+
+                const go = new Go();
+                const importObject = go.importObject;
+
+                const response = await fetch('./wasm/main.wasm');
+                const result = await WebAssembly.instantiateStreaming(response, importObject);
+                go.run(result.instance);
+
+                // Assuming your Go/Wasm code has a 'main' function that is now executed by go.run()
+
+            } catch (e) {
+                console.error("Error loading and running Wasm:", e);
+            }
+        }
+
+        runWasm();
+    </script>
+    <link rel="icon" href="assets/Icon.png"/>
     <link href="https://fonts.googleapis.com/css?family=Indie+Flower" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css?family=Comfortaa" rel="stylesheet">
 <style>
@@ -53,10 +80,10 @@
 </style>
 </head>	
 <body>
-	<svg id="canvas" class="fullscreen" style="background: #F0F0F0;">
-    <defs id="svgdefs">
+	<svg id="svg_canvas" class="fullscreen" style="background: #F0F0F0;">
+    <defs id="svg_defs">
 		<pattern id="colors" x="0" y="0" width="1024" height="587" patternUnits="userSpaceOnUse">
-    		<image href="/github.com/janpfeifer/hiveGo/images/colors.png" with="1024" height="587"></image>
+    		<image href="assets/colors.png" with="1024" height="587"></image>
     	</pattern>
     </defs>		
 	</svg>
@@ -85,7 +112,6 @@
             </form>
         </div>
     </div>
-    <img src="/github.com/janpfeifer/hiveGo/images/busy.gif" id="busy" class="busy_class" style="display: none;" width="64" height="64"/>
-    <script src="web_ui.js"></script>
+    <img src="assets/busy.gif" id="busy" class="busy_class" style="display: none;" width="64" height="64"/>
 </body>
 </html>
