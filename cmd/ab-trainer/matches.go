@@ -296,7 +296,7 @@ func runMatch(ctx context.Context, matchNum int, useRandomPlayers bool) *Match {
 			winnerAI := aiPlayers[match.PlayersIdx[player]]
 			msg = fmt.Sprintf("%s won! (%s)", player, winnerAI)
 		}
-		klog.Infof("\n\n%s: finished at turn %d, %s\n\n",
+		klog.Infof("\n\nMatch #%d: finished at turn %d, %s\n\n",
 			matchNum, board.MoveNumber, msg)
 	}
 	return match
