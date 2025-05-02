@@ -13,27 +13,6 @@ import (
 	"github.com/janpfeifer/hiveGo/internal/state"
 )
 
-const (
-	StandardFace = 33.0
-)
-
-
-
-type Attrs map[string]interface{}
-
-func SetAttrs(elem *js.Object, attrs Attrs) {
-	for key, value := range attrs {
-		elem.Call("setAttributeNS", nil, key, value)
-	}
-}
-
-func CreateSVG(elemType string, attrs Attrs) *js.Object {
-	elem := Document.CreateElementNS("http://www.w3.org/2000/svg", elemType)
-	elem := Document.Call("createElementNS", , elemType)
-	SetAttrs(elem, attrs)
-	return elem
-}
-
 // ZoomOnWheel responds to mouse wheel movement to control zoom.
 func ZoomOnWheel(e jquery.Event) {
 	wheelEvent := e.Object.Get("originalEvent")
@@ -119,74 +98,6 @@ func (g *Game) MarkNextPlayer() {
 			"stroke":       stroke,
 		})
 	}
-}
-
-var (
-	// References to splash screen objects created at the beginning of the program.
-
-	HasSplashScreen                        = false
-	SplashRect, SplashPattern, SplashImage jquery.JQuery
-)
-
-func CreateSplashScreen() {
-	SplashPattern = jq(CreateSVG("pattern", Attrs{
-		"id":           "splash",
-		"patternUnits": "objectBoundingBox",
-		"width":        "1.0",
-		"height":       "1.0",
-		"x":            "-0.040",
-		"y":            "0",
-	}))
-	SplashImage = jq(CreateSVG("image", Attrs{
-		"href":   "/github.com/janpfeifer/hiveGo/images/Grasshopper.png",
-		"width":  1024,
-		"height": 1024,
-	}))
-	SvgDefs.Append(SplashPattern)
-	SplashPattern.Append(SplashImage)
-	SplashRect = jq(CreateSVG("rect", Attrs{
-		"stroke":       "black",
-		"stroke-width": 0,
-		"border":       0,
-		"padding":      0,
-		"fill":         "url(#splash)",
-	}))
-	canvas.Append(SplashRect)
-	SplashRect.On(jquery.MOUSEUP, func(e jquery.Event) {
-		RemoveSplashScreen()
-		OpenStartGameDialog()
-	})
-	HasSplashScreen = true
-	AdjustSplashScreen()
-}
-
-func AdjustSplashScreen() {
-	if !HasSplashScreen {
-		return
-	}
-
-	// SplashScreen will have at most 1024 "face" size. It's a square
-	// so this will be the width and height.
-	face := ui.Height - 2*ui.OffBoardHeight()
-	if ui.Width < face {
-		face = ui.Width
-	}
-	if face > 1024 {
-		face = 1024
-	}
-
-	// Adjust rect.
-	SetAttrs(Obj(SplashRect), Attrs{
-		"width": face, "height": face,
-		"x": (ui.Width - face) / 2,
-		"y": (ui.Height - face) / 2,
-	})
-	SetAttrs(Obj(SplashImage), Attrs{"width": face, "height": face})
-}
-
-func RemoveSplashScreen() {
-	SplashRect.Remove()
-	HasSplashScreen = false
 }
 
 var (

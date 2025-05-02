@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"github.com/gowebapi/webapi/dom"
 	"github.com/gowebapi/webapi/graphics/svg"
 	"github.com/gowebapi/webapi/html"
+	"github.com/gowebapi/webapi/html/htmlevent"
 	"github.com/janpfeifer/hiveGo/internal/state"
 	"strconv"
 )
@@ -22,6 +24,7 @@ type WebUI struct {
 	// Splash image:
 	splashPattern   *svg.SVGPatternElement
 	splashImage     *svg.SVGImageElement
+	splashRect      *svg.SVGRectElement
 	hasSplashScreen bool
 
 	// PixelRatio gives a sense of how dense are pixels, where
@@ -111,54 +114,114 @@ func (ui *WebUI) PosToXY(pos state.Pos, stackCount int) (x, y float64) {
 var SVGNameSpace = "http://www.w3.org/2000/svg"
 
 // Attrs are attributes to be set in a new example.
-// Just a shortcut to a map[string]string.
-type Attrs map[string]string
+// The value will be converted to string using fmt.Sprintf("%s") -- except for numbers which will be converted
+// using %d or %g depending on the underlying type.
+type Attrs map[string]any
 
 // CreateSVG returns a new untyped DOM element created with the SVG name space and the given elemType.
 func CreateSVG(elemType string, attrs Attrs) *dom.Element {
+	SVGNameSpace := "http://www.w3.org/2000/svg" // It's better to define it here or as a constant
+
 	elem := Document.CreateElementNS(&SVGNameSpace, elemType, nil)
-	for key, value := range attrs {
-		elem.SetAttribute(key, value)
-	}
+	SetAttrs(elem, attrs)
 	return elem
 }
 
+// SetAttrs allow setting of various attributes at the same time.
+func SetAttrs(elem *dom.Element, attrs Attrs) {
+	for key, value := range attrs {
+		switch v := value.(type) {
+		case int:
+			elem.SetAttribute(key, strconv.Itoa(v))
+		case float32:
+			elem.SetAttribute(key, strconv.FormatFloat(float64(v), 'f', -1, 32)) // 'f' for decimal, -1 for auto precision
+		case float64:
+			elem.SetAttribute(key, strconv.FormatFloat(v, 'f', -1, 64))
+		default:
+			elem.SetAttribute(key, fmt.Sprintf("%s", v)) // Fallback for other types (like strings)
+		}
+	}
+}
+
+// Window management --------------------------------------------------------------------------------------------------
+
+// OnCanvasResize should be called when the main window is resized.
+func (ui *WebUI) OnCanvasResize() {
+	ui.Width = ui.canvas.ClientWidth()   // ?InnerWidth()
+	ui.Height = ui.canvas.ClientHeight() // ?InnerHeight()
+	ui.AdjustSplashScreen()
+
+	/*
+		// OffBoard space.
+		offboardHeight := ui.OffBoardHeight()
+		if ui.Height < 3*offboardHeight {
+			ui.Height = 3 * offboardHeight
+		}
+		SetAttrs(OffBoardRects[0], Attrs{
+			"x": 0, "y": 0,
+			"width":  ui.Width,
+			"height": offboardHeight,
+		})
+		SetAttrs(OffBoardRects[1], Attrs{
+			"x": 0, "y": ui.Height - offboardHeight,
+			"width":  ui.Width,
+			"height": offboardHeight,
+		})
+		g.MarkNextPlayer()
+		Old.AdjustOffBoardPieces()
+		g.AdjustEndGameMessagePosition()
+		Old.AdjustBusyBoxPosition()
+
+		// Adjust all elements on page.
+		OnChangeOfUIParams()
+	*/
+}
+
+// Splash Screen ------------------------------------------------------------------------------------------------------
+
+// CreateSplashScreen and position it accordingly.
 func (ui *WebUI) CreateSplashScreen() {
 	ui.splashPattern = svg.SVGPatternElementFromJS(CreateSVG("pattern", Attrs{
 		"id":           "splash",
 		"patternUnits": "objectBoundingBox",
-		"width":        "1.0",
-		"height":       "1.0",
-		"x":            "-0.040",
-		"y":            "0",
+		"width":        1.0,
+		"height":       1.0,
+		"x":            -0.040,
+		"y":            0,
 	}).JSValue())
+	ui.splashPattern.Style().SetProperty("background-color", "#B8BC33", nil)
 	ui.splashImage = svg.SVGImageElementFromJS(CreateSVG("image", Attrs{
 		"href":   "assets/Grasshopper.png",
-		"width":  "1024",
-		"height": "1024",
+		"width":  1024,
+		"height": 1024,
 	}).JSValue())
 	ui.splashPattern.AppendChild(&ui.splashImage.Node)
 	ui.defs.AppendChild(&ui.splashPattern.Node)
 
-	/*
-		SplashRect = jq(CreateSVG("rect", Attrs{
-			"stroke":       "black",
-			"stroke-width": 0,
-			"border":       0,
-			"padding":      0,
-			"fill":         "url(#splash)",
-		}))
-		canvas.Append(SplashRect)
-		SplashRect.On(jquery.MOUSEUP, func(e jquery.Event) {
-			RemoveSplashScreen()
-			OpenStartGameDialog()
-		})
-		AdjustSplashScreen()
-	*/
+	ui.splashRect = svg.SVGRectElementFromJS(CreateSVG("rect", Attrs{
+		"stroke":       "black",
+		"stroke-width": 0,
+		"border":       0,
+		"padding":      0,
+		"fill":         "url(#splash)",
+	}).JSValue())
+	ui.canvas.AppendChild(&ui.splashRect.Node)
+	ui.splashRect.SetOnMouseUp(func(event *htmlevent.MouseEvent, currentTarget *svg.SVGElement) {
+		ui.RemoveSplashScreen()
+		//ui.OpenStartGameDialog()
+	})
 	ui.hasSplashScreen = true
 	ui.AdjustSplashScreen()
 }
 
+// RemoveSplashScreen is called when someone clicks on the Splash screen.
+func (ui *WebUI) RemoveSplashScreen() {
+	ui.splashRect.Remove()
+	ui.splashPattern.Remove()
+	ui.hasSplashScreen = false
+}
+
+// AdjustSplashScreen at start time and at changes in size.
 func (ui *WebUI) AdjustSplashScreen() {
 	if !ui.hasSplashScreen {
 		return
@@ -174,14 +237,10 @@ func (ui *WebUI) AdjustSplashScreen() {
 	}
 
 	// Adjust rect.
-	/*
-		SetAttrs(Obj(SplashRect), Attrs{
-			"width": face, "height": face,
-			"x": (ui.Width - face) / 2,
-			"y": (ui.Height - face) / 2,
-		})
-	*/
-	faceStr := strconv.Itoa(face)
-	ui.splashImage.SetAttribute("width", faceStr)
-	ui.splashImage.SetAttribute("height", faceStr)
+	SetAttrs(&ui.splashImage.Element, Attrs{"width": face, "height": face})
+	SetAttrs(&ui.splashRect.Element, Attrs{
+		"width": face, "height": face,
+		"x": strconv.Itoa((ui.Width - face) / 2),
+		"y": strconv.Itoa((ui.Height - face) / 2),
+	})
 }
