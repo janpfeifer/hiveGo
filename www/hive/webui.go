@@ -3,12 +3,17 @@ package main
 import (
 	"fmt"
 	"github.com/gowebapi/webapi/dom"
+	"github.com/gowebapi/webapi/dom/domcore"
 	"github.com/gowebapi/webapi/graphics/svg"
 	"github.com/gowebapi/webapi/html"
 	"github.com/gowebapi/webapi/html/htmlevent"
 	"github.com/janpfeifer/hiveGo/internal/state"
 	"strconv"
 )
+
+// ==================================================================================================================
+// WebUI ------------------------------------------------------------------------------------------------------------
+// ==================================================================================================================
 
 const (
 	StandardFaceScale = 33.0
@@ -22,10 +27,12 @@ type WebUI struct {
 	busyBox *html.HTMLImageElement
 
 	// Splash image:
-	splashPattern   *svg.SVGPatternElement
-	splashImage     *svg.SVGImageElement
-	splashRect      *svg.SVGRectElement
+	splashDiv       *html.HTMLDivElement
 	hasSplashScreen bool
+
+	// Game start dialog:
+	gameStartDialog   *html.HTMLDivElement
+	gameStartAIConfig *html.HTMLInputElement
 
 	// PixelRatio gives a sense of how dense are pixels, where
 	// 1.0 is "standard". It affects the zoom level of pieces off-g.board.
@@ -143,13 +150,14 @@ func SetAttrs(elem *dom.Element, attrs Attrs) {
 	}
 }
 
-// Window management --------------------------------------------------------------------------------------------------
+// ==================================================================================================================
+// Window management ------------------------------------------------------------------------------------------------
+// ==================================================================================================================
 
 // OnCanvasResize should be called when the main window is resized.
 func (ui *WebUI) OnCanvasResize() {
 	ui.Width = ui.canvas.ClientWidth()   // ?InnerWidth()
 	ui.Height = ui.canvas.ClientHeight() // ?InnerHeight()
-	ui.AdjustSplashScreen()
 
 	/*
 		// OffBoard space.
@@ -177,70 +185,59 @@ func (ui *WebUI) OnCanvasResize() {
 	*/
 }
 
-// Splash Screen ------------------------------------------------------------------------------------------------------
+// ==================================================================================================================
+// Splash Screen ----------------------------------------------------------------------------------------------------
+// ==================================================================================================================
 
 // CreateSplashScreen and position it accordingly.
-func (ui *WebUI) CreateSplashScreen() {
-	ui.splashPattern = svg.SVGPatternElementFromJS(CreateSVG("pattern", Attrs{
-		"id":           "splash",
-		"patternUnits": "objectBoundingBox",
-		"width":        1.0,
-		"height":       1.0,
-		"x":            -0.040,
-		"y":            0,
-	}).JSValue())
-	ui.splashPattern.Style().SetProperty("background-color", "#B8BC33", nil)
-	ui.splashImage = svg.SVGImageElementFromJS(CreateSVG("image", Attrs{
-		"href":   "assets/Grasshopper.png",
-		"width":  1024,
-		"height": 1024,
-	}).JSValue())
-	ui.splashPattern.AppendChild(&ui.splashImage.Node)
-	ui.defs.AppendChild(&ui.splashPattern.Node)
-
-	ui.splashRect = svg.SVGRectElementFromJS(CreateSVG("rect", Attrs{
-		"stroke":       "black",
-		"stroke-width": 0,
-		"border":       0,
-		"padding":      0,
-		"fill":         "url(#splash)",
-	}).JSValue())
-	ui.canvas.AppendChild(&ui.splashRect.Node)
-	ui.splashRect.SetOnMouseUp(func(event *htmlevent.MouseEvent, currentTarget *svg.SVGElement) {
+// onClose is called once the splash screen is closed.
+func (ui *WebUI) CreateSplashScreen(onClose func()) {
+	if ui.splashDiv == nil {
+		elem := Document.GetElementById("splashScreen")
+		ui.splashDiv = html.HTMLDivElementFromWrapper(elem)
+	}
+	ui.splashDiv.Style().SetProperty("display", "flex", nil)
+	ui.splashDiv.AddEventListener("click", domcore.NewEventListenerFunc(func(_ *domcore.Event) {
 		ui.RemoveSplashScreen()
-		//ui.OpenStartGameDialog()
-	})
+		onClose()
+	}), nil)
 	ui.hasSplashScreen = true
-	ui.AdjustSplashScreen()
 }
 
 // RemoveSplashScreen is called when someone clicks on the Splash screen.
 func (ui *WebUI) RemoveSplashScreen() {
-	ui.splashRect.Remove()
-	ui.splashPattern.Remove()
+	ui.splashDiv.Style().SetProperty("display", "none", nil)
 	ui.hasSplashScreen = false
 }
 
-// AdjustSplashScreen at start time and at changes in size.
-func (ui *WebUI) AdjustSplashScreen() {
-	if !ui.hasSplashScreen {
-		return
+// ==================================================================================================================
+// Game Dialog ------------------------------------------------------------------------------------------------------
+// ==================================================================================================================
+
+var levelsConfigs = map[string]string{
+	"easy":   "fnn=#0;ab;max_depth=2;randomness=0.1",              // Easy
+	"medium": "a0fnn=#0;mcts;max_time=2s;temperature=1.5",         // Medium
+	"hard":   "a0fnn=#0;mcts;max_traverses=10000;temperature=0.1", // Hard
+}
+
+// OpenGameStartDialog and manages the game dialog.
+func (ui *WebUI) OpenGameStartDialog(onStart func()) {
+	if ui.gameStartDialog == nil {
+		ui.gameStartDialog = html.HTMLDivElementFromWrapper(Document.GetElementById("new_game"))
+		ui.gameStartAIConfig = html.HTMLInputElementFromWrapper(ui.gameStartDialog.QuerySelector("input#ai_config"))
 	}
 
-	// SplashScreen will have at most 1024 "face" size (width = height = face).
-	face := ui.Height - 2*ui.OffBoardHeight()
-	if ui.Width < face {
-		face = ui.Width
+	ui.gameStartAIConfig.SetValue(levelsConfigs["easy"])
+	for key, value := range levelsConfigs {
+		radio := html.HTMLInputElementFromWrapper(ui.gameStartDialog.QuerySelector("input#" + key))
+		radio.SetOnClick(func(event *htmlevent.MouseEvent, currentTarget *html.HTMLElement) {
+			ui.gameStartAIConfig.SetValue(value)
+		})
 	}
-	if face > 1024 {
-		face = 1024
-	}
-
-	// Adjust rect.
-	SetAttrs(&ui.splashImage.Element, Attrs{"width": face, "height": face})
-	SetAttrs(&ui.splashRect.Element, Attrs{
-		"width": face, "height": face,
-		"x": strconv.Itoa((ui.Width - face) / 2),
-		"y": strconv.Itoa((ui.Height - face) / 2),
+	ui.gameStartDialog.Style().SetProperty("display", "flex", nil)
+	form := html.HTMLFormElementFromWrapper(ui.gameStartDialog.QuerySelector("form"))
+	form.SetOnSubmit(func(event *domcore.Event, currentTarget *html.HTMLElement) {
+		ui.gameStartDialog.Style().SetProperty("display", "none", nil)
+		onStart()
 	})
 }

@@ -1,0 +1,205 @@
+.body {
+    background-color: #B8BC33;
+}
+.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    height: 100%;
+    width: 100%;
+    min-height: 100%;
+    min-width: 100%;
+    overflow: auto;
+    margin: auto;
+    border: 3px solid #333; /* Darker border for contrast */
+    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background to focus on dialog */
+    display: flex; /* Use flexbox for centering */
+    justify-content: center; /* Center horizontally */
+    align-items: center; /* Center vertically */
+}
+
+ #splashScreen {
+     position: fixed;
+     top: 0;
+     left: 0;
+     width: 100%;
+     height: 100%;
+     display: flex;
+     flex-direction: column; /* Stack items vertically */
+     justify-content: center; /* Center items vertically */
+     align-items: center; /* Center items horizontally */
+     z-index: 1001; /* Ensure it's above other content */
+ }
+
+h1 {
+    font-family: 'Indie Flower', cursive;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.splash-image-container {
+    height: 50vh; /* 50% of the viewport height */
+    width: auto; /* Adjust width based on image aspect ratio */
+    max-width: 80%; /* Optional: Limit maximum width */
+    display: flex; /* Center image within its container */
+    justify-content: center;
+    align-items: center;
+}
+
+.splash-image-container img {
+    max-height: 100%;
+    max-width: 100%;
+    height: auto;
+    width: auto;
+    display: block;
+}
+
+#splashScreen > h1 {
+    font-family: 'Indie Flower', cursive;
+    text-align: center;
+    font-size: 3em;
+    margin-bottom: -0.3em;
+}
+.github_link { /* Style the GitHub link container */
+}
+
+#splashScreen > div > a {
+    margin-top: 0;
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.7em;
+    color: #303030; /* Set the default link color to blue */
+    text-decoration: underline; /* Set the default text decoration to underline */
+}
+
+.github_link a:hover {
+    color: darkblue;
+}
+
+.dialog {
+    position: relative;
+    border: 2px solid #556b2f; /* Olive green border */
+    border-radius: 8px; /* More pronounced rounded corners */
+    background: #f0fff0; /* Light, airy background */
+    padding: 0.5em 2em; /* Increased padding for more spacing */
+    font-family: 'Oswald', cursive;
+    font-size: 18px; /* Slightly larger font */
+    width: 40%; /* Slightly narrower for better focus */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Subtle shadow for depth */
+}
+
+.dialog h3 {
+    color: #556b2f; /* Olive green heading */
+    margin-top: 1em; /* Remove default top margin */
+    margin-bottom: 0.5em; /* Add spacing below heading */
+    text-align: center; /* Center the heading */
+}
+
+.dialog label {
+    display: block; /* Make labels appear on their own line */
+    margin-bottom: 0.5em; /* Add spacing below each label */
+    font-weight: bold; /* Make labels a bit bolder */
+    color: #333; /* Darker text for readability */
+}
+
+.dialog input[type="radio"],
+.dialog input[type="checkbox"] {
+    margin-right: 0.5em; /* Add spacing between input and label */
+    vertical-align: middle; /* Align radio/checkbox with text */
+}
+
+.dialog p:first-of-type { /* Style the "Advanced AI config" paragraph */
+    font-style: italic;
+    color: #999; /* Lighter gray for less emphasis */
+    font-size: 0.9em; /* Smaller font size */
+    margin-top: 1em; /* Keep some top margin */
+    margin-bottom: 0.5em; /* Reduce bottom margin */
+}
+
+.dialog p:nth-of-type(2) { /* Style the paragraph containing the text input */
+    margin-top: 0.2em; /* Reduce top margin to be closer to the label */
+    margin-bottom: 1em;
+}
+
+.dialog input[type="text"][name="ai_config"] {
+    padding: 0.3em; /* Reduce padding for a smaller feel */
+    border: 1px solid #ddd; /* Lighter border */
+    border-radius: 3px; /* Slightly less rounded */
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 0.85em; /* Smaller font size for the text box */
+    color: gray;
+    font-family: 'Roboto', sans-serif;
+}
+.dialog button#start {
+    font-size: 1.2em; /* Slightly larger font for the button */
+    padding: 0.8em 1.5em;
+    background-color: #4CAF50; /* Green button */
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.3s ease; /* Smooth transition for hover effect */
+}
+
+.dialog button#start:hover {
+    background-color: #45a049; /* Darker green on hover */
+}
+
+.end_game_message_class {
+    font-size: 65px;
+    font-family: 'Indie Flower', cursive;
+    font-style: italic;
+    font-weight: bold;
+    user-select: none;
+    color: #d87093; /* A nice pink color */
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3); /* Subtle text shadow */
+}
+
+.floating-video-container {
+    position: fixed;
+    bottom: 5em;
+    right: 5em;
+    z-index: 1000;
+    width: 128px; /* Set the container width */
+    height: auto; /* Maintain aspect ratio based on video's aspect ratio */
+    border-radius: 8px;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: #B8BC33;
+}
+
+.floating-video {
+    width: 100%;
+    height: auto;
+    border-radius: inherit;
+    margin-bottom: 0.3em; /* Add a little space between video and text */
+}
+
+.powered-by {
+    font-size: 0.7em; /* Small font size */
+    font-family: 'Roboto', sans-serif;
+    color: #000;
+}
+
+.powered-by a:hover {
+    text-decoration: underline; /* Add underline on hover for better interaction */
+}
+
+.busy_class {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.3); /* Semi-transparent overlay */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 24px;
+    color: white;
+    font-weight: bold;
+}

@@ -15,7 +15,13 @@ var (
 func main() {
 	ui := NewWebUI()
 	fmt.Printf("UI: %+v\n", ui)
-	ui.CreateSplashScreen()
+	startGame := func() {
+		Window.Alert2("Starting")
+	}
+	gameDialog := func() {
+		ui.OpenGameStartDialog(startGame)
+	}
+	ui.CreateSplashScreen(gameDialog)
 	Window.SetOnResize(func(event *htmlevent.UIEvent, currentTarget *webapi.Window) {
 		ui.OnCanvasResize()
 	})
