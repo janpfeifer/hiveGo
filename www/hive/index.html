@@ -47,7 +47,7 @@
     <defs id="svg_defs"></defs>
 	</svg>
 
-    <div id="splashScreen" style="display:none; /* Initially hidden */">
+    <div id="splashScreen" style="display:none; /* Initially hidden */" tabindex="0">
         <h1 style="">hiveGo</h1>
         <div id="github_link" style="text-align: center; margin-top: 0px;">
             <a href="https://github.com/janpfeifer/hiveGo" target="_blank">🔗 github.com/janpfeifer/hiveGo 🔗</a>
@@ -66,8 +66,8 @@
                     Play with AI
                 </label>
                 <label>
-                    <input type="radio" name="game_type" id="game_vs_human" value="hotseat">
-                    Play with friend (hotseat)
+                    <input type="radio" name="game_type" id="hotseat" value="hotseat">
+                    Play with a friend ("hotseat")
                 </label>
 
                 <h3>AI Settings</h3>
@@ -85,8 +85,8 @@
                 </label>
 
                 <label>
-                    <input type="checkbox" name="ai_starts">
-                    Computer starts
+                    <input type="checkbox" name="ai_starts" id="ai_starts">
+                    AI plays first
                 </label>
 
                 <p>Advanced AI config:</p>

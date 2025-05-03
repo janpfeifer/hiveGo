@@ -184,11 +184,6 @@ func Alert(msg string) {
 	js.Global.Call("alert", msg)
 }
 
-// GetDocumentById from the DOM.
-func GetDocumentById(id string) *js.Object {
-	return Document.Call("getElementById", id)
-}
-
 func (g *Game) OnCanvasResize() {
 	ui.Width = canvas.InnerWidth()
 	ui.Height = canvas.InnerHeight()

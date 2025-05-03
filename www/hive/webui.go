@@ -8,6 +8,7 @@ import (
 	"github.com/gowebapi/webapi/html"
 	"github.com/gowebapi/webapi/html/htmlevent"
 	"github.com/janpfeifer/hiveGo/internal/state"
+	"k8s.io/klog/v2"
 	"strconv"
 )
 
@@ -31,8 +32,15 @@ type WebUI struct {
 	hasSplashScreen bool
 
 	// Game start dialog:
-	gameStartDialog   *html.HTMLDivElement
-	gameStartAIConfig *html.HTMLInputElement
+	gameStartDialog     *html.HTMLDivElement
+	gameStartAIConfig   *html.HTMLInputElement
+	aiConfig            string
+	isHotseat, aiStarts bool
+
+	// Board UI elements:
+	boardGroup     *svg.SVGGElement
+	offBoardGroups [2]*svg.SVGGElement
+	offBoardRects  [2]*svg.SVGRectElement
 
 	// PixelRatio gives a sense of how dense are pixels, where
 	// 1.0 is "standard". It affects the zoom level of pieces off-g.board.
@@ -197,10 +205,14 @@ func (ui *WebUI) CreateSplashScreen(onClose func()) {
 		ui.splashDiv = html.HTMLDivElementFromWrapper(elem)
 	}
 	ui.splashDiv.Style().SetProperty("display", "flex", nil)
-	ui.splashDiv.AddEventListener("click", domcore.NewEventListenerFunc(func(_ *domcore.Event) {
+	doneFn := func() {
+		fmt.Println("Closing splash screen")
 		ui.RemoveSplashScreen()
 		onClose()
-	}), nil)
+	}
+	ui.splashDiv.AddEventListener("click", domcore.NewEventListenerFunc(func(_ *domcore.Event) { doneFn() }), nil)
+	ui.splashDiv.AddEventListener("keydown", domcore.NewEventListenerFunc(func(_ *domcore.Event) { doneFn() }), nil)
+	ui.splashDiv.Focus(nil)
 	ui.hasSplashScreen = true
 }
 
@@ -235,9 +247,101 @@ func (ui *WebUI) OpenGameStartDialog(onStart func()) {
 		})
 	}
 	ui.gameStartDialog.Style().SetProperty("display", "flex", nil)
+
 	form := html.HTMLFormElementFromWrapper(ui.gameStartDialog.QuerySelector("form"))
 	form.SetOnSubmit(func(event *domcore.Event, currentTarget *html.HTMLElement) {
+		// Collect inputs:
+		ui.aiConfig = ui.gameStartAIConfig.Value()
+
+		event.PreventDefault()
+		elem := ui.gameStartDialog.QuerySelector("#hotseat")
+		if elem == nil {
+			klog.Fatal("Failed to find radio button for hotseat")
+		}
+		hotseat := html.HTMLInputElementFromWrapper(elem)
+		ui.isHotseat = hotseat.Checked()
+
+		elem = ui.gameStartDialog.QuerySelector("#ai_starts")
+		if elem == nil {
+			klog.Fatal("Failed to find radio button for ai_starts checkbox")
+		}
+		ui.aiStarts = html.HTMLInputElementFromWrapper(elem).Checked()
+
+		// Disable dialog.
 		ui.gameStartDialog.Style().SetProperty("display", "none", nil)
+
+		// Start caller's onStart.
 		onStart()
 	})
+
+	// Focus the first input element of the form.
+	elem := form.QuerySelector("input:not([disabled])")
+	html.HTMLInputElementFromWrapper(elem).Focus(nil)
+}
+
+// AIConfig returns the AI configuration string read from the dialog form.
+func (ui *WebUI) AIConfig() string {
+	return ui.aiConfig
+}
+
+func (ui *WebUI) IsHotseat() bool {
+	return ui.isHotseat
+}
+
+func (ui *WebUI) AIStarts() bool { return ui.aiStarts }
+
+// ==================================================================================================================
+// Board UI ---------------------------------------------------------------------------------------------------------
+// ==================================================================================================================
+
+func (ui *WebUI) EnableBoard() {
+	ui.canvas.Style().SetProperty("display", "block", nil)
+	ui.canvas.Style().SetProperty("pointer-events", "all", nil)
+}
+
+func (ui *WebUI) CreateBoardRects(board *state.Board) {
+	ui.boardGroup = svg.SVGGElementFromWrapper(CreateSVG("g", Attrs{
+		"x":      0,
+		"y":      0,
+		"width":  "100%",
+		"height": "100%",
+	}))
+	ui.canvas.AppendChild(&ui.boardGroup.Node)
+	for ii := range 2 {
+		ui.offBoardGroups[ii] = svg.SVGGElementFromWrapper(CreateSVG("g", Attrs{
+			"x":      0,
+			"y":      0,
+			"width":  "100%",
+			"height": "100%",
+		}))
+		ui.canvas.AppendChild(&ui.offBoardGroups[ii].Node)
+		ui.offBoardRects[ii] = svg.SVGRectElementFromWrapper(CreateSVG("rect", Attrs{
+			"stroke": "firebrick",
+			"fill":   "moccasin",
+		}))
+		ui.offBoardGroups[ii].AppendChild(&ui.offBoardRects[ii].Node)
+	}
+	ui.MarkNextPlayer(board)
+}
+
+// MarkNextPlayer to play. It also highlights the winner if the game is finished.
+func (ui *WebUI) MarkNextPlayer(board *state.Board) {
+	for player := range state.PlayerNum(state.NumPlayers) {
+		width := 2.0 * ui.PixelRatio
+		stroke := "firebrick"
+		if board.IsFinished() {
+			if board.Draw() || board.Winner() == player {
+				stroke = "url(#colors)"
+				width = 12 * ui.PixelRatio
+			}
+		} else {
+			if board.NextPlayer == player {
+				width = 6 * ui.PixelRatio
+			}
+		}
+		SetAttrs(&ui.offBoardRects[player].Element, Attrs{
+			"stroke-width": width,
+			"stroke":       stroke,
+		})
+	}
 }
