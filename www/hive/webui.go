@@ -210,8 +210,13 @@ func (ui *WebUI) CreateSplashScreen(onClose func()) {
 		ui.RemoveSplashScreen()
 		onClose()
 	}
-	ui.splashDiv.AddEventListener("click", domcore.NewEventListenerFunc(func(_ *domcore.Event) { doneFn() }), nil)
-	ui.splashDiv.AddEventListener("keydown", domcore.NewEventListenerFunc(func(_ *domcore.Event) { doneFn() }), nil)
+	ui.splashDiv.AddEventListener("click", domcore.NewEventListenerFunc(func(event *domcore.Event) {
+		doneFn()
+	}), nil)
+	ui.splashDiv.AddEventListener("keyup", domcore.NewEventListenerFunc(func(event *domcore.Event) {
+		event.PreventDefault()
+		doneFn()
+	}), nil)
 	ui.splashDiv.Focus(nil)
 	ui.hasSplashScreen = true
 }
