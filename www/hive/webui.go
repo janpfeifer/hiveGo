@@ -68,6 +68,10 @@ type WebUI struct {
 
 	// How much the board has been dragged around.
 	ShiftX, ShiftY float64
+
+	// Dragging event:
+	dragStarted  bool
+	dragX, dragY float64
 }
 
 func NewWebUI() *WebUI {
@@ -313,7 +317,15 @@ func (ui *WebUI) StartBoard(board *state.Board) {
 	ui.canvas.SetOnWheel(func(event *htmlevent.WheelEvent, currentTarget *svg.SVGElement) {
 		ui.ZoomOnWheel(event)
 	})
-	//canvas.On(jquery.MOUSEDOWN, DragOnMouseDown)
+	ui.canvas.SetOnMouseDown(func(event *htmlevent.MouseEvent, currentTarget *svg.SVGElement) {
+		ui.DragOnMouseDown(event)
+	})
+	ui.canvas.SetOnMouseUp(func(event *htmlevent.MouseEvent, currentTarget *svg.SVGElement) {
+		ui.DragOnMouseUp(event)
+	})
+	ui.canvas.SetOnMouseMove(func(event *htmlevent.MouseEvent, currentTarget *svg.SVGElement) {
+		ui.DragOnMouseMove(event)
+	})
 	//canvas.On(jquery.MOUSEUP, DragOnMouseUp)
 	//canvas.On(jquery.MOUSEMOVE, DragOnMouseMove)
 	Window.SetOnResize(func(_ *htmlevent.UIEvent, _ *webapi.Window) {
@@ -324,9 +336,35 @@ func (ui *WebUI) StartBoard(board *state.Board) {
 // ZoomOnWheel responds to mouse wheel movement to control zoom.
 func (ui *WebUI) ZoomOnWheel(event *htmlevent.WheelEvent) {
 	scrollAmount := event.DeltaY()
-	ui.Scale = ui.Scale * math.Pow(1.1, scrollAmount/50.0)
-	fmt.Printf("Wheel event: new scale is %g\n", ui.Scale)
+	ui.Scale = ui.Scale * math.Pow(1.1, -scrollAmount/50.0)
+	//fmt.Printf("Wheel event: new scale is %g\n", ui.Scale)
 	ui.OnCanvasResize()
+}
+
+// DragOnMouseDown starts a drag board event.
+func (ui *WebUI) DragOnMouseDown(event *htmlevent.MouseEvent) {
+	ui.dragStarted = true
+	ui.dragX, ui.dragY = event.PageX(), event.PageY()
+}
+
+// DragOnMouseUp release the drag event.
+func (ui *WebUI) DragOnMouseUp(event *htmlevent.MouseEvent) {
+	ui.dragStarted = false
+}
+
+// DragOnMouseMove release the drag event.
+func (ui *WebUI) DragOnMouseMove(event *htmlevent.MouseEvent) {
+	if !ui.dragStarted {
+		return
+	}
+	mouseX, mouseY := event.PageX(), event.PageY()
+	deltaX, deltaY := mouseX-ui.dragX, mouseY-ui.dragY
+	ui.ShiftX += float64(deltaX)
+	ui.ShiftY += float64(deltaY)
+	ui.dragX, ui.dragY = mouseX, mouseY
+
+	// We only need to repaint the on-board area, the off-board area remains untouched.
+	ui.AdjustOnBoardPieces()
 }
 
 func (ui *WebUI) createBoardRects() {

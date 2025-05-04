@@ -52,7 +52,7 @@ type Game struct {
 
 // NewGame creates and starts a new game using the provided UI.
 func NewGame(ui *WebUI) *Game {
-	fmt.Printf("hotseat=%v, aiStarts=%v, aiConfig=%q\n", ui.IsHotseat(), ui.AIStarts(), ui.gameStartAIConfig.Value())
+	klog.Infof("NewGame(): hotseat=%v, aiStarts=%v, aiConfig=%q\n", ui.IsHotseat(), ui.AIStarts(), ui.gameStartAIConfig.Value())
 	g := &Game{
 		board:    state.NewBoard(),
 		ui:       ui,

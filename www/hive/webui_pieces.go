@@ -14,7 +14,7 @@ import (
 const (
 	// Interface visual constants:
 
-	StandardFaceScale = 10.0
+	StandardFaceScale = 20.0
 	PieceDrawingScale = 1.464
 	HexStrokeWidth    = 0.5
 	ImageBaseSize     = 0.0488
@@ -57,7 +57,7 @@ func PlayerBackgroundColor(player state.PlayerNum) string {
 
 // OffBoardHeight for UI.
 func (ui *WebUI) OffBoardHeight() int {
-	return int(38.4 * ui.PixelRatio) // 128?
+	return int(3.0 * StandardFaceScale * ui.PixelRatio) // 128?
 }
 
 // pieceToPatternID returns the HTML ID for the given piece type.
