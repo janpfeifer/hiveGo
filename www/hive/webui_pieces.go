@@ -226,9 +226,10 @@ func (ui *WebUI) PlaceOnBoardPiece(playerNum state.PlayerNum, action state.Actio
 	pos := action.TargetPos
 	stack := ui.piecesOnBoard[pos]
 	pons := &PieceOnScreen{
-		Index:     ui.piecesOnBoardIndex,
+		Index:     ui.piecesOnBoardIdx,
 		Player:    playerNum,
 		PieceType: action.Piece,
+		StackPos:  len(stack),
 		Hex: svg.SVGPolygonElementFromWrapper(CreateSVG("polygon", Attrs{
 			"stroke":       "url(#reliefStroke)",
 			"stroke-width": HexStrokeWidth * ui.PixelRatio * ui.Scale,
@@ -244,14 +245,13 @@ func (ui *WebUI) PlaceOnBoardPiece(playerNum state.PlayerNum, action state.Actio
 	}
 	ui.MovePieceTo(pons, pos, len(stack))
 	ui.piecesOnBoard[pos] = append(stack, pons)
-	ui.piecesOnBoardIndex++
+	ui.piecesOnBoardIdx++
 
 	// Make sure the new piece is under other pieces that are higher.
-	stackPos := len(stack)
 	var ponsAbove *PieceOnScreen
 	for _, pieces := range ui.piecesOnBoard {
-		if len(pieces) > stackPos+1 {
-			for _, tmpPons := range pieces[stackPos+1:] {
+		if len(pieces) > pons.StackPos {
+			for _, tmpPons := range pieces[pons.StackPos+1:] {
 				if ponsAbove == nil || tmpPons.Index < ponsAbove.Index {
 					ponsAbove = tmpPons
 				}
@@ -262,9 +262,10 @@ func (ui *WebUI) PlaceOnBoardPiece(playerNum state.PlayerNum, action state.Actio
 		ui.boardGroup.AppendChild(&pons.Hex.Node)
 		ui.boardGroup.AppendChild(&pons.Rect.Node)
 	} else {
-		fmt.Printf("Inserting piece before another: %v\n", ponsAbove)
-		ui.boardGroup.InsertBefore(&ponsAbove.Hex.Node, &pons.Hex.Node)
-		pons.Rect.InsertBefore(&ponsAbove.Hex.Node, &pons.Rect.Node)
+		anchorNode := &ponsAbove.Hex.Node
+		fmt.Printf("Inserting piece before %s at stack-level %d\n", ponsAbove.PieceType, ponsAbove.StackPos)
+		ui.boardGroup.InsertBefore(&pons.Hex.Node, anchorNode)
+		ui.boardGroup.InsertBefore(&pons.Rect.Node, anchorNode)
 	}
 
 	// Connect click to selection.

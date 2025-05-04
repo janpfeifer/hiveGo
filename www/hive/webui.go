@@ -49,9 +49,9 @@ type WebUI struct {
 	onBoardTilesImages, offBoardTilesImages       [state.NumPlayers]*svg.SVGImageElement
 
 	// Map of all pieces currently on board:
-	piecesOnBoard      map[state.Pos][]*PieceOnScreen
-	piecesOffBoard     [state.NumPlayers]map[state.PieceType][]*PieceOnScreen
-	piecesOnBoardIndex int
+	piecesOnBoard    map[state.Pos][]*PieceOnScreen
+	piecesOffBoard   [state.NumPlayers]map[state.PieceType][]*PieceOnScreen
+	piecesOnBoardIdx int
 
 	// PixelRatio gives a sense of how dense are pixels, where
 	// 1.0 is "standard". It affects the zoom level of pieces off-g.board.
