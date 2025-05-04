@@ -33,5 +33,7 @@ func startGame(ui *WebUI) {
 	fmt.Printf("hotseat=%v, aiStarts=%v, aiConfig=%q\n", ui.IsHotseat(), ui.AIStarts(), ui.gameStartAIConfig.Value())
 	board := state.NewBoard()
 	ui.EnableBoard()
-	ui.CreateBoardRects(board)
+	ui.CreateOffBoardPieces(board)
+	ui.MarkNextPlayer(board)
+	ui.OnCanvasResize()
 }

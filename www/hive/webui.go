@@ -17,7 +17,7 @@ import (
 // ==================================================================================================================
 
 const (
-	StandardFaceScale = 33.0
+	StandardFaceScale = 24.0
 )
 
 // WebUI implements the Hive Wasm UI
@@ -41,6 +41,15 @@ type WebUI struct {
 	boardGroup     *svg.SVGGElement
 	offBoardGroups [2]*svg.SVGGElement
 	offBoardRects  [2]*svg.SVGRectElement
+
+	// Elements for pieces on the board:
+	onBoardPiecesPatterns, offBoardPiecesPatterns []*svg.SVGPatternElement
+	onBoardPiecesImages, offBoardPiecesImages     []*svg.SVGImageElement
+
+	// Map of all pieces currently on board:
+	piecesOnBoard      map[state.Pos][]*PieceOnScreen
+	piecesOffBoard     [state.NumPlayers]map[state.PieceType][]*PieceOnScreen
+	piecesOnBoardIndex int
 
 	// PixelRatio gives a sense of how dense are pixels, where
 	// 1.0 is "standard". It affects the zoom level of pieces off-g.board.
@@ -69,6 +78,8 @@ func NewWebUI() *WebUI {
 		Scale:      Window.DevicePixelRatio(),
 		ShiftX:     0,
 		ShiftY:     0,
+
+		piecesOnBoard: make(map[state.Pos][]*PieceOnScreen),
 	}
 	elem := Document.GetElementById("svg_canvas")
 	ui.canvas = svg.SVGElementFromJS(elem.JSValue())
@@ -78,6 +89,16 @@ func NewWebUI() *WebUI {
 	ui.busyBox = html.HTMLImageElementFromJS(elem.JSValue())
 	ui.Width = ui.canvas.ClientWidth()   // InnerWidth ??
 	ui.Height = ui.canvas.ClientHeight() // InnerHeight ??
+
+	// Board area:
+	ui.createBoardRects()
+
+	// Create patterns for pieces:
+	ui.onBoardPiecesPatterns, ui.onBoardPiecesImages =
+		ui.createPiecesPatternsAndImages(OnBoard)
+	ui.offBoardPiecesPatterns, ui.offBoardPiecesImages =
+		ui.createPiecesPatternsAndImages(OffBoard)
+
 	return ui
 }
 
@@ -88,42 +109,6 @@ func (ui *WebUI) SetBusy(busy bool) {
 	} else {
 		ui.busyBox.Style().SetProperty("display", "none", nil)
 	}
-}
-
-// Face returns the size of an hexagon's face.
-func (ui *WebUI) Face() float64 {
-	return StandardFaceScale * ui.Scale
-}
-
-// OffBoardHeight for UI.
-func (ui *WebUI) OffBoardHeight() int {
-	return int(128.0 * ui.PixelRatio)
-}
-
-// hexTriangleHeight returns the height of the triangles that make up for an hexagon, given the face lenght.
-func hexTriangleHeight(face float64) float64 {
-	return 0.866 * face // sqrt(3)/2 * face
-}
-
-// PosToXY converts board positions to screen position.
-func (ui *WebUI) PosToXY(pos state.Pos, stackCount int) (x, y float64) {
-	face := ui.Face()
-	hexWidth := 1.5 * face
-	triangleHeight := hexTriangleHeight(face)
-	hexHeight := 2. * triangleHeight
-
-	x = ui.ShiftX + float64(pos.X())*hexWidth
-	y = ui.ShiftY + float64(pos.Y())*hexHeight
-	if pos.X()%2 != 0 {
-		y += triangleHeight
-	}
-	x += float64(stackCount) * 3.0 * ui.Scale
-	y -= float64(stackCount) * 3.0 * ui.Scale
-
-	// Add center of screen:
-	x += float64(ui.Width / 2)
-	y += float64(ui.Height / 2)
-	return
 }
 
 var SVGNameSpace = "http://www.w3.org/2000/svg"
@@ -167,24 +152,25 @@ func (ui *WebUI) OnCanvasResize() {
 	ui.Width = ui.canvas.ClientWidth()   // ?InnerWidth()
 	ui.Height = ui.canvas.ClientHeight() // ?InnerHeight()
 
+	// OffBoard space.
+	offboardHeight := ui.OffBoardHeight()
+	if ui.Height < 3*offboardHeight {
+		ui.Height = 3 * offboardHeight
+	}
+	SetAttrs(&ui.offBoardRects[0].Element, Attrs{
+		"x": 0, "y": 0,
+		"width":  ui.Width,
+		"height": offboardHeight,
+	})
+	SetAttrs(&ui.offBoardRects[1].Element, Attrs{
+		"x": 0, "y": ui.Height - offboardHeight,
+		"width":  ui.Width,
+		"height": offboardHeight,
+	})
+	ui.AdjustOffBoardPieces()
+
 	/*
-		// OffBoard space.
-		offboardHeight := ui.OffBoardHeight()
-		if ui.Height < 3*offboardHeight {
-			ui.Height = 3 * offboardHeight
-		}
-		SetAttrs(OffBoardRects[0], Attrs{
-			"x": 0, "y": 0,
-			"width":  ui.Width,
-			"height": offboardHeight,
-		})
-		SetAttrs(OffBoardRects[1], Attrs{
-			"x": 0, "y": ui.Height - offboardHeight,
-			"width":  ui.Width,
-			"height": offboardHeight,
-		})
 		g.MarkNextPlayer()
-		Old.AdjustOffBoardPieces()
 		g.AdjustEndGameMessagePosition()
 		Old.AdjustBusyBoxPosition()
 
@@ -304,7 +290,7 @@ func (ui *WebUI) EnableBoard() {
 	ui.canvas.Style().SetProperty("pointer-events", "all", nil)
 }
 
-func (ui *WebUI) CreateBoardRects(board *state.Board) {
+func (ui *WebUI) createBoardRects() {
 	ui.boardGroup = svg.SVGGElementFromWrapper(CreateSVG("g", Attrs{
 		"x":      0,
 		"y":      0,
@@ -326,7 +312,6 @@ func (ui *WebUI) CreateBoardRects(board *state.Board) {
 		}))
 		ui.offBoardGroups[ii].AppendChild(&ui.offBoardRects[ii].Node)
 	}
-	ui.MarkNextPlayer(board)
 }
 
 // MarkNextPlayer to play. It also highlights the winner if the game is finished.
