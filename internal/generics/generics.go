@@ -19,6 +19,13 @@ func SliceMap[In, Out any](in []In, fn func(e In) Out) (out []Out) {
 	return
 }
 
+// SlicePopLast returns the updated slice (with one less element) and the removed element.
+func SlicePopLast[E any](slice []E) ([]E, E) {
+	e := slice[len(slice)-1]
+	slice = slice[:len(slice)-1]
+	return slice, e
+}
+
 // KeysSlice returns a slice with the keys of a map.
 func KeysSlice[Map interface{ ~map[K]V }, K comparable, V any](m Map) []K {
 	keys := make([]K, 0, len(m))

@@ -93,7 +93,7 @@ func (g *Old2.Game) stackTopOnSelectOffBoard(pons *PieceOnScreen, stackPos int) 
 	g.MarkTargetActions(validTargets)
 }
 
-// OnSelectOnBoard first picks the top piece of the stack selected.
+// OnSelectOnBoardPiece first picks the top piece of the stack selected.
 func (g *Old2.Game) OnSelectOnBoard(pons *PieceOnScreen, pos state.Pos) {
 	if !g.IsRunning || g.IsAITurn {
 		return

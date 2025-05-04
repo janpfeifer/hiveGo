@@ -79,27 +79,6 @@ func (g *Game) createBoardRects() {
 	g.MarkNextPlayer()
 }
 
-func (g *Game) MarkNextPlayer() {
-	for player := range state.PlayerNum(state.NumPlayers) {
-		width := 2.0 * ui.PixelRatio
-		stroke := "firebrick"
-		if g.board.IsFinished() {
-			if g.board.Draw() || g.board.Winner() == player {
-				stroke = "url(#colors)"
-				width = 12 * ui.PixelRatio
-			}
-		} else {
-			if g.board.NextPlayer == player {
-				width = 6 * ui.PixelRatio
-			}
-		}
-		SetAttrs(OffBoardRects[player], Attrs{
-			"stroke-width": width,
-			"stroke":       stroke,
-		})
-	}
-}
-
 var (
 	StartGameDialog = struct {
 		Div, Button jquery.JQuery
@@ -117,29 +96,13 @@ func OpenStartGameDialog() {
 }
 
 func StartGameDialogDone() {
-	// TODO: clean and restart board and UI pieces.
-	g := &Game{
-		board:     state.NewBoard(),
-		IsRunning: true,
+	// ...
+	err := g.StartAI(aiConfig, aiPlayer)
+	if err != nil {
+		fmt.Printf("Failed to create an AI player:\n%+v\n", err)
+		Alert(err.Error())
 	}
-
-	// Prepare game.
-	gameType := jq("input[name=game_type]:checked").Val()
-	StartGameDialog.Div.SetCss("display", "none")
-	if gameType == "ai" {
-		aiConfig := jq("input[name=ai_config]").Val()
-		fmt.Printf("AI: config=%s, starts=%s\n", aiConfig,
-			jq("input[name=ai_starts]:checked").Val())
-		aiPlayer := state.PlayerSecond
-		if jq("input[name=ai_starts]:checked").Val() == "on" {
-			aiPlayer = state.PlayerFirst
-		}
-		err := g.StartAI(aiConfig, aiPlayer)
-		if err != nil {
-			fmt.Printf("Failed to create an AI player:\n%+v\n", err)
-			Alert(err.Error())
-		}
-	}
+	// ...
 }
 
 var (
