@@ -385,7 +385,7 @@ func (ui *WebUI) createBoardRects() {
 		ui.canvas.AppendChild(&ui.offBoardGroups[ii].Node)
 		ui.offBoardRects[ii] = svg.SVGRectElementFromWrapper(CreateSVG("rect", Attrs{
 			"stroke": "firebrick",
-			"fill":   "moccasin",
+			"fill":   "#AA5",
 		}))
 		ui.offBoardGroups[ii].AppendChild(&ui.offBoardRects[ii].Node)
 	}
