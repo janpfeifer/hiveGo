@@ -33,6 +33,7 @@ type Searcher struct {
 	stats             Stats
 
 	drawScore float32
+	yieldFn   func()
 }
 
 // Assert that Searcher implements searchers.Searcher.
@@ -142,6 +143,11 @@ func (ab *Searcher) String() string {
 		parts = append(parts, fmt.Sprintf("randomness=%g", ab.randomness))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// SetCooperative implements the searchers.Searcher interface.
+func (ab *Searcher) SetCooperative(yieldFn func()) {
+	ab.yieldFn = yieldFn
 }
 
 // WithMaxDepth sets a default max depth of search: the unit here are plies (ply singular). Each player
@@ -363,6 +369,11 @@ func (ab *Searcher) recursion(ctx context.Context, board *Board, depthLeft int, 
 
 	// Leaf nodes take the score returned by the scorer.
 	if isLeaf {
+		// Cooperatively-yield, if in a cooperative set-up.
+		if ab.yieldFn != nil {
+			ab.yieldFn()
+		}
+
 		// Add noise to leaf nodes if randomness was configured:
 		if addNoise {
 			// Randomize only non end-of-game actions

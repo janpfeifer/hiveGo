@@ -17,7 +17,14 @@ type Searcher interface {
 	// Search returns the next action to take on the given board, along with the updated Board (after taking the action)
 	// and the expected score of taking that action.
 	Search(board *Board) (bestAction Action, bestBoard *Board, bestScore float32, err error)
+
+	// String prints the name of the searcher.
 	String() string
+
+	// SetCooperative requests the searcher to make occasional calls to yieldFn.
+	// This is required when running in the Browser, where there isn't real parallelism, and we don't want the
+	// UI to become irresponsive.
+	SetCooperative(yieldFn func())
 }
 
 // SearcherWithPolicy returns also a policy, a probability distribution over the actions.

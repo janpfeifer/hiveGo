@@ -71,6 +71,9 @@ type Searcher struct {
 
 	// ValueScorer to use during search.
 	scorer ai.PolicyScorer
+
+	// yieldFn is to be called at each step on "cooperative" concurrency set-ups.
+	yieldFn func()
 }
 
 // Compile-time check that Searcher implements searchers.SearcherWithPolicy.
@@ -131,6 +134,11 @@ func (s *Searcher) String() string {
 		parts = append(parts, fmt.Sprintf("temperature=%g", s.temperature))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// SetCooperative implements searchers.Searcher.
+func (s *Searcher) SetCooperative(yield func()) {
+	s.yieldFn = yield
 }
 
 // newCacheNode for the given board position and updated matchStats.
@@ -288,6 +296,9 @@ func (s *Searcher) searchImpl(board *Board, withPolicy bool) (action Action, nex
 			return
 		}
 		numTraverses++
+		if s.yieldFn != nil {
+			s.yieldFn()
+		}
 
 		if s.maxTraverses > 0 && numTraverses >= s.maxTraverses {
 			break
