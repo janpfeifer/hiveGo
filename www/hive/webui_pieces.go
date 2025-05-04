@@ -38,9 +38,9 @@ const (
 	OffBoard
 )
 
-// Face returns the size of a hexagon's face.
-func (ui *WebUI) Face() float64 {
-	return StandardFaceScale * ui.Scale
+// OnBoardFaceSize returns the size of a hexagon's face on-board (not for the off-board pieces).
+func (ui *WebUI) OnBoardFaceSize() float64 {
+	return StandardFaceScale * ui.PixelRatio * ui.Scale
 }
 
 func PlayerBackgroundColor(player state.PlayerNum) string {
@@ -115,7 +115,7 @@ func hexTriangleHeight(face float64) float64 {
 
 // PosToXY converts board positions to screen position.
 func (ui *WebUI) PosToXY(pos state.Pos, stackCount int) (x, y float64) {
-	face := ui.Face()
+	face := ui.OnBoardFaceSize()
 	hexWidth := 1.5 * face
 	triangleHeight := hexTriangleHeight(face)
 	hexHeight := 2. * triangleHeight
@@ -166,15 +166,14 @@ func (ui *WebUI) movePieceToXYFace(pons *PieceOnScreen, xc, yc, face float64) {
 // MovePieceTo a state.Pos, it is automatically converted to the canvas position on the browser.
 func (ui *WebUI) MovePieceTo(pons *PieceOnScreen, pos state.Pos, stackPos int) {
 	xc, yc := ui.PosToXY(pos, stackPos)
-	face := ui.Face()
+	face := ui.OnBoardFaceSize()
 	ui.movePieceToXYFace(pons, xc, yc, face)
 }
 
 // AdjustOnBoardPieces to the size of the window.
 // Needs to be called whenever the window is resized.
 func (ui *WebUI) AdjustOnBoardPieces() {
-
-	basePatternSize := 1024 * ImageBaseSize * ui.PixelRatio * StandardFaceScale * ui.Scale / 33.0
+	basePatternSize := ui.Scale * 1024 * ImageBaseSize * ui.PixelRatio * StandardFaceScale / 33.0
 	pieceScale := int(basePatternSize)
 	tileScale := int(basePatternSize * 50.0 / 36.0)
 
@@ -260,7 +259,6 @@ func (ui *WebUI) PlaceOnBoardPiece(playerNum state.PlayerNum, action state.Actio
 		}
 	}
 	if ponsAbove == nil {
-		fmt.Printf("Appending piece: %v\n", pons.Hex)
 		ui.boardGroup.AppendChild(&pons.Hex.Node)
 		ui.boardGroup.AppendChild(&pons.Rect.Node)
 	} else {

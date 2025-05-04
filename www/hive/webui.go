@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/gowebapi/webapi"
 	"github.com/gowebapi/webapi/dom"
 	"github.com/gowebapi/webapi/dom/domcore"
 	"github.com/gowebapi/webapi/graphics/svg"
@@ -9,6 +10,7 @@ import (
 	"github.com/gowebapi/webapi/html/htmlevent"
 	"github.com/janpfeifer/hiveGo/internal/state"
 	"k8s.io/klog/v2"
+	"math"
 	"strconv"
 )
 
@@ -232,9 +234,9 @@ func (ui *WebUI) RemoveSplashScreen() {
 // ==================================================================================================================
 
 var levelsConfigs = map[string]string{
-	"easy":   "fnn=#0;ab;max_depth=2;randomness=0.1",              // Easy
-	"medium": "a0fnn=#0;mcts;max_time=2s;temperature=1.5",         // Medium
-	"hard":   "a0fnn=#0;mcts;max_traverses=10000;temperature=0.1", // Hard
+	"easy":   "fnn=#0,ab,max_depth=2,randomness=0.1",              // Easy
+	"medium": "a0fnn=#0,mcts,max_time=2s,temperature=1.5",         // Medium
+	"hard":   "a0fnn=#0,mcts,max_traverses=10000,temperature=0.1", // Hard
 }
 
 // OpenGameStartDialog and manages the game dialog.
@@ -306,6 +308,24 @@ func (ui *WebUI) StartBoard(board *state.Board) {
 	ui.canvas.Style().SetProperty("display", "block", nil)
 	ui.canvas.Style().SetProperty("pointer-events", "all", nil)
 	ui.CreateOffBoardPieces()
+	ui.OnCanvasResize()
+
+	ui.canvas.SetOnWheel(func(event *htmlevent.WheelEvent, currentTarget *svg.SVGElement) {
+		ui.ZoomOnWheel(event)
+	})
+	//canvas.On(jquery.MOUSEDOWN, DragOnMouseDown)
+	//canvas.On(jquery.MOUSEUP, DragOnMouseUp)
+	//canvas.On(jquery.MOUSEMOVE, DragOnMouseMove)
+	Window.SetOnResize(func(_ *htmlevent.UIEvent, _ *webapi.Window) {
+		ui.OnCanvasResize()
+	})
+}
+
+// ZoomOnWheel responds to mouse wheel movement to control zoom.
+func (ui *WebUI) ZoomOnWheel(event *htmlevent.WheelEvent) {
+	scrollAmount := event.DeltaY()
+	ui.Scale = ui.Scale * math.Pow(1.1, scrollAmount/50.0)
+	fmt.Printf("Wheel event: new scale is %g\n", ui.Scale)
 	ui.OnCanvasResize()
 }
 
