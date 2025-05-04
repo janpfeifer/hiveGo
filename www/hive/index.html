@@ -44,7 +44,28 @@
 </head>
 <body>
 	<svg id="svg_canvas" class="fullscreen" style="background: #F0ED8B;">
-    <defs id="svg_defs"></defs>
+        <!-- Definitions (mostly patterns) shared by the SVG elements painted. Most will be created dynamically by the WASM program. -->
+        <defs id="svg_defs">
+            <!-- Tiles used under the pieces: on-board and off-board version will be scaled differently -->
+            <linearGradient id="reliefStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#000" stop-opacity="1"/>
+                <stop offset="50%" stop-color="#555" stop-opacity="1"/>
+                <stop offset="100%" stop-color="#AAA" stop-opacity="1"/>
+            </linearGradient>
+            <pattern id="offBoardTile0" patternUnits="objectBoundingBox" width="1.0" height="1.2" y="-0.1">
+                <image xlink:href="./assets/tile_player_0.png" x="0" y="0" width="1024" height="1024" />
+            </pattern>
+            <pattern id="offBoardTile1" patternUnits="objectBoundingBox" width="1.0" height="1.2" y="-0.1">
+                <image xlink:href="./assets/tile_player_1.png" x="0" y="0" width="1024" height="1024" />
+            </pattern>
+            <pattern id="onBoardTile0" patternUnits="objectBoundingBox" width="1.0" height="1.2" y="-0.1">
+                <image xlink:href="./assets/tile_player_0.png" x="0" y="0" width="1024" height="1024" />
+            </pattern>
+            <pattern id="onBoardTile1" patternUnits="objectBoundingBox" width="1.0" height="1.2" y="-0.1">
+                <image xlink:href="./assets/tile_player_1.png" x="0" y="0" width="1024" height="1024" />
+            </pattern>
+        </defs>
+        <!-- SVG Elements: created dynamically by the WASM program. -->
 	</svg>
 
     <div id="splashScreen" style="display:none; /* Initially hidden */" tabindex="0">

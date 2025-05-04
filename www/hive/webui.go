@@ -17,7 +17,7 @@ import (
 // ==================================================================================================================
 
 const (
-	StandardFaceScale = 24.0
+	StandardFaceScale = 28.0
 )
 
 // WebUI implements the Hive Wasm UI
@@ -45,6 +45,8 @@ type WebUI struct {
 	// Elements for pieces on the board:
 	onBoardPiecesPatterns, offBoardPiecesPatterns []*svg.SVGPatternElement
 	onBoardPiecesImages, offBoardPiecesImages     []*svg.SVGImageElement
+	onBoardTilesPatterns, offBoardTilesPatterns   [state.NumPlayers]*svg.SVGPatternElement
+	onBoardTilesImages, offBoardTilesImages       [state.NumPlayers]*svg.SVGImageElement
 
 	// Map of all pieces currently on board:
 	piecesOnBoard      map[state.Pos][]*PieceOnScreen
@@ -93,12 +95,21 @@ func NewWebUI() *WebUI {
 	// Board area:
 	ui.createBoardRects()
 
-	// Create patterns for pieces:
+	// Create patterns for pieces and its tiles:
 	ui.onBoardPiecesPatterns, ui.onBoardPiecesImages =
 		ui.createPiecesPatternsAndImages(OnBoard)
 	ui.offBoardPiecesPatterns, ui.offBoardPiecesImages =
 		ui.createPiecesPatternsAndImages(OffBoard)
-
+	for playerNum := range state.PlayerInvalid {
+		elem := Document.GetElementById(playerToTilePatternID(OffBoard, playerNum))
+		if elem == nil {
+			klog.Fatalf("Failed to find element %q", playerToTilePatternID(OffBoard, playerNum))
+		}
+		ui.offBoardTilesPatterns[playerNum] = svg.SVGPatternElementFromWrapper(elem)
+		ui.offBoardTilesImages[playerNum] = svg.SVGImageElementFromWrapper(ui.offBoardTilesPatterns[playerNum].FirstElementChild())
+		ui.onBoardTilesPatterns[playerNum] = svg.SVGPatternElementFromWrapper(Document.GetElementById(playerToTilePatternID(OnBoard, playerNum)))
+		ui.onBoardTilesImages[playerNum] = svg.SVGImageElementFromWrapper(ui.onBoardTilesPatterns[playerNum].FirstElementChild())
+	}
 	return ui
 }
 

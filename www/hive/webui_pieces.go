@@ -5,6 +5,8 @@ import (
 	"github.com/gowebapi/webapi/graphics/svg"
 	"github.com/gowebapi/webapi/html/htmlevent"
 	"github.com/janpfeifer/hiveGo/internal/state"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -52,7 +54,7 @@ func PlayerBackgroundColor(player state.PlayerNum) string {
 
 // OffBoardHeight for UI.
 func (ui *WebUI) OffBoardHeight() int {
-	return int(80.0 * ui.PixelRatio) // 128?
+	return int(96.0 * ui.PixelRatio) // 128?
 }
 
 // pieceToPatternID returns the HTML ID for the given piece type.
@@ -62,6 +64,15 @@ func pieceToPatternID(loc PieceLocation, p state.PieceType) string {
 		prefix = "offBoard"
 	}
 	return prefix + state.PieceNames[p]
+}
+
+// playerToTilePatternID returns the HTML ID for the given player tile.
+func playerToTilePatternID(loc PieceLocation, player state.PlayerNum) string {
+	prefix := "onBoard"
+	if loc == OffBoard {
+		prefix = "offBoard"
+	}
+	return strings.Join([]string{prefix, "Tile", strconv.Itoa(int(player))}, "")
 }
 
 // createPiecesPatternsAndImages for OnBoard or OffBoard.
@@ -185,24 +196,26 @@ func (ui *WebUI) offBoardMovePiece(pons *PieceOnScreen, stackPos int) {
 // to be placed on game.
 func (ui *WebUI) CreateOffBoardPieces(board *state.Board) {
 	index := 0
-	for player := range state.PlayerInvalid {
-		if current := ui.piecesOffBoard[player]; current != nil {
+	for playerNum := range state.PlayerInvalid {
+		if current := ui.piecesOffBoard[playerNum]; current != nil {
 			// Remove previous pieces:
 			// TODO: remove previous game pieces.
 		}
-		ui.piecesOffBoard[player] = make(map[state.PieceType][]*PieceOnScreen)
+		ui.piecesOffBoard[playerNum] = make(map[state.PieceType][]*PieceOnScreen)
 		for pieceType := state.ANT; pieceType < state.LastPiece; pieceType++ {
-			numPieces := board.Available(player, pieceType)
+			numPieces := board.Available(playerNum, pieceType)
 			pieces := make([]*PieceOnScreen, 0, numPieces)
 			for range numPieces {
 				pons := &PieceOnScreen{
 					Index:     index,
-					Player:    player,
+					Player:    playerNum,
 					PieceType: pieceType,
 					Hex: svg.SVGPolygonElementFromWrapper(CreateSVG("polygon", Attrs{
-						"stroke":       "black",
+						"stroke":       "url(#reliefStroke)",
 						"stroke-width": HexStrokeWidth * ui.PixelRatio,
-						"fill":         PlayerBackgroundColor(player),
+						"fill":         fmt.Sprintf("url(#%s)", playerToTilePatternID(OffBoard, playerNum)),
+
+						//"fill":         PlayerBackgroundColor(player),
 						"fill-opacity": 1.0,
 					})),
 					Rect: svg.SVGRectElementFromWrapper(CreateSVG("rect", Attrs{
@@ -213,14 +226,14 @@ func (ui *WebUI) CreateOffBoardPieces(board *state.Board) {
 					})),
 				}
 				index++
-				ui.offBoardGroups[player].AppendChild(&pons.Hex.Node)
-				ui.offBoardGroups[player].AppendChild(&pons.Rect.Node)
+				ui.offBoardGroups[playerNum].AppendChild(&pons.Hex.Node)
+				ui.offBoardGroups[playerNum].AppendChild(&pons.Rect.Node)
 				pons.Hex.SetOnMouseUp(func(event *htmlevent.MouseEvent, currentTarget *svg.SVGElement) {
 					ui.OnSelectOffBoardPiece(pons)
 				})
 				pieces = append(pieces, pons)
 			}
-			ui.piecesOffBoard[player][pieceType] = pieces
+			ui.piecesOffBoard[playerNum][pieceType] = pieces
 		}
 	}
 }
@@ -242,12 +255,24 @@ func (ui *WebUI) AdjustOffBoardPieces() {
 	}
 
 	// Adjust pattern sizes.
-	scale := int(1024 * ImageBaseSize * ui.PixelRatio * StandardFaceScale / 33.0)
-	fmt.Printf("Rescaling off-board piece images to %d x %d\n", scale, scale)
+	basePatternSize := 1024 * ImageBaseSize * ui.PixelRatio * StandardFaceScale / 33.0
+	pieceScale := int(basePatternSize)
+	fmt.Printf("Rescaling off-board piece images to %d x %d\n", pieceScale, pieceScale)
 	for _, image := range ui.offBoardPiecesImages {
 		SetAttrs(&image.Element, Attrs{
-			"width":  scale,
-			"height": scale,
+			"width":  pieceScale,
+			"height": pieceScale,
 		})
 	}
+
+	// Adjust pattern sizes.
+	tileScale := int(basePatternSize * 50.0 / 36.0)
+	fmt.Printf("Rescaling off-board tile images to %d x %d\n", tileScale, tileScale)
+	for _, image := range ui.offBoardTilesImages {
+		SetAttrs(&image.Element, Attrs{
+			"width":  tileScale,
+			"height": tileScale,
+		})
+	}
+
 }
