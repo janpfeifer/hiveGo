@@ -307,7 +307,8 @@ func (ui *WebUI) offBoardMovePiece(pons *PieceOnScreen, stackPos int) {
 
 // CreateOffBoardPieces display the pieces that are off-board, still
 // to be placed on game.
-func (ui *WebUI) CreateOffBoardPieces(board *state.Board) {
+func (ui *WebUI) CreateOffBoardPieces() {
+	board := ui.board
 	index := 0
 	for playerNum := range state.PlayerInvalid {
 		if current := ui.piecesOffBoard[playerNum]; current != nil {

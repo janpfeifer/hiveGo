@@ -18,6 +18,8 @@ import (
 
 // WebUI implements the Hive Wasm UI
 type WebUI struct {
+	board *state.Board
+
 	// HTML/SVG elements in the page
 	canvas  *svg.SVGElement
 	defs    *svg.SVGDefsElement
@@ -106,15 +108,6 @@ func NewWebUI() *WebUI {
 	return ui
 }
 
-// SetBusy changes the "busy" status, displaying the animated gif.
-func (ui *WebUI) SetBusy(busy bool) {
-	if busy {
-		ui.busyBox.Style().SetProperty("display", "block", nil)
-	} else {
-		ui.busyBox.Style().SetProperty("display", "none", nil)
-	}
-}
-
 var SVGNameSpace = "http://www.w3.org/2000/svg"
 
 // Attrs are attributes to be set in a new example.
@@ -151,6 +144,13 @@ func SetAttrs(elem *dom.Element, attrs Attrs) {
 // Window management ------------------------------------------------------------------------------------------------
 // ==================================================================================================================
 
+// UpdateBoard will update the display of status to the current board:
+// Current player, etc.
+func (ui *WebUI) UpdateBoard(board *state.Board) {
+	ui.board = board
+	ui.MarkNextPlayer()
+}
+
 // OnCanvasResize should be called when the main window is resized.
 func (ui *WebUI) OnCanvasResize() {
 	ui.Width = ui.canvas.ClientWidth()   // ?InnerWidth()
@@ -173,15 +173,24 @@ func (ui *WebUI) OnCanvasResize() {
 	})
 	ui.AdjustOffBoardPieces()
 	ui.AdjustOnBoardPieces()
+	ui.MarkNextPlayer()
 
 	/*
-		g.MarkNextPlayer()
 		g.AdjustEndGameMessagePosition()
 		Old.AdjustBusyBoxPosition()
 
 		// Adjust all elements on page.
 		OnChangeOfUIParams()
 	*/
+}
+
+// SetBusy changes the "busy" status, displaying the animated gif.
+func (ui *WebUI) SetBusy(busy bool) {
+	if busy {
+		ui.busyBox.Style().SetProperty("display", "block", nil)
+	} else {
+		ui.busyBox.Style().SetProperty("display", "none", nil)
+	}
 }
 
 // ==================================================================================================================
@@ -290,9 +299,14 @@ func (ui *WebUI) AIStarts() bool { return ui.aiStarts }
 // Board UI ---------------------------------------------------------------------------------------------------------
 // ==================================================================================================================
 
-func (ui *WebUI) EnableBoard() {
+// StartBoard (the UI) with the given board (the state).
+// It initializes the off-board
+func (ui *WebUI) StartBoard(board *state.Board) {
+	ui.board = board
 	ui.canvas.Style().SetProperty("display", "block", nil)
 	ui.canvas.Style().SetProperty("pointer-events", "all", nil)
+	ui.CreateOffBoardPieces()
+	ui.OnCanvasResize()
 }
 
 func (ui *WebUI) createBoardRects() {
@@ -320,17 +334,21 @@ func (ui *WebUI) createBoardRects() {
 }
 
 // MarkNextPlayer to play. It also highlights the winner if the game is finished.
-func (ui *WebUI) MarkNextPlayer(board *state.Board) {
+func (ui *WebUI) MarkNextPlayer() {
+	if ui.board == nil {
+		// No board set:
+		return
+	}
 	for player := range state.PlayerNum(state.NumPlayers) {
 		width := 1.0 * ui.PixelRatio
 		stroke := "firebrick"
-		if board.IsFinished() {
-			if board.Draw() || board.Winner() == player {
+		if ui.board.IsFinished() {
+			if ui.board.Draw() || ui.board.Winner() == player {
 				stroke = "url(#colors)"
 				width = 6 * ui.PixelRatio
 			}
 		} else {
-			if board.NextPlayer == player {
+			if ui.board.NextPlayer == player {
 				width = 3 * ui.PixelRatio
 			}
 		}
