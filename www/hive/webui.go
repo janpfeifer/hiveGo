@@ -16,10 +16,6 @@ import (
 // WebUI ------------------------------------------------------------------------------------------------------------
 // ==================================================================================================================
 
-const (
-	StandardFaceScale = 28.0
-)
-
 // WebUI implements the Hive Wasm UI
 type WebUI struct {
 	// HTML/SVG elements in the page
@@ -72,12 +68,9 @@ type WebUI struct {
 
 func NewWebUI() *WebUI {
 	ui := &WebUI{
-		// PixelRatio should be set to Window.Get("devicePixelRatio").Float(),
-		// but at least on PixelBook, the browser already zoom things to
-		// the PixelRatio without us needing to do anything. So fixed to 1.
-		// for now.
-		PixelRatio: 1.0,
-		Scale:      Window.DevicePixelRatio(),
+		// PixelRatio should be set to Window.Get("devicePixelRatio").Float().
+		PixelRatio: Window.DevicePixelRatio(),
+		Scale:      1.0,
 		ShiftX:     0,
 		ShiftY:     0,
 
@@ -179,6 +172,7 @@ func (ui *WebUI) OnCanvasResize() {
 		"height": offboardHeight,
 	})
 	ui.AdjustOffBoardPieces()
+	ui.AdjustOnBoardPieces()
 
 	/*
 		g.MarkNextPlayer()
@@ -328,16 +322,16 @@ func (ui *WebUI) createBoardRects() {
 // MarkNextPlayer to play. It also highlights the winner if the game is finished.
 func (ui *WebUI) MarkNextPlayer(board *state.Board) {
 	for player := range state.PlayerNum(state.NumPlayers) {
-		width := 2.0 * ui.PixelRatio
+		width := 1.0 * ui.PixelRatio
 		stroke := "firebrick"
 		if board.IsFinished() {
 			if board.Draw() || board.Winner() == player {
 				stroke = "url(#colors)"
-				width = 12 * ui.PixelRatio
+				width = 6 * ui.PixelRatio
 			}
 		} else {
 			if board.NextPlayer == player {
-				width = 6 * ui.PixelRatio
+				width = 3 * ui.PixelRatio
 			}
 		}
 		SetAttrs(&ui.offBoardRects[player].Element, Attrs{

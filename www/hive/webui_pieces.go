@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"github.com/gowebapi/webapi/graphics/svg"
 	"github.com/gowebapi/webapi/html/htmlevent"
+	"github.com/janpfeifer/hiveGo/internal/generics"
 	"github.com/janpfeifer/hiveGo/internal/state"
+	"k8s.io/klog/v2"
 	"strconv"
 	"strings"
 )
@@ -12,8 +14,9 @@ import (
 const (
 	// Interface visual constants:
 
+	StandardFaceScale = 10.0
 	PieceDrawingScale = 1.464
-	HexStrokeWidth    = 2.0
+	HexStrokeWidth    = 0.5
 	ImageBaseSize     = 0.0488
 )
 
@@ -54,7 +57,7 @@ func PlayerBackgroundColor(player state.PlayerNum) string {
 
 // OffBoardHeight for UI.
 func (ui *WebUI) OffBoardHeight() int {
-	return int(96.0 * ui.PixelRatio) // 128?
+	return int(38.4 * ui.PixelRatio) // 128?
 }
 
 // pieceToPatternID returns the HTML ID for the given piece type.
@@ -167,6 +170,116 @@ func (ui *WebUI) MovePieceTo(pons *PieceOnScreen, pos state.Pos, stackPos int) {
 	ui.movePieceToXYFace(pons, xc, yc, face)
 }
 
+// AdjustOnBoardPieces to the size of the window.
+// Needs to be called whenever the window is resized.
+func (ui *WebUI) AdjustOnBoardPieces() {
+
+	basePatternSize := 1024 * ImageBaseSize * ui.PixelRatio * StandardFaceScale * ui.Scale / 33.0
+	pieceScale := int(basePatternSize)
+	tileScale := int(basePatternSize * 50.0 / 36.0)
+
+	// Scale the patterns.
+	for _, image := range ui.onBoardPiecesImages {
+		SetAttrs(&image.Element, Attrs{
+			"width":  pieceScale,
+			"height": pieceScale,
+		})
+	}
+	for _, image := range ui.onBoardTilesImages {
+		SetAttrs(&image.Element, Attrs{
+			"width":  tileScale,
+			"height": tileScale,
+		})
+	}
+
+	// Scale hexagons.
+	for pos, slice := range ui.piecesOnBoard {
+		for stackPos, pons := range slice {
+			ui.MovePieceTo(pons, pos, stackPos)
+			SetAttrs(&pons.Hex.Element, Attrs{
+				"stroke-width": HexStrokeWidth * ui.PixelRatio * ui.Scale,
+			})
+		}
+	}
+}
+
+// RemoveOnBoardPiece from the UI.
+func (ui *WebUI) RemoveOnBoardPiece(action state.Action) {
+	pos := action.SourcePos
+	stack := ui.piecesOnBoard[pos]
+	if len(stack) == 0 {
+		klog.Errorf("Invalid move, there are no pieces in %s for action=%s!?\n", pos, action)
+		return
+	}
+	var pons *PieceOnScreen
+	stack, pons = generics.SlicePopLast(stack)
+	if len(stack) == 0 {
+		delete(ui.piecesOnBoard, pos)
+	} else {
+		// Pop the top piece.
+		ui.piecesOnBoard[pos] = stack
+	}
+	pons.Hex.Remove()
+	pons.Rect.Remove()
+}
+
+func (ui *WebUI) PlaceOnBoardPiece(playerNum state.PlayerNum, action state.Action) {
+	pos := action.TargetPos
+	stack := ui.piecesOnBoard[pos]
+	pons := &PieceOnScreen{
+		Index:     ui.piecesOnBoardIndex,
+		Player:    playerNum,
+		PieceType: action.Piece,
+		Hex: svg.SVGPolygonElementFromWrapper(CreateSVG("polygon", Attrs{
+			"stroke":       "url(#reliefStroke)",
+			"stroke-width": HexStrokeWidth * ui.PixelRatio * ui.Scale,
+			"fill":         fmt.Sprintf("url(#%s)", playerToTilePatternID(OnBoard, playerNum)),
+			"fill-opacity": 1.0,
+		})),
+		Rect: svg.SVGRectElementFromWrapper(CreateSVG("rect", Attrs{
+			"stroke":         "black",
+			"stroke-width":   0,
+			"fill":           fmt.Sprintf("url(#%s)", pieceToPatternID(OnBoard, action.Piece)),
+			"pointer-events": "none",
+		})),
+	}
+	ui.MovePieceTo(pons, pos, len(stack))
+	ui.piecesOnBoard[pos] = append(stack, pons)
+	ui.piecesOnBoardIndex++
+
+	// Make sure the new piece is under other pieces that are higher.
+	stackPos := len(stack)
+	var ponsAbove *PieceOnScreen
+	for _, pieces := range ui.piecesOnBoard {
+		if len(pieces) > stackPos+1 {
+			for _, tmpPons := range pieces[stackPos+1:] {
+				if ponsAbove == nil || tmpPons.Index < ponsAbove.Index {
+					ponsAbove = tmpPons
+				}
+			}
+		}
+	}
+	if ponsAbove == nil {
+		fmt.Printf("Appending piece: %v\n", pons.Hex)
+		ui.boardGroup.AppendChild(&pons.Hex.Node)
+		ui.boardGroup.AppendChild(&pons.Rect.Node)
+	} else {
+		fmt.Printf("Inserting piece before another: %v\n", ponsAbove)
+		ui.boardGroup.InsertBefore(&ponsAbove.Hex.Node, &pons.Hex.Node)
+		pons.Rect.InsertBefore(&ponsAbove.Hex.Node, &pons.Rect.Node)
+	}
+
+	// Connect click to selection.
+	pons.Hex.SetOnMouseUp(func(event *htmlevent.MouseEvent, currentTarget *svg.SVGElement) {
+		ui.OnSelectOnBoardPiece(pons, pos)
+	})
+}
+
+// OnSelectOnBoardPiece is called when an on-board piece is clicked.
+func (ui *WebUI) OnSelectOnBoardPiece(pons *PieceOnScreen, pos state.Pos) {
+	fmt.Printf("OnSelectOnBoardPiece: piece %s on %s\n", pons.PieceType, pos)
+}
+
 // ==================================================================================================================
 // Place off-board pieces  ------------------------------------------------------------------------------------------
 // ==================================================================================================================
@@ -214,8 +327,6 @@ func (ui *WebUI) CreateOffBoardPieces(board *state.Board) {
 						"stroke":       "url(#reliefStroke)",
 						"stroke-width": HexStrokeWidth * ui.PixelRatio,
 						"fill":         fmt.Sprintf("url(#%s)", playerToTilePatternID(OffBoard, playerNum)),
-
-						//"fill":         PlayerBackgroundColor(player),
 						"fill-opacity": 1.0,
 					})),
 					Rect: svg.SVGRectElementFromWrapper(CreateSVG("rect", Attrs{
@@ -243,6 +354,16 @@ func (ui *WebUI) OnSelectOffBoardPiece(pons *PieceOnScreen) {
 	fmt.Printf("Selected off-board %s (%s)\n", pons.PieceType, pons.Player)
 }
 
+// RemoveOffBoardPiece removes the off-board piece from the UI.
+func (ui *WebUI) RemoveOffBoardPiece(player state.PlayerNum, action state.Action) {
+	var pons *PieceOnScreen
+	ui.piecesOffBoard[player][action.Piece], pons = generics.SlicePopLast(ui.piecesOffBoard[player][action.Piece])
+	pons.Hex.Remove()
+	pons.Rect.Remove()
+}
+
+// AdjustOffBoardPieces to the size of the window.
+// Needs to be called whenever the window is resized.
 func (ui *WebUI) AdjustOffBoardPieces() {
 	// Adjust pieces positions.
 	for player := range state.PlayerInvalid {
@@ -257,22 +378,18 @@ func (ui *WebUI) AdjustOffBoardPieces() {
 	// Adjust pattern sizes.
 	basePatternSize := 1024 * ImageBaseSize * ui.PixelRatio * StandardFaceScale / 33.0
 	pieceScale := int(basePatternSize)
-	fmt.Printf("Rescaling off-board piece images to %d x %d\n", pieceScale, pieceScale)
+	tileScale := int(basePatternSize * 50.0 / 36.0)
+
 	for _, image := range ui.offBoardPiecesImages {
 		SetAttrs(&image.Element, Attrs{
 			"width":  pieceScale,
 			"height": pieceScale,
 		})
 	}
-
-	// Adjust pattern sizes.
-	tileScale := int(basePatternSize * 50.0 / 36.0)
-	fmt.Printf("Rescaling off-board tile images to %d x %d\n", tileScale, tileScale)
 	for _, image := range ui.offBoardTilesImages {
 		SetAttrs(&image.Element, Attrs{
 			"width":  tileScale,
 			"height": tileScale,
 		})
 	}
-
 }
