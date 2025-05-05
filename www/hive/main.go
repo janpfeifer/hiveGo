@@ -169,7 +169,7 @@ func (g *Game) RunGame() {
 	if g.board.Winner() == state.PlayerInvalid {
 		ui.SetWinner(fmt.Sprintf("Draw! No winner after %d moves.", g.board.MoveNumber))
 	} else {
-		ui.SetWinner(fmt.Sprintf("Player %d wins, congratulations!", g.board.Winner()))
+		ui.SetWinner(fmt.Sprintf("Player %d wins, congratulations!", g.board.Winner()+1))
 	}
 	fmt.Printf("Game finished: %s won!\n", g.board.Winner())
 }
