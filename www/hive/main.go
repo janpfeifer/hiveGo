@@ -108,7 +108,7 @@ func NewGame(ui *WebUI) *Game {
 			// Micro-sleeps: ugly ... but I don't know a better way to do this.
 			// Waiting for a RequestIdleCallback callback stops working after ~1000 calls to it, not sure
 			// why (maybe Go runtime for WebAssembly uses it in way the interferes...).
-			time.Sleep(500 * time.Microsecond)
+			time.Sleep(1 * time.Microsecond)
 		})
 	}
 

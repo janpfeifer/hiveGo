@@ -69,14 +69,13 @@ type WebUI struct {
 	restartButton *html.HTMLButtonElement
 
 	// Status Box: time and AI evals/second:
-	statusBox           *html.HTMLDivElement
-	playersClocks       [2]*html.HTMLSpanElement
-	aiEvalRateDiv       *html.HTMLDivElement
-	aiEvalRateSpan      *html.HTMLSpanElement
-	lastAccountedTime   time.Time
-	playersTimes        [2]time.Duration
-	isClockRunning      bool
-	clockCallbackFuncJS js.Value
+	statusBox         *html.HTMLDivElement
+	playersClocks     [2]*html.HTMLSpanElement
+	aiEvalRateDiv     *html.HTMLDivElement
+	aiEvalRateSpan    *html.HTMLSpanElement
+	lastAccountedTime time.Time
+	playersTimes      [2]time.Duration
+	isClockRunning    bool
 
 	// PixelRatio is a characteristic of the user's display: it gives a sense of how dense are pixels, where
 	// 1.0 is "standard". It affects the scaling of the "standard" size (off-board pieces, and original on-board pieces).
@@ -554,11 +553,9 @@ func (ui *WebUI) StartStatusBox() {
 			return nil
 		}
 		ui.UpdateTime()
-		Window.SetInterval(webapi.UnionFromJS(ui.clockCallbackFuncJS), &clockUpdateMilliseconds)
 		return nil
 	})
-	ui.clockCallbackFuncJS = clockCallbackFunc.Value
-	Window.SetInterval(webapi.UnionFromJS(ui.clockCallbackFuncJS), &clockUpdateMilliseconds)
+	Window.SetInterval(webapi.UnionFromJS(clockCallbackFunc.Value), &clockUpdateMilliseconds)
 }
 
 func (ui *WebUI) StopClocks() {
