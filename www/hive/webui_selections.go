@@ -110,7 +110,18 @@ func (ui *WebUI) selectSource() {
 		if len(ui.selections.sourceOnBoardPons) == 0 {
 			tutorialText = "<p><b>Select off-board piece to place on the board.</b></p>"
 			if ui.board.Available(playerNum, state.QUEEN) > 0 {
-				tutorialText += "<em>Queen is in your hand. Only after it is in play you can start moving pieces.</em>"
+				var numPiecesOnBoard int
+				ui.board.EnumeratePieces(func(player state.PlayerNum, piece state.PieceType, pos state.Pos, covered bool) {
+					if player == playerNum {
+						numPiecesOnBoard++
+					}
+				})
+				fmt.Printf("Num pieces on board: %d\n", numPiecesOnBoard)
+				if numPiecesOnBoard == 3 {
+					tutorialText += "<em>Your 4th piece placed must be the Queen. Only after it is in play you can start moving pieces.</em>"
+				} else {
+					tutorialText += "<em>Queen is in your hand. Only after it is in play you can start moving pieces.</em>"
+				}
 			} else {
 				tutorialText += "<em>No valid moves left, you can only place a new piece.</em>"
 			}
