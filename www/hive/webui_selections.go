@@ -203,9 +203,31 @@ func (ui *WebUI) selectTarget() {
 	}
 
 	if ui.isTutorialOn {
-		ui.SetTutorialContent(
-			fmt.Sprintf("<p><b>Select target position for the %s</b></p>"+
-				"<em>Press Esc to cancel</em>", ui.selections.targetActions[0].Piece))
+		if ui.selections.selectedSourceIsOffBoard {
+			ui.SetTutorialContent(
+				fmt.Sprintf("<p><b>Select target position to place the %s</b></p>"+
+					"<em>Press Esc to cancel</em>", ui.selections.targetActions[0].Piece))
+		} else {
+			var howDoesItMove string
+			switch ui.selections.targetActions[0].Piece {
+			case state.QUEEN:
+				howDoesItMove = "Queens move one step at a time in any direction available."
+			case state.ANT:
+				howDoesItMove = "Ants can move anywhere available around the hive."
+			case state.SPIDER:
+				howDoesItMove = "Spiders move exactly 3 available steps in on direction around the hive."
+			case state.GRASSHOPPER:
+				howDoesItMove = "Grasshoppers move jumping across pieces in one direction to the available space."
+			case state.BEETLE:
+				howDoesItMove = "Beetle is the only piece that can move over others. It moves one step in any direction."
+			default:
+				// No-op.
+			}
+			ui.SetTutorialContent(
+				fmt.Sprintf("<p><b>Select target position to move the selected %s</b></p>"+
+					"<p><em>%s</em></p><em>Press Esc to cancel</em>", ui.selections.targetActions[0].Piece, howDoesItMove))
+
+		}
 	}
 
 	ui.AdjustOffBoardPieces()

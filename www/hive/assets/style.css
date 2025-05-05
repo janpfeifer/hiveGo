@@ -238,17 +238,51 @@ h1 {
     font-family: Roboto, sans-serif;
 }
 
-.busy_class {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.3); /* Semi-transparent overlay */
+.game-over-modal {
+    position: fixed; /* Keep it fixed so it stays in view */
+    top: 20px; /* Position it at top */
+    left: 50%; /* Center it horizontally */
+    transform: translateX(-50%); /* Adjust for the center */
+    z-index: 1003; /* Higher than the SVG */
     display: flex;
     justify-content: center;
-    align-items: center;
-    font-size: 24px;
+    align-items: flex-end; /* Align content to the bottom of the modal area */
+}
+
+.game-over-content {
+    background-image: linear-gradient(to bottom, #f9f9f9, #f0e68c);
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+    padding: 20px;
+    font-family: 'Indie Flower', cursive;
+    text-align: center;
+    width: 80%; /* Adjust width as needed */
+    max-width: 400px; /* Maximum width */
+}
+
+.game-over-content h2 {
+    color: #d9534f; /* Reddish color for "Game Over" */
+    margin-top: 0;
+    margin-bottom: 15px;
+}
+
+.game-over-content p {
+    margin-bottom: 20px;
+    font-size: 16px;
+}
+
+.game-over-content button#restartGame {
+    background-color: #5cb85c; /* Green for restart */
     color: white;
-    font-weight: bold;
+    border: none;
+    border-radius: 5px;
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.game-over-content button#restartGame:hover {
+    background-color: #4cae4c;
 }

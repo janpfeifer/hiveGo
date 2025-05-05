@@ -61,6 +61,11 @@ type WebUI struct {
 	tutorialContent, tutorialBox *html.HTMLDivElement
 	tutorialTitle                *html.HTMLSpanElement
 
+	// Game over message:
+	gameOverBox   *html.HTMLDivElement
+	winnerMessage *html.HTMLParagraphElement
+	restartButton *html.HTMLButtonElement
+
 	// PixelRatio is a characteristic of the user's display: it gives a sense of how dense are pixels, where
 	// 1.0 is "standard". It affects the scaling of the "standard" size (off-board pieces, and original on-board pieces).
 	// Notice it changes if the user changes the zoom level using the browser (in Chrome using control+plus and control-minus).
@@ -131,6 +136,17 @@ func NewWebUI() *WebUI {
 	ui.tutorialContent = html.HTMLDivElementFromWrapper(elem)
 	elem = Document.GetElementById("tutorialTitle")
 	ui.tutorialTitle = html.HTMLSpanElementFromWrapper(elem)
+
+	// Game Over message:
+	elem = Document.GetElementById("gameOverBox")
+	ui.gameOverBox = html.HTMLDivElementFromWrapper(elem)
+	elem = Document.GetElementById("winnerMessage")
+	ui.winnerMessage = html.HTMLParagraphElementFromWrapper(elem)
+	elem = Document.GetElementById("restartGame")
+	ui.restartButton = html.HTMLButtonElementFromWrapper(elem)
+	ui.restartButton.SetOnClick(func(event *htmlevent.MouseEvent, currentTarget *html.HTMLElement) {
+		Window.Location().Reload()
+	})
 
 	ui.selectionsInit() // Actions selection mechanism.
 	return ui
@@ -491,4 +507,13 @@ func (ui *WebUI) SetTutorialContent(content string) {
 func (ui *WebUI) CloseTutorial() {
 	ui.isTutorialOn = false
 	ui.HideTutorial()
+}
+
+// ==================================================================================================================
+// Game Over --------------------------------------------------------------------------------------------------------
+// ==================================================================================================================
+
+func (ui *WebUI) SetWinner(message string) {
+	ui.gameOverBox.Style().SetProperty("display", "block", nil)
+	ui.winnerMessage.SetInnerHTML(message)
 }
