@@ -264,17 +264,10 @@ func (ui *WebUI) resetTargetSelection() {
 // makeSelectable changes the hexagon around the piece to be flashy.
 func (ui *WebUI) makeSelectable(pons *PieceOnScreen) {
 	SetAttrs(&pons.Hex.Element, Attrs{
-		"stroke":           "yellow",
-		"stroke-dasharray": "2",
+		"stroke":            "yellow",
+		"stroke-dasharray":  "2",
+		"stroke-dashoffset": "0",
 	})
-	animate := CreateSVG("animate", Attrs{
-		"attributeName": "stroke-dashoffset",
-		"from":          0.0,
-		"to":            100.0, // Enough to cover the whole hexagon.
-		"dur":           "500ms",
-		"repeatCount":   "indefinite",
-	})
-	pons.Hex.AppendChild(&animate.Node)
 }
 
 // makeUnselectable changes the hexagon around the piece to be normal.
@@ -283,12 +276,6 @@ func (ui *WebUI) makeUnselectable(pons *PieceOnScreen) {
 		"stroke":           "url(#reliefStroke)",
 		"stroke-dasharray": nil, // Remove it.
 	})
-
-	// Remove animation if there is one.
-	animate := pons.Hex.QuerySelector("animate")
-	if animate != nil {
-		animate.Remove()
-	}
 }
 
 // OnSelectOffBoardPiece is called when an off-board piece is clicked.

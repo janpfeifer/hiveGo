@@ -565,6 +565,11 @@ func (ui *WebUI) StopClocks() {
 	ui.isClockRunning = false
 }
 
+func (ui *WebUI) UpdateAIEvalRate(aiEvalRate float64) {
+	ui.aiEvalRateDiv.Style().SetProperty("display", "block", nil)
+	ui.aiEvalRateSpan.SetInnerHTML(fmt.Sprintf("%.1f", aiEvalRate))
+}
+
 func (ui *WebUI) UpdateTime() {
 	if !ui.isClockRunning {
 		return

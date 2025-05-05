@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/gowebapi/webapi/backgroundtask"
+	"time"
 
 	"github.com/gowebapi/webapi"
 	"github.com/gowebapi/webapi/core/js"
@@ -40,21 +41,27 @@ func startGame(ui *WebUI) {
 
 // Game coordinates the execution of the game.
 type Game struct {
-	board            *state.Board
-	ui               *WebUI
-	aiPlayer         *players.SearcherScorer
-	aiPlayerNum      state.PlayerNum
+	board       *state.Board
+	ui          *WebUI
+	aiPlayer    *players.SearcherScorer
+	aiPlayerNum state.PlayerNum
+
 	idleChan         chan bool
 	idleCallbackFunc js.Func
+
+	lastYield      time.Time
+	yieldStartTime time.Time
+	yieldCount     int
 }
 
 // NewGame creates and starts a new game using the provided UI.
 func NewGame(ui *WebUI) *Game {
 	klog.Infof("NewGame(): hotseat=%v, aiStarts=%v, aiConfig=%q\n", ui.IsHotseat(), ui.AIStarts(), ui.gameStartAIConfig.Value())
 	g := &Game{
-		board:    state.NewBoard(),
-		ui:       ui,
-		idleChan: make(chan bool, 1),
+		board:      state.NewBoard(),
+		ui:         ui,
+		idleChan:   make(chan bool, 1),
+		yieldCount: -1, // Not counting.
 	}
 	g.ui.StartBoard(g.board)
 	if !ui.IsHotseat() {
@@ -79,6 +86,25 @@ func NewGame(ui *WebUI) *Game {
 		})
 		Window.RequestIdleCallback((*backgroundtask.IdleRequestCallback)(&g.idleCallbackFunc), nil)
 		g.aiPlayer.Searcher.SetCooperative(func() {
+			now := time.Now()
+
+			// Count yields (each corresponds to one "eval" of the searcher.
+			if g.yieldCount >= 0 {
+				g.yieldCount++
+				if elapsed := now.Sub(g.yieldStartTime); elapsed > time.Second {
+					evalRate := float64(g.yieldCount) / elapsed.Seconds()
+					g.ui.UpdateAIEvalRate(evalRate)
+					g.yieldCount = 0
+					g.yieldStartTime = now
+				}
+			}
+
+			// Only yields every 100 ms.
+			if now.Sub(g.lastYield) < 100*time.Millisecond {
+				return
+			}
+			g.lastYield = now
+
 			<-g.idleChan // Read one element, which triggers yielding processing back to the browser.
 		})
 	}
@@ -108,7 +134,14 @@ func (g *Game) RunGame() {
 			ui.HideTutorial()
 			// Cooperative concurrency with the browser, let the UI catch up.
 			<-g.idleChan
+			g.yieldStartTime = time.Now()
+			g.yieldCount = 0
 			action, nextBoard, _, _ = g.aiPlayer.Play(g.board)
+			if elapsed := time.Since(g.yieldStartTime); elapsed < time.Second {
+				evalRate := float64(g.yieldCount) / elapsed.Seconds()
+				g.ui.UpdateAIEvalRate(evalRate)
+			}
+			g.yieldCount = -1
 
 		} else {
 			action, nextBoard = g.UserPlay()
@@ -127,7 +160,7 @@ func (g *Game) RunGame() {
 
 		// Update clocks and account time to the correct player.
 		ui.UpdateTime()
-		
+
 		g.board = nextBoard
 		ui.UpdateBoard(g.board)
 	}
