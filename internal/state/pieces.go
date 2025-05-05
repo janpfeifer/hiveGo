@@ -143,10 +143,8 @@ func (b *Board) antMoves(srcPos Pos) (poss []Pos) {
 
 // beetleMoves lists the valid moves for the Beetle located at the given position.
 func (b *Board) beetleMoves(srcPos Pos) (positions []Pos) {
-	fmt.Printf("beetleMoves: srcPos=%v\n", srcPos)
 	// If on top of a piece, it can move anywhere.
 	if _, _, stacked := b.PieceAt(srcPos); stacked {
-		fmt.Printf("\t- it is stacked: valid moves are %v\n", srcPos.Neighbours())
 		return srcPos.Neighbours()
 	}
 
