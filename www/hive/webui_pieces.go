@@ -289,11 +289,6 @@ func (ui *WebUI) insertOnBoardPieceIntoDOM(pons *PieceOnScreen) {
 	}
 }
 
-// OnSelectOnBoardPiece is called when an on-board piece is clicked.
-func (ui *WebUI) OnSelectOnBoardPiece(pons *PieceOnScreen, pos state.Pos) {
-	fmt.Printf("OnSelectOnBoardPiece: piece %s on %s\n", pons.PieceType, pos)
-}
-
 // ==================================================================================================================
 // Place off-board pieces  ------------------------------------------------------------------------------------------
 // ==================================================================================================================

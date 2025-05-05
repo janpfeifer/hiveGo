@@ -23,7 +23,6 @@ var (
 
 func main() {
 	ui := NewWebUI()
-	fmt.Printf("UI: %+v\n", ui)
 	gameDialog := func() {
 		ui.OpenGameStartDialog(func() { _ = NewGame(ui) })
 	}
@@ -31,9 +30,8 @@ func main() {
 	Window.SetOnResize(func(event *htmlevent.UIEvent, currentTarget *webapi.Window) {
 		ui.OnCanvasResize()
 	})
-	//ui.SetBusy(true)
 
-	// Wait forever: the Wasm program will never exit, while the page is opened.
+	// The Wasm program never exits, the main goroutine just goes to sleep.
 	select {}
 }
 
@@ -59,29 +57,31 @@ func NewGame(ui *WebUI) *Game {
 		idleChan: make(chan bool, 1),
 	}
 	g.ui.StartBoard(g.board)
-	var err error
-	g.aiPlayer, err = players.New(ui.gameStartAIConfig.Value())
-	if err != nil {
-		msg := fmt.Sprintf("Failed to created: %+v\n\nReload to start again.", err)
-		klog.Error(msg)
-		Window.Alert2(msg)
-		klog.Fatal("Stopping game.")
-	}
-	if ui.AIStarts() {
-		g.aiPlayerNum = state.PlayerFirst
-	} else {
-		g.aiPlayerNum = state.PlayerSecond
-	}
+	if !ui.IsHotseat() {
+		var err error
+		g.aiPlayer, err = players.New(ui.gameStartAIConfig.Value())
+		if err != nil {
+			msg := fmt.Sprintf("Failed to created: %+v\n\nReload to start again.", err)
+			klog.Error(msg)
+			Window.Alert2(msg)
+			klog.Fatal("Stopping game.")
+		}
+		if ui.AIStarts() {
+			g.aiPlayerNum = state.PlayerFirst
+		} else {
+			g.aiPlayerNum = state.PlayerSecond
+		}
 
-	// Setup "cooperative" concurrency required by the browser.
-	g.idleCallbackFunc = js.FuncOf(func(js.Value, []js.Value) interface{} {
-		g.idleCallback()
-		return nil
-	})
-	Window.RequestIdleCallback((*backgroundtask.IdleRequestCallback)(&g.idleCallbackFunc), nil)
-	g.aiPlayer.Searcher.SetCooperative(func() {
-		<-g.idleChan // Read one element, which triggers yielding processing back to the browser.
-	})
+		// Setup "cooperative" concurrency required by the browser.
+		g.idleCallbackFunc = js.FuncOf(func(js.Value, []js.Value) interface{} {
+			g.idleCallback()
+			return nil
+		})
+		Window.RequestIdleCallback((*backgroundtask.IdleRequestCallback)(&g.idleCallbackFunc), nil)
+		g.aiPlayer.Searcher.SetCooperative(func() {
+			<-g.idleChan // Read one element, which triggers yielding processing back to the browser.
+		})
+	}
 
 	go g.RunGame()
 	return g
@@ -102,12 +102,11 @@ func (g *Game) idleCallback() {
 func (g *Game) RunGame() {
 	ui := g.ui
 	for !g.board.IsFinished() {
-		// Cooperative concurrency with the browser, let the UI catch up.
-		<-g.idleChan
-
 		var nextBoard *state.Board
 		var action state.Action
-		if g.board.NextPlayer == g.aiPlayerNum {
+		if g.aiPlayer != nil && g.board.NextPlayer == g.aiPlayerNum {
+			// Cooperative concurrency with the browser, let the UI catch up.
+			<-g.idleChan
 			action, nextBoard, _, _ = g.aiPlayer.Play(g.board)
 
 		} else {

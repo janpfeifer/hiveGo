@@ -224,7 +224,6 @@ func (ui *WebUI) CreateSplashScreen(onClose func()) {
 	}
 	ui.splashDiv.Style().SetProperty("display", "flex", nil)
 	doneFn := func() {
-		fmt.Println("Closing splash screen")
 		ui.RemoveSplashScreen()
 		onClose()
 	}
