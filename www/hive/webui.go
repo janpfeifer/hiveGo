@@ -23,9 +23,8 @@ type WebUI struct {
 	board *state.Board
 
 	// HTML/SVG elements in the page
-	canvas  *svg.SVGElement
-	defs    *svg.SVGDefsElement
-	busyBox *html.HTMLImageElement
+	canvas *svg.SVGElement
+	defs   *svg.SVGDefsElement
 
 	// Splash image:
 	splashDiv       *html.HTMLDivElement
@@ -53,8 +52,14 @@ type WebUI struct {
 	piecesOffBoard   [state.NumPlayers]map[state.PieceType][]*PieceOnScreen
 	piecesOnBoardIdx int
 
-	// Selections hexagons: used to show the user the valid move options.
+	// selections: used to show the user the valid move options.
 	selections Selections
+
+	// Tutorial objects:
+	isTutorialOn                 bool
+	tutorialCloseButton          *html.HTMLButtonElement
+	tutorialContent, tutorialBox *html.HTMLDivElement
+	tutorialTitle                *html.HTMLSpanElement
 
 	// PixelRatio is a characteristic of the user's display: it gives a sense of how dense are pixels, where
 	// 1.0 is "standard". It affects the scaling of the "standard" size (off-board pieces, and original on-board pieces).
@@ -81,21 +86,21 @@ type WebUI struct {
 func NewWebUI() *WebUI {
 	ui := &WebUI{
 		// PixelRatio should be set to Window.Get("devicePixelRatio").Float().
-		PixelRatio: Window.DevicePixelRatio(),
-		Scale:      1.0,
-		ShiftX:     0,
-		ShiftY:     0,
-
+		PixelRatio:    Window.DevicePixelRatio(),
+		Scale:         1.0,
+		ShiftX:        0,
+		ShiftY:        0,
 		piecesOnBoard: make(map[state.Pos][]*PieceOnScreen),
+		isTutorialOn:  true,
 	}
+
+	// Canvas:
 	elem := Document.GetElementById("svg_canvas")
 	ui.canvas = svg.SVGElementFromJS(elem.JSValue())
 	elem = Document.GetElementById("svg_defs")
 	ui.defs = svg.SVGDefsElementFromJS(elem.JSValue())
-	elem = Document.GetElementById("busy")
-	ui.busyBox = html.HTMLImageElementFromJS(elem.JSValue())
-	ui.Width = ui.canvas.ClientWidth()   // InnerWidth ??
-	ui.Height = ui.canvas.ClientHeight() // InnerHeight ??
+	ui.Width = ui.canvas.ClientWidth()
+	ui.Height = ui.canvas.ClientHeight()
 
 	// Board area:
 	ui.createBoardRects()
@@ -115,6 +120,17 @@ func NewWebUI() *WebUI {
 		ui.onBoardTilesPatterns[playerNum] = svg.SVGPatternElementFromWrapper(Document.GetElementById(playerToTilePatternID(OnBoard, playerNum)))
 		ui.onBoardTilesImages[playerNum] = svg.SVGImageElementFromWrapper(ui.onBoardTilesPatterns[playerNum].FirstElementChild())
 	}
+
+	// Tutorial box:
+	elem = Document.GetElementById("tutorialBox")
+	ui.tutorialBox = html.HTMLDivElementFromWrapper(elem)
+	elem = Document.GetElementById("tutorialClose")
+	ui.tutorialCloseButton = html.HTMLButtonElementFromWrapper(elem)
+	ui.tutorialCloseButton.SetOnClick(func(event *htmlevent.MouseEvent, currentTarget *html.HTMLElement) { ui.CloseTutorial() })
+	elem = Document.GetElementById("tutorialContent")
+	ui.tutorialContent = html.HTMLDivElementFromWrapper(elem)
+	elem = Document.GetElementById("tutorialTitle")
+	ui.tutorialTitle = html.HTMLSpanElementFromWrapper(elem)
 
 	ui.selectionsInit() // Actions selection mechanism.
 	return ui
@@ -200,15 +216,6 @@ func (ui *WebUI) OnCanvasResize() {
 		// Adjust all elements on page.
 		OnChangeOfUIParams()
 	*/
-}
-
-// SetBusy changes the "busy" status, displaying the animated gif.
-func (ui *WebUI) SetBusy(busy bool) {
-	if busy {
-		ui.busyBox.Style().SetProperty("display", "block", nil)
-	} else {
-		ui.busyBox.Style().SetProperty("display", "none", nil)
-	}
 }
 
 // ==================================================================================================================
@@ -323,6 +330,7 @@ func (ui *WebUI) StartBoard(board *state.Board) {
 	ui.canvas.Style().SetProperty("display", "block", nil)
 	ui.canvas.Style().SetProperty("pointer-events", "all", nil)
 	ui.CreateOffBoardPieces()
+	ui.ShowTutorial()
 	ui.OnCanvasResize()
 
 	ui.canvas.SetOnWheel(func(event *htmlevent.WheelEvent, currentTarget *svg.SVGElement) {
@@ -447,4 +455,40 @@ func (ui *WebUI) MarkNextPlayer() {
 			"stroke":       stroke,
 		})
 	}
+}
+
+// ==================================================================================================================
+// Tutorial ---------------------------------------------------------------------------------------------------------
+// ==================================================================================================================
+
+func (ui *WebUI) ShowTutorial() {
+	ui.tutorialBox.Style().SetProperty("display", "block", nil)
+	if ui.board != nil {
+		style := ui.tutorialBox.Style()
+		offBoardHeight := strconv.Itoa(ui.OffBoardHeight()+20) + "px"
+		if ui.board.NextPlayer == state.PlayerFirst {
+			style.SetProperty("top", offBoardHeight, nil)
+			style.RemoveProperty("bottom")
+		} else {
+			style.SetProperty("bottom", offBoardHeight, nil)
+			style.RemoveProperty("top")
+		}
+	}
+}
+
+func (ui *WebUI) HideTutorial() {
+	ui.tutorialBox.Style().SetProperty("display", "none", nil)
+}
+
+func (ui *WebUI) SetTutorialTitle(title string) {
+	ui.tutorialTitle.SetInnerHTML(title)
+}
+
+func (ui *WebUI) SetTutorialContent(content string) {
+	ui.tutorialContent.SetInnerHTML(content)
+}
+
+func (ui *WebUI) CloseTutorial() {
+	ui.isTutorialOn = false
+	ui.HideTutorial()
 }

@@ -189,6 +189,55 @@ h1 {
     text-decoration: underline; /* Add underline on hover for better interaction */
 }
 
+.floating-tutorial {
+    position: fixed;
+    right: 20px;
+    z-index: 1002; /* Higher than the SVG */
+    background-color: rgba(0, 0, 0, 0.2);
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+    width: 15em;
+    padding: 5px;
+    font-family: sans-serif;
+    font-size: 14px;
+    color: #333;
+}
+
+.tutorial-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.tutorial-header span {
+    font-weight: bold;
+    background-color: rgba(0, 0, 0, 0.3);
+    font-family: Roboto, sans-serif;
+    border-radius: 5px;
+    padding: 5px 8px;
+    border: 1px solid transparent;
+}
+
+.close-button {
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+    background-color: rgba(0, 0, 0, 0.3);
+    border-radius: 5px;
+    padding: 5px 8px;
+    border: 1px solid transparent;
+}
+
+.close-button:hover {
+    border: 1px solid #000;
+}
+
+.tutorial-content {
+    line-height: 1.5;
+    font-family: Roboto, sans-serif;
+}
+
 .busy_class {
     position: fixed;
     top: 0;

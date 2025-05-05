@@ -293,9 +293,19 @@ func (b *Board) OpponentPlayer() PlayerNum {
 	return 1 - b.NextPlayer
 }
 
-// Available returns how many pieces of the given type are available for the given player.
+// Available returns how many pieces of the given type are available for the given player -- pieces off-board.
 func (b *Board) Available(player PlayerNum, piece PieceType) uint8 {
 	return b.available[player][piece-1]
+}
+
+// HasAvailable returns whether the player has any piece off-baord.
+func (b *Board) HasAvailable(player PlayerNum) bool {
+	for _, value := range b.available[player] {
+		if value > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // SetAvailable sets the number of pieces available for the given type for the

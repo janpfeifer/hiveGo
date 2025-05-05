@@ -105,6 +105,7 @@ func (g *Game) RunGame() {
 		var nextBoard *state.Board
 		var action state.Action
 		if g.aiPlayer != nil && g.board.NextPlayer == g.aiPlayerNum {
+			ui.HideTutorial()
 			// Cooperative concurrency with the browser, let the UI catch up.
 			<-g.idleChan
 			action, nextBoard, _, _ = g.aiPlayer.Play(g.board)
@@ -126,6 +127,8 @@ func (g *Game) RunGame() {
 		g.board = nextBoard
 		ui.UpdateBoard(g.board)
 	}
+
+	ui.HideTutorial()
 	fmt.Printf("Game finished: %s won!\n", g.board.Winner())
 }
 

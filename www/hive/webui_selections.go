@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/gowebapi/webapi/graphics/svg"
 	"github.com/gowebapi/webapi/html/htmlevent"
 	"github.com/janpfeifer/hiveGo/internal/generics"
@@ -48,10 +49,15 @@ func (ui *WebUI) AdjustSelections() {
 //
 // It uses the current board, which can be set with WebUI.UpdateBoard.
 func (ui *WebUI) SelectAction() state.Action {
+	if ui.isTutorialOn {
+		ui.ShowTutorial()
+	}
+	ui.SetTutorialTitle(fmt.Sprintf("Player #%d turn to move", ui.board.NextPlayer+1))
 	ui.selections.isSelecting = true
 	ui.selectSource()
 	action := <-ui.selections.selectedAction
 	ui.selections.isSelecting = false
+
 	return action
 }
 
@@ -97,6 +103,26 @@ func (ui *WebUI) selectSource() {
 		}
 		ui.selections.sourceOnBoardPons = append(ui.selections.sourceOnBoardPons, pons)
 		ui.makeSelectable(pons)
+	}
+
+	if ui.isTutorialOn {
+		var tutorialText string
+		if len(ui.selections.sourceOnBoardPons) == 0 {
+			tutorialText = "<p><b>Select off-board piece to place on the board.</b></p>"
+			if ui.board.Available(playerNum, state.QUEEN) > 0 {
+				tutorialText += "<em>Queen is in your hand. Only after it is in play you can start moving pieces.</em>"
+			} else {
+				tutorialText += "<em>No valid moves left, you can only place a new piece.</em>"
+			}
+		} else if len(ui.selections.sourceOffBoardPons) == 0 {
+			tutorialText = "<p><b>Select piece to move from the board.</b></p>"
+			if ui.board.HasAvailable(playerNum) {
+				tutorialText += "<em>No valid locations to place a new piece, you can only make moves</em>"
+			}
+		} else {
+			tutorialText = "<p><b>Select an off-board piece to place or an on-board piece to move.</b></p>"
+		}
+		ui.SetTutorialContent(tutorialText)
 	}
 
 	// Reshapes as needed.
@@ -174,6 +200,12 @@ func (ui *WebUI) selectTarget() {
 		ui.makeSelectable(pons)
 		ui.insertOnBoardPieceIntoDOM(pons)
 		ui.selections.targetPons[ii] = pons
+	}
+
+	if ui.isTutorialOn {
+		ui.SetTutorialContent(
+			fmt.Sprintf("<p><b>Select target position for the %s</b></p>"+
+				"<em>Press Esc to cancel</em>", ui.selections.targetActions[0].Piece))
 	}
 
 	ui.AdjustOffBoardPieces()
