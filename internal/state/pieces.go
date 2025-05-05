@@ -94,7 +94,7 @@ func (b *Board) spiderMovesDFS(srcPos, originalPos Pos, depth int, endPos, visit
 	}
 }
 
-// grasshopperMoves enumerates the valid moves for the Grasshopper located at the given position.
+// grasshopperMoves lists the valid moves for the Grasshopper located at the given position.
 func (b *Board) grasshopperMoves(srcPos Pos) (poss []Pos) {
 	poss = nil
 	for direction := 0; direction < NumNeighbors; direction++ {
@@ -114,7 +114,7 @@ func (b *Board) grasshopperNextFree(srcPos Pos, direction int) (steps int, tgtPo
 	return
 }
 
-// antMoves enumerates the valid moves for the Ant located at the given position.
+// antMoves lists the valid moves for the Ant located at the given position.
 func (b *Board) antMoves(srcPos Pos) (poss []Pos) {
 	// Perform a BFS to find all valid positions.
 	toVisit := map[Pos]bool{srcPos: true}
@@ -141,10 +141,12 @@ func (b *Board) antMoves(srcPos Pos) (poss []Pos) {
 	return
 }
 
-// beetleMoves enumerates the valid moves for the Beetle located at the given position.
+// beetleMoves lists the valid moves for the Beetle located at the given position.
 func (b *Board) beetleMoves(srcPos Pos) (positions []Pos) {
+	fmt.Printf("beetleMoves: srcPos=%v\n", srcPos)
 	// If on top of a piece, it can move anywhere.
 	if _, _, stacked := b.PieceAt(srcPos); stacked {
+		fmt.Printf("\t- it is stacked: valid moves are %v\n", srcPos.Neighbours())
 		return srcPos.Neighbours()
 	}
 

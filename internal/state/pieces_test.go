@@ -238,4 +238,20 @@ func TestBeetleMoves(t *testing.T) {
 	want := []Pos{{-1, 0}, {0, 0}, {0, 1}}
 	assert.Equalf(t, want, moves, "For player #%d %s at %s, wanted %v, got %v",
 		0, pieceType, Pos{-1, 1}, want, moves)
+
+	// Checks that the Beetle can move anywhere in the neighborhood if it is on top of another piece.
+	layout = []PieceOnBoard{
+		{Pos{0, 0}, 0, QUEEN},
+		{Pos{0, 1}, 1, GRASSHOPPER},
+		{Pos{0, 1}, 0, BEETLE},
+		{Pos{0, 2}, 1, QUEEN},
+	}
+	board = BuildBoard(layout, false)
+	PrintBoard(board)
+	board.NextPlayer = 0
+	board.BuildDerived()
+	moves = listMovesForPiece(board, BEETLE, Pos{0, 1})
+	want = []Pos{Pos{0, 0}, Pos{1, 0}, Pos{-1, 1}, Pos{1, 1}, Pos{-1, 2}, Pos{0, 2}}
+	assert.Equalf(t, want, moves, "For player #%d %s at %s, wanted %v, got %v",
+		0, pieceType, Pos{-1, 1}, want, moves)
 }

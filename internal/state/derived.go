@@ -326,6 +326,7 @@ func (b *Board) addMoveActions(player PlayerNum, actions []Action) []Action {
 		return actions
 	}
 
+	fmt.Printf("addMoveActions(%d):\n", player)
 	d := b.Derived
 	for srcPos, piecesStack := range b.board {
 		piecePlayer, piece := piecesStack.Top()
@@ -333,7 +334,8 @@ func (b *Board) addMoveActions(player PlayerNum, actions []Action) []Action {
 			// We are only interested in the current player.
 			continue
 		}
-		if !d.RemovablePositions.Has(srcPos) {
+		fmt.Printf("Piece at top @ %s: %s\n", srcPos, piece)
+		if piecesStack.CountPieces() == 1 && !d.RemovablePositions.Has(srcPos) {
 			// Skip pieces that if removal would break the hive.
 			continue
 		}
