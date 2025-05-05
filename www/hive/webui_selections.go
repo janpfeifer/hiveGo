@@ -2,26 +2,33 @@ package main
 
 import (
 	"fmt"
-	"github.com/gomlx/gomlx/types"
+	"github.com/gowebapi/webapi/graphics/svg"
+	"github.com/gowebapi/webapi/html/htmlevent"
+	"github.com/janpfeifer/hiveGo/internal/generics"
 	"github.com/janpfeifer/hiveGo/internal/state"
 )
 
 // Selections is a component of WebUI that handles the human player selection of an action.
 type Selections struct {
 	isSelecting, isSelectingSource, isSelectingTarget bool
+	selectedAction                                    chan state.Action
 
 	// Valid sources of the move (off-board or on-board)
 	sourcesOnBoardPons, sourceOffBoardPons []*PieceOnScreen
-	selectedSourceIsOffBoard               bool
-	selectedSourcePons                     *PieceOnScreen
 
-	//TargetHexes                           []jquery.JQuery
-	//TargetActions                         []state.Action
+	// Selected source, valid once isSelectingTarget is true.
+	selectedSourceIsOffBoard bool
+	selectedSourcePons       *PieceOnScreen
+	selectedSourcePos        state.Pos
 
+	// Valid target positions
+	targetPons    []*PieceOnScreen
+	targetActions []state.Action
 }
 
 // selectionsInit is called when WebUI is constructed.
 func (ui *WebUI) selectionsInit() {
+	ui.selections.selectedAction = make(chan state.Action)
 }
 
 // AdjustSelections to change in resolution.
@@ -29,6 +36,10 @@ func (ui *WebUI) AdjustSelections() {
 	strokeWidth := 2.5 * HexStrokeWidth * ui.PixelRatio
 	for _, pons := range ui.selections.sourceOffBoardPons {
 		SetAttrs(&pons.Hex.Element, Attrs{"stroke-width": strokeWidth})
+	}
+	for ii, pons := range ui.selections.targetPons {
+		SetAttrs(&pons.Hex.Element, Attrs{"stroke-width": strokeWidth})
+		ui.MovePieceTo(pons, ui.selections.targetActions[ii].TargetPos, pons.StackPos)
 	}
 }
 
@@ -39,20 +50,20 @@ func (ui *WebUI) AdjustSelections() {
 func (ui *WebUI) SelectAction() state.Action {
 	ui.selections.isSelecting = true
 	ui.selectSource()
-
-	select {}
-
+	action := <-ui.selections.selectedAction
 	ui.selections.isSelecting = false
-	return state.Action{}
+	return action
 }
 
 // selectSource displays the valid source positions to move.
 func (ui *WebUI) selectSource() {
+	ui.selections.isSelectingSource = true
+	ui.selections.isSelectingTarget = false
 	board := ui.board
 	playerNum := ui.board.NextPlayer
 
 	// Find off-board pieces that are placeable:
-	offBoardPieces := types.MakeSet[state.PieceType]()
+	offBoardPieces := generics.MakeSet[state.PieceType]()
 	for _, action := range board.Derived.Actions {
 		if action.Move {
 			// We are only interested in the place new piece actions here.
@@ -77,8 +88,92 @@ func (ui *WebUI) resetSourceSelection() {
 	for _, pons := range ui.selections.sourceOffBoardPons {
 		ui.makeUnselectable(pons)
 	}
+	ui.selections.sourceOffBoardPons = nil
+}
+
+func (ui *WebUI) selectTarget() {
+	ui.selections.isSelectingSource = false
+	ui.selections.isSelectingTarget = true
+	ui.resetSourceSelection()
+
+	ui.selections.targetActions = make([]state.Action, 0, len(ui.board.Derived.Actions))
+	if ui.selections.selectedSourceIsOffBoard {
+		// Placing a new piece.
+		for _, action := range ui.board.Derived.Actions {
+			if action.Move {
+				continue
+			}
+			if action.Piece != ui.selections.selectedSourcePons.PieceType {
+				continue
+			}
+			ui.selections.targetActions = append(ui.selections.targetActions, action)
+		}
+	} else {
+		// Moving piece.
+		for _, action := range ui.board.Derived.Actions {
+			if !action.Move {
+				continue
+			}
+			if !action.SourcePos.Equal(ui.selections.selectedSourcePos) {
+				continue
+			}
+			ui.selections.targetActions = append(ui.selections.targetActions, action)
+		}
+	}
+	fmt.Printf("%d target positions to select from\n", len(ui.selections.targetActions))
+
+	// Make the source piece selectable: if selected the source is unselected.
+	ui.makeSelectable(ui.selections.selectedSourcePons)
+
+	// Notice even if we have only one target position to choose from, we still want to show and
+	// ask the user to click on it to confirm the move -- the user may decide to change the source.
+	playerNum := ui.board.NextPlayer
+	ui.selections.targetPons = make([]*PieceOnScreen, len(ui.selections.targetActions))
+	fmt.Println("Target positions:")
+	for ii, action := range ui.selections.targetActions {
+		pos := action.TargetPos
+		fmt.Printf("\t%s\n", pos)
+		stackPos := len(ui.piecesOnBoard[pos])
+		pons := &PieceOnScreen{
+			Index:     ui.piecesOnBoardIdx,
+			Player:    playerNum,
+			PieceType: action.Piece,
+			StackPos:  stackPos,
+			Hex: svg.SVGPolygonElementFromWrapper(CreateSVG("polygon", Attrs{
+				"stroke":       "url(#reliefStroke)",
+				"stroke-width": ui.strokeWidth() * ui.Scale,
+				"fill":         "black",
+				"fill-opacity": 0.3,
+			})),
+		}
+		pons.Hex.SetOnMouseUp(func(event *htmlevent.MouseEvent, currentTarget *svg.SVGElement) {
+			ui.OnSelectTarget(ii)
+		})
+
+		ui.MovePieceTo(pons, pos, stackPos)
+		ui.makeSelectable(pons)
+		ui.insertOnBoardPieceIntoDOM(pons)
+		ui.selections.targetPons[ii] = pons
+	}
+
 	ui.AdjustOffBoardPieces()
 	ui.AdjustOnBoardPieces()
+	ui.AdjustSelections()
+}
+
+func (ui *WebUI) resetTargetSelection() {
+	for _, pons := range ui.selections.targetPons {
+		ui.makeUnselectable(pons)
+		pons.Hex.Remove()
+
+	}
+	ui.makeUnselectable(ui.selections.selectedSourcePons)
+	ui.selections.targetPons = nil
+	ui.selections.targetActions = nil
+	ui.selections.isSelectingTarget = false
+	ui.AdjustOffBoardPieces()
+	ui.AdjustOnBoardPieces()
+	ui.AdjustSelections()
 }
 
 // makeSelectable changes the hexagon around the piece to be flashy.
@@ -121,8 +216,10 @@ func (ui *WebUI) OnSelectOffBoardPiece(pons *PieceOnScreen) {
 			// Click on a random off-board piece, ignore.
 			return
 		}
-		// Undo source selection.
-		// TODO
+		// Undo source selection: stop target selection and go back to source selection.
+		ui.resetTargetSelection()
+		ui.selections.selectedSourcePons = nil
+		ui.selectSource()
 		return
 	}
 	var found bool
@@ -140,8 +237,14 @@ func (ui *WebUI) OnSelectOffBoardPiece(pons *PieceOnScreen) {
 	// Source piece to place was selected.
 	ui.selections.selectedSourceIsOffBoard = true
 	ui.selections.selectedSourcePons = pons
-	ui.selections.isSelectingSource = false
-	ui.selections.isSelectingTarget = true
 	fmt.Printf("Selected off-board %s (player #%d)\n", pons.PieceType, pons.Player+1)
 	ui.resetSourceSelection()
+	ui.selectTarget()
+}
+
+func (ui *WebUI) OnSelectTarget(targetIdx int) {
+	action := ui.selections.targetActions[targetIdx]
+	fmt.Printf("Selected target %s\n", action.TargetPos)
+	ui.resetTargetSelection()
+	ui.selections.selectedAction <- action
 }

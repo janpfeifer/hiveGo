@@ -27,7 +27,9 @@ type PieceOnScreen struct {
 	StackPos  int
 	PieceType state.PieceType
 	Hex       *svg.SVGPolygonElement
-	Rect      *svg.SVGRectElement
+
+	// Rect can be nil, if the PieceOnScreen is being used simply as a place-holder for a position selection.
+	Rect *svg.SVGRectElement
 }
 
 // PieceLocation can be onBoard or offBoard.
@@ -117,20 +119,19 @@ func hexTriangleHeight(face float64) float64 {
 	return 0.866 * face // sqrt(3)/2 * face
 }
 
-// PosToXY converts board positions to screen position.
-func (ui *WebUI) PosToXY(pos state.Pos, stackCount int) (x, y float64) {
+// posToXY converts board positions to screen position.
+func (ui *WebUI) posToXY(pos state.Pos, stackCount int) (x, y float64) {
 	face := ui.OnBoardFaceSize()
 	hexWidth := 1.5 * face
 	triangleHeight := hexTriangleHeight(face)
 	hexHeight := 2. * triangleHeight
 
 	x = ui.ShiftX + float64(pos.X())*hexWidth
-	y = ui.ShiftY + float64(pos.Y())*hexHeight
-	if pos.X()%2 != 0 {
-		y += triangleHeight
-	}
-	x += float64(stackCount) * 3.0 * ui.Scale
+	y = ui.ShiftY + float64(pos.Y())*hexHeight + float64(pos.X())*triangleHeight
+
+	// Relative stack position:
 	y -= float64(stackCount) * 3.0 * ui.Scale
+	x += float64(stackCount) * 1.0 * ui.Scale
 
 	// Add center of screen:
 	x += float64(ui.Width / 2)
@@ -159,17 +160,19 @@ func (ui *WebUI) movePieceToXYFace(pons *PieceOnScreen, xc, yc, face float64) {
 	moveHexToXYFace(pons.Hex, xc, yc, face)
 
 	// Move rectangle.
-	rectSize := face * PieceDrawingScale
-	SetAttrs(&pons.Rect.Element,
-		Attrs{
-			"x": xc - rectSize/2.0, "y": yc - rectSize/2.0,
-			"width": rectSize, "height": rectSize,
-		})
+	if pons.Rect != nil {
+		rectSize := face * PieceDrawingScale
+		SetAttrs(&pons.Rect.Element,
+			Attrs{
+				"x": xc - rectSize/2.0, "y": yc - rectSize/2.0,
+				"width": rectSize, "height": rectSize,
+			})
+	}
 }
 
 // MovePieceTo a state.Pos, it is automatically converted to the canvas position on the browser.
 func (ui *WebUI) MovePieceTo(pons *PieceOnScreen, pos state.Pos, stackPos int) {
-	xc, yc := ui.PosToXY(pos, stackPos)
+	xc, yc := ui.posToXY(pos, stackPos)
 	face := ui.OnBoardFaceSize()
 	ui.movePieceToXYFace(pons, xc, yc, face)
 }
@@ -249,9 +252,18 @@ func (ui *WebUI) PlaceOnBoardPiece(playerNum state.PlayerNum, action state.Actio
 		})),
 	}
 	ui.MovePieceTo(pons, pos, len(stack))
+	ui.insertOnBoardPieceIntoDOM(pons)
 	ui.piecesOnBoard[pos] = append(stack, pons)
 	ui.piecesOnBoardIdx++
 
+	// Connect click to selection.
+	pons.Hex.SetOnMouseUp(func(event *htmlevent.MouseEvent, currentTarget *svg.SVGElement) {
+		ui.OnSelectOnBoardPiece(pons, pos)
+	})
+}
+
+// insertOnBoardPieceIntoDOM in order appropriate to its stack position.
+func (ui *WebUI) insertOnBoardPieceIntoDOM(pons *PieceOnScreen) {
 	// Make sure the new piece is under other pieces that are higher.
 	var ponsAbove *PieceOnScreen
 	for _, pieces := range ui.piecesOnBoard {
@@ -265,18 +277,16 @@ func (ui *WebUI) PlaceOnBoardPiece(playerNum state.PlayerNum, action state.Actio
 	}
 	if ponsAbove == nil {
 		ui.boardGroup.AppendChild(&pons.Hex.Node)
-		ui.boardGroup.AppendChild(&pons.Rect.Node)
+		if pons.Rect != nil {
+			ui.boardGroup.AppendChild(&pons.Rect.Node)
+		}
 	} else {
 		anchorNode := &ponsAbove.Hex.Node
-		fmt.Printf("Inserting piece before %s at stack-level %d\n", ponsAbove.PieceType, ponsAbove.StackPos)
 		ui.boardGroup.InsertBefore(&pons.Hex.Node, anchorNode)
-		ui.boardGroup.InsertBefore(&pons.Rect.Node, anchorNode)
+		if pons.Rect != nil {
+			ui.boardGroup.InsertBefore(&pons.Rect.Node, anchorNode)
+		}
 	}
-
-	// Connect click to selection.
-	pons.Hex.SetOnMouseUp(func(event *htmlevent.MouseEvent, currentTarget *svg.SVGElement) {
-		ui.OnSelectOnBoardPiece(pons, pos)
-	})
 }
 
 // OnSelectOnBoardPiece is called when an on-board piece is clicked.
@@ -367,7 +377,6 @@ func (ui *WebUI) RemoveOffBoardPiece(player state.PlayerNum, action state.Action
 // Needs to be called whenever the window is resized.
 func (ui *WebUI) AdjustOffBoardPieces() {
 	strokeWidth := ui.strokeWidth()
-	fmt.Printf("Adjusting off-board stroke-width to %g (pixelRatio=%g, HexStrokeWidth=%g)\n", strokeWidth, ui.PixelRatio, HexStrokeWidth)
 
 	// Adjust pieces positions.
 	for player := range state.PlayerInvalid {
