@@ -262,6 +262,20 @@ func (ui *WebUI) OnSelectOffBoardPiece(pons *PieceOnScreen) {
 	ui.selectTarget()
 }
 
+func (ui *WebUI) cancelSelection() {
+	if !ui.selections.isSelecting {
+		return
+	}
+	if ui.selections.isSelectingTarget {
+		ui.resetTargetSelection()
+		ui.selections.selectedSourcePons = nil
+		ui.selectSource()
+		return
+	} else if ui.selections.isSelectingSource {
+		// Nothing was selected yet, no-op.
+	}
+}
+
 // OnSelectOnBoardPiece is called when an on-board piece is clicked.
 func (ui *WebUI) OnSelectOnBoardPiece(pons *PieceOnScreen, pos state.Pos) {
 	if !ui.selections.isSelecting {

@@ -337,11 +337,32 @@ func (ui *WebUI) StartBoard(board *state.Board) {
 	ui.canvas.SetOnMouseMove(func(event *htmlevent.MouseEvent, currentTarget *svg.SVGElement) {
 		ui.DragOnMouseMove(event)
 	})
+	ui.canvas.SetOnKeyUp(func(event *htmlevent.KeyboardEvent, currentTarget *svg.SVGElement) {
+		ui.OnKeyPress(event)
+	})
 	//canvas.On(jquery.MOUSEUP, DragOnMouseUp)
 	//canvas.On(jquery.MOUSEMOVE, DragOnMouseMove)
 	Window.SetOnResize(func(_ *htmlevent.UIEvent, _ *webapi.Window) {
 		ui.OnCanvasResize()
 	})
+	ui.canvas.Focus(nil)
+}
+
+func (ui *WebUI) OnKeyPress(event *htmlevent.KeyboardEvent) {
+	if event.Key() == "Escape" && ui.selections.isSelecting {
+		ui.cancelSelection()
+		event.PreventDefault()
+		return
+	}
+	if event.Key() == "Home" {
+		ui.Scale = 1.0
+		ui.ShiftX = 0
+		ui.ShiftY = 0
+		ui.OnCanvasResize()
+		event.PreventDefault()
+		return
+	}
+	return
 }
 
 // ZoomOnWheel responds to mouse wheel movement to control zoom.
