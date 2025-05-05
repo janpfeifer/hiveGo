@@ -292,8 +292,8 @@ func (ui *WebUI) RemoveSplashScreen() {
 // ==================================================================================================================
 
 var levelsConfigs = map[string]string{
-	"easy":   "fnn=#0,ab,max_depth=2,randomness=0.1",              // Easy
-	"medium": "a0fnn=#0,mcts,max_time=2s,temperature=1.5",         // Medium
+	"easy":   "fnn=#0,ab,max_depth=1,randomness=0.2",              // Easy
+	"medium": "fnn=#0,ab,max_depth=2,randomness=0.05",             // Medium
 	"hard":   "a0fnn=#0,mcts,max_traverses=10000,temperature=0.1", // Hard
 }
 
