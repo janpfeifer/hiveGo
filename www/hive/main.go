@@ -124,6 +124,10 @@ func (g *Game) RunGame() {
 			}
 			ui.PlaceOnBoardPiece(player, action)
 		}
+
+		// Update clocks and account time to the correct player.
+		ui.UpdateTime()
+		
 		g.board = nextBoard
 		ui.UpdateBoard(g.board)
 	}

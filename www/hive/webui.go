@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/gowebapi/webapi"
+	"github.com/gowebapi/webapi/core/js"
 	"github.com/gowebapi/webapi/dom"
 	"github.com/gowebapi/webapi/dom/domcore"
 	"github.com/gowebapi/webapi/graphics/svg"
@@ -12,6 +13,7 @@ import (
 	"k8s.io/klog/v2"
 	"math"
 	"strconv"
+	"time"
 )
 
 // ==================================================================================================================
@@ -65,6 +67,16 @@ type WebUI struct {
 	gameOverBox   *html.HTMLDivElement
 	winnerMessage *html.HTMLParagraphElement
 	restartButton *html.HTMLButtonElement
+
+	// Status Box: time and AI evals/second:
+	statusBox           *html.HTMLDivElement
+	playersClocks       [2]*html.HTMLSpanElement
+	aiEvalRateDiv       *html.HTMLDivElement
+	aiEvalRateSpan      *html.HTMLSpanElement
+	lastAccountedTime   time.Time
+	playersTimes        [2]time.Duration
+	isClockRunning      bool
+	clockCallbackFuncJS js.Value
 
 	// PixelRatio is a characteristic of the user's display: it gives a sense of how dense are pixels, where
 	// 1.0 is "standard". It affects the scaling of the "standard" size (off-board pieces, and original on-board pieces).
@@ -147,6 +159,14 @@ func NewWebUI() *WebUI {
 	ui.restartButton.SetOnClick(func(event *htmlevent.MouseEvent, currentTarget *html.HTMLElement) {
 		Window.Location().Reload()
 	})
+
+	// Status box:
+	elem = Document.GetElementById("statusBox")
+	ui.statusBox = html.HTMLDivElementFromWrapper(elem)
+	ui.playersClocks[0] = html.HTMLSpanElementFromWrapper(Document.GetElementById("player0Clock"))
+	ui.playersClocks[1] = html.HTMLSpanElementFromWrapper(Document.GetElementById("player1Clock"))
+	ui.aiEvalRateDiv = html.HTMLDivElementFromWrapper(Document.GetElementById("aiEvalRate"))
+	ui.aiEvalRateSpan = html.HTMLSpanElementFromWrapper(Document.GetElementById("evalsPerSec"))
 
 	ui.selectionsInit() // Actions selection mechanism.
 	return ui
@@ -370,6 +390,7 @@ func (ui *WebUI) StartBoard(board *state.Board) {
 		ui.OnCanvasResize()
 	})
 	ui.canvas.Focus(nil)
+	ui.StartStatusBox()
 }
 
 func (ui *WebUI) OnKeyPress(event *htmlevent.KeyboardEvent) {
@@ -516,4 +537,54 @@ func (ui *WebUI) CloseTutorial() {
 func (ui *WebUI) SetWinner(message string) {
 	ui.gameOverBox.Style().SetProperty("display", "block", nil)
 	ui.winnerMessage.SetInnerHTML(message)
+}
+
+// ==================================================================================================================
+// StatusBox --------------------------------------------------------------------------------------------------------
+// ==================================================================================================================
+
+var clockUpdateMilliseconds = int(1000)
+
+func (ui *WebUI) StartStatusBox() {
+	ui.statusBox.Style().SetProperty("display", "block", nil)
+	ui.lastAccountedTime = time.Now()
+	ui.isClockRunning = true
+	clockCallbackFunc := js.FuncOf(func(js.Value, []js.Value) interface{} {
+		if !ui.isClockRunning {
+			return nil
+		}
+		ui.UpdateTime()
+		Window.SetInterval(webapi.UnionFromJS(ui.clockCallbackFuncJS), &clockUpdateMilliseconds)
+		return nil
+	})
+	ui.clockCallbackFuncJS = clockCallbackFunc.Value
+	//Window.SetInterval(webapi.UnionFromJS(ui.clockCallbackFuncJS), &clockUpdateMilliseconds)
+}
+
+func (ui *WebUI) StopClocks() {
+	ui.isClockRunning = false
+}
+
+func (ui *WebUI) UpdateTime() {
+	if !ui.isClockRunning {
+		return
+	}
+	now := time.Now()
+	elapsed := now.Sub(ui.lastAccountedTime)
+	ui.lastAccountedTime = now
+	playerNum := ui.board.NextPlayer
+	ui.playersTimes[playerNum] += elapsed
+
+	// Generate display time:
+	d := ui.playersTimes[playerNum]
+	hours := d / time.Hour
+	d -= hours * time.Hour
+	minutes := d / time.Minute
+	d -= minutes * time.Minute
+	seconds := d / time.Second
+	if hours > 0 {
+		ui.playersClocks[playerNum].SetInnerHTML(fmt.Sprintf("%d:%02d:%02d", hours, minutes, seconds))
+	} else {
+		ui.playersClocks[playerNum].SetInnerHTML(fmt.Sprintf("%02d:%02d", minutes, seconds))
+	}
 }
