@@ -19,8 +19,5 @@ conv_test*
 
 hiveGo.sublime*
 
-# Compiled WASM binary.
-*.wasm
-
 local/
 venv/
