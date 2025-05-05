@@ -1,6 +1,7 @@
 .body {
     background-color: #B8BC33;
 }
+
 .fullscreen {
     position: fixed;
     top: 0;
@@ -37,6 +38,10 @@ h1 {
     font-family: 'Indie Flower', cursive;
     text-align: center;
     margin-bottom: 20px;
+}
+
+h3 {
+    margin-top: 0.25em;
 }
 
 .splash-image-container {

@@ -2,11 +2,14 @@ package main
 
 import (
 	"fmt"
+	"github.com/gowebapi/webapi/core/js"
 	"github.com/gowebapi/webapi/graphics/svg"
+	"github.com/gowebapi/webapi/html/htmlcommon"
 	"github.com/gowebapi/webapi/html/htmlevent"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	"github.com/janpfeifer/hiveGo/internal/state"
 	"k8s.io/klog/v2"
+	"time"
 )
 
 // Selections is a component of WebUI that handles the human player selection of an action.
@@ -25,11 +28,20 @@ type Selections struct {
 	// Valid target positions
 	targetPons    []*PieceOnScreen
 	targetActions []state.Action
+
+	// frameRequestCallback handles animation with Javascript.
+	frameRequestCallback js.Func
+	lastAnimation        time.Time
+	animationCount       int
 }
 
 // selectionsInit is called when WebUI is constructed.
 func (ui *WebUI) selectionsInit() {
 	ui.selections.selectedAction = make(chan state.Action)
+	ui.selections.frameRequestCallback = js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		ui.animateSelections()
+		return nil
+	})
 }
 
 // AdjustSelections to change in resolution.
@@ -52,12 +64,17 @@ func (ui *WebUI) SelectAction() state.Action {
 	if ui.isTutorialOn {
 		ui.ShowTutorial()
 	}
+
+	// Start animations:
+	ui.selections.lastAnimation = time.Now()
+	ui.selections.animationCount = 0
+	Window.RequestAnimationFrame((*htmlcommon.FrameRequestCallback)(&ui.selections.frameRequestCallback))
+
 	ui.SetTutorialTitle(fmt.Sprintf("Player #%d turn to move", ui.board.NextPlayer+1))
 	ui.selections.isSelecting = true
 	ui.selectSource()
 	action := <-ui.selections.selectedAction
 	ui.selections.isSelecting = false
-
 	return action
 }
 
@@ -116,11 +133,10 @@ func (ui *WebUI) selectSource() {
 						numPiecesOnBoard++
 					}
 				})
-				fmt.Printf("Num pieces on board: %d\n", numPiecesOnBoard)
 				if numPiecesOnBoard == 3 {
 					tutorialText += "<em>Your 4th piece placed must be the Queen. Only after it is in play you can start moving pieces.</em>"
 				} else {
-					tutorialText += "<em>Queen is in your hand. Only after it is in play you can start moving pieces.</em>"
+					tutorialText += "<em>Queen is in your hand. Only after it is in play that you can start moving pieces.</em>"
 				}
 			} else {
 				tutorialText += "<em>No valid moves left, you can only place a new piece.</em>"
@@ -276,6 +292,38 @@ func (ui *WebUI) makeUnselectable(pons *PieceOnScreen) {
 		"stroke":           "url(#reliefStroke)",
 		"stroke-dasharray": nil, // Remove it.
 	})
+}
+
+// animateSelections is called at each animation frame by the browser.
+// We want to use these very occasionally to animate something: low FPS not to consume resources (GPU or CPU), since
+// SVGs seem to have an expensive redraw cost.
+func (ui *WebUI) animateSelections() {
+	if !ui.selections.isSelecting {
+		return
+	}
+	// Schedule for next animation frame.
+	defer Window.RequestAnimationFrame((*htmlcommon.FrameRequestCallback)(&ui.selections.frameRequestCallback))
+
+	// Next animation frame.
+	if time.Since(ui.selections.lastAnimation) < 500*time.Millisecond {
+		return
+	}
+	ui.selections.lastAnimation = time.Now()
+	ui.selections.animationCount++
+
+	// Animate:
+	if ui.selections.isSelectingSource {
+		for idx, pons := range ui.selections.sourceOffBoardPons {
+			SetAttrs(&pons.Hex.Element, Attrs{
+				"stroke-dashoffset": idx + ui.selections.animationCount,
+			})
+		}
+		for idx, pons := range ui.selections.sourceOnBoardPons {
+			SetAttrs(&pons.Hex.Element, Attrs{
+				"stroke-dashoffset": idx + ui.selections.animationCount,
+			})
+		}
+	}
 }
 
 // OnSelectOffBoardPiece is called when an off-board piece is clicked.

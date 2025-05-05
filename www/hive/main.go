@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/gowebapi/webapi/backgroundtask"
+	"runtime"
 	"time"
 
 	"github.com/gowebapi/webapi"
@@ -23,6 +23,12 @@ var (
 )
 
 func main() {
+	jsFunc := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		goPrintStacks()
+		return nil
+	})
+	js.Global().Set("goPrintStacks", jsFunc)
+
 	ui := NewWebUI()
 	gameDialog := func() {
 		ui.OpenGameStartDialog(func() { _ = NewGame(ui) })
@@ -79,12 +85,6 @@ func NewGame(ui *WebUI) *Game {
 			g.aiPlayerNum = state.PlayerSecond
 		}
 
-		// Setup "cooperative" concurrency required by the browser.
-		g.idleCallbackFunc = js.FuncOf(func(js.Value, []js.Value) interface{} {
-			g.idleCallback()
-			return nil
-		})
-		Window.RequestIdleCallback((*backgroundtask.IdleRequestCallback)(&g.idleCallbackFunc), nil)
 		g.aiPlayer.Searcher.SetCooperative(func() {
 			now := time.Now()
 
@@ -99,30 +99,21 @@ func NewGame(ui *WebUI) *Game {
 				}
 			}
 
-			// Only yields every 100 ms.
-			if now.Sub(g.lastYield) < 100*time.Millisecond {
+			// Only yields every 20 ms.
+			if now.Sub(g.lastYield) < 10*time.Millisecond {
 				return
 			}
 			g.lastYield = now
 
-			<-g.idleChan // Read one element, which triggers yielding processing back to the browser.
+			// Micro-sleeps: ugly ... but I don't know a better way to do this.
+			// Waiting for a RequestIdleCallback callback stops working after ~1000 calls to it, not sure
+			// why (maybe Go runtime for WebAssembly uses it in way the interferes...).
+			time.Sleep(500 * time.Microsecond)
 		})
 	}
 
 	go g.RunGame()
 	return g
-}
-
-// idleCallback is called everytime the browser UI is idle and we can do some amount of processing.
-func (g *Game) idleCallback() {
-	// Send a signal to process a chunk but doesn't block.
-	select {
-	case g.idleChan <- true:
-		// Process a chunk.
-	default:
-		// Nothing to do: nobody is listening on the other side.
-	}
-	Window.RequestIdleCallback((*backgroundtask.IdleRequestCallback)(&g.idleCallbackFunc), nil)
 }
 
 func (g *Game) RunGame() {
@@ -132,8 +123,6 @@ func (g *Game) RunGame() {
 		var action state.Action
 		if g.aiPlayer != nil && g.board.NextPlayer == g.aiPlayerNum {
 			ui.HideTutorial()
-			// Cooperative concurrency with the browser, let the UI catch up.
-			<-g.idleChan
 			g.yieldStartTime = time.Now()
 			g.yieldCount = 0
 			action, nextBoard, _, _ = g.aiPlayer.Play(g.board)
@@ -186,4 +175,17 @@ func (g *Game) UserPlay() (state.Action, *state.Board) {
 		action = g.ui.SelectAction()
 	}
 	return action, g.board.Act(action)
+}
+
+// goPrintStacks prints in the console all stacktraces.
+func goPrintStacks() {
+	buf := make([]byte, 20*1024)
+	for {
+		n := runtime.Stack(buf, true)
+		if n < len(buf) {
+			fmt.Print(string(buf[:n]))
+			break
+		}
+		buf = make([]byte, 2*len(buf))
+	}
 }

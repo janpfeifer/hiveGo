@@ -558,7 +558,7 @@ func (ui *WebUI) StartStatusBox() {
 		return nil
 	})
 	ui.clockCallbackFuncJS = clockCallbackFunc.Value
-	//Window.SetInterval(webapi.UnionFromJS(ui.clockCallbackFuncJS), &clockUpdateMilliseconds)
+	Window.SetInterval(webapi.UnionFromJS(ui.clockCallbackFuncJS), &clockUpdateMilliseconds)
 }
 
 func (ui *WebUI) StopClocks() {
