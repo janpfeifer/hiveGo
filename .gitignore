@@ -16,7 +16,6 @@ a0_v*.*
 *.pyc
 conv_v?*
 conv_test*
-*.wasm
 
 hiveGo.sublime*
 
