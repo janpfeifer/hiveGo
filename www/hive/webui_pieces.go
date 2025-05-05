@@ -60,6 +60,10 @@ func (ui *WebUI) OffBoardHeight() int {
 	return int(3.0 * StandardFaceScale * ui.PixelRatio) // 128?
 }
 
+func (ui *WebUI) strokeWidth() float64 {
+	return HexStrokeWidth * ui.PixelRatio
+}
+
 // pieceToPatternID returns the HTML ID for the given piece type.
 func pieceToPatternID(loc PieceLocation, p state.PieceType) string {
 	prefix := "onBoard"
@@ -192,11 +196,12 @@ func (ui *WebUI) AdjustOnBoardPieces() {
 	}
 
 	// Scale hexagons.
+	strokeWidth := ui.strokeWidth()
 	for pos, slice := range ui.piecesOnBoard {
 		for stackPos, pons := range slice {
 			ui.MovePieceTo(pons, pos, stackPos)
 			SetAttrs(&pons.Hex.Element, Attrs{
-				"stroke-width": HexStrokeWidth * ui.PixelRatio * ui.Scale,
+				"stroke-width": strokeWidth * ui.Scale,
 			})
 		}
 	}
@@ -232,7 +237,7 @@ func (ui *WebUI) PlaceOnBoardPiece(playerNum state.PlayerNum, action state.Actio
 		StackPos:  len(stack),
 		Hex: svg.SVGPolygonElementFromWrapper(CreateSVG("polygon", Attrs{
 			"stroke":       "url(#reliefStroke)",
-			"stroke-width": HexStrokeWidth * ui.PixelRatio * ui.Scale,
+			"stroke-width": ui.strokeWidth() * ui.Scale,
 			"fill":         fmt.Sprintf("url(#%s)", playerToTilePatternID(OnBoard, playerNum)),
 			"fill-opacity": 1.0,
 		})),
@@ -309,6 +314,7 @@ func (ui *WebUI) offBoardMovePiece(pons *PieceOnScreen, stackPos int) {
 func (ui *WebUI) CreateOffBoardPieces() {
 	board := ui.board
 	index := 0
+	strokeWidth := ui.strokeWidth()
 	for playerNum := range state.PlayerInvalid {
 		if current := ui.piecesOffBoard[playerNum]; current != nil {
 			// Remove previous pieces:
@@ -325,7 +331,7 @@ func (ui *WebUI) CreateOffBoardPieces() {
 					PieceType: pieceType,
 					Hex: svg.SVGPolygonElementFromWrapper(CreateSVG("polygon", Attrs{
 						"stroke":       "url(#reliefStroke)",
-						"stroke-width": HexStrokeWidth * ui.PixelRatio,
+						"stroke-width": strokeWidth,
 						"fill":         fmt.Sprintf("url(#%s)", playerToTilePatternID(OffBoard, playerNum)),
 						"fill-opacity": 1.0,
 					})),
@@ -349,11 +355,6 @@ func (ui *WebUI) CreateOffBoardPieces() {
 	}
 }
 
-// OnSelectOffBoardPiece is called when an off-board piece is clicked.
-func (ui *WebUI) OnSelectOffBoardPiece(pons *PieceOnScreen) {
-	fmt.Printf("Selected off-board %s (%s)\n", pons.PieceType, pons.Player)
-}
-
 // RemoveOffBoardPiece removes the off-board piece from the UI.
 func (ui *WebUI) RemoveOffBoardPiece(player state.PlayerNum, action state.Action) {
 	var pons *PieceOnScreen
@@ -365,12 +366,16 @@ func (ui *WebUI) RemoveOffBoardPiece(player state.PlayerNum, action state.Action
 // AdjustOffBoardPieces to the size of the window.
 // Needs to be called whenever the window is resized.
 func (ui *WebUI) AdjustOffBoardPieces() {
+	strokeWidth := ui.strokeWidth()
+	fmt.Printf("Adjusting off-board stroke-width to %g (pixelRatio=%g, HexStrokeWidth=%g)\n", strokeWidth, ui.PixelRatio, HexStrokeWidth)
+
 	// Adjust pieces positions.
 	for player := range state.PlayerInvalid {
 		for pieceType := state.ANT; pieceType < state.LastPiece; pieceType++ {
 			pieces := ui.piecesOffBoard[player][pieceType]
 			for stackPos, pons := range pieces {
 				ui.offBoardMovePiece(pons, stackPos)
+				SetAttrs(&pons.Hex.Element, Attrs{"stroke-width": strokeWidth})
 			}
 		}
 	}

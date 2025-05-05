@@ -107,14 +107,11 @@ func (g *Game) RunGame() {
 
 		var nextBoard *state.Board
 		var action state.Action
-		if g.board.NextPlayer == g.aiPlayerNum || true {
+		if g.board.NextPlayer == g.aiPlayerNum {
 			action, nextBoard, _, _ = g.aiPlayer.Play(g.board)
 
 		} else {
-			// User play:
-			klog.Error("not implemented")
-			select {}
-
+			action, nextBoard = g.UserPlay()
 		}
 
 		// Update the UI accordingly.
@@ -131,4 +128,18 @@ func (g *Game) RunGame() {
 		ui.UpdateBoard(g.board)
 	}
 	fmt.Printf("Game finished: %s won!\n", g.board.Winner())
+}
+
+func (g *Game) UserPlay() (state.Action, *state.Board) {
+	var action state.Action
+	if g.board.NumActions() == 1 && g.board.Derived.Actions[0].IsSkipAction() {
+		// Handle the case where there are no valid moves.
+		currentPlayer := g.board.NextPlayer + 1
+		Window.Alert2(fmt.Sprintf("Player %d has no valid moves, skipping back to player %d", currentPlayer, 3-currentPlayer))
+		action = g.board.Derived.Actions[0]
+	} else {
+		// Action selected by the UI:
+		action = g.ui.SelectAction()
+	}
+	return action, g.board.Act(action)
 }

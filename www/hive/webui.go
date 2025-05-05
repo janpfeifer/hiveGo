@@ -53,18 +53,22 @@ type WebUI struct {
 	piecesOffBoard   [state.NumPlayers]map[state.PieceType][]*PieceOnScreen
 	piecesOnBoardIdx int
 
-	// PixelRatio gives a sense of how dense are pixels, where
-	// 1.0 is "standard". It affects the zoom level of pieces off-g.board.
+	// Selections hexagons: used to show the user the valid move options.
+	selections Selections
+
+	// PixelRatio is a characteristic of the user's display: it gives a sense of how dense are pixels, where
+	// 1.0 is "standard". It affects the scaling of the "standard" size (off-board pieces, and original on-board pieces).
+	// Notice it changes if the user changes the zoom level using the browser (in Chrome using control+plus and control-minus).
 	PixelRatio float64
 
+	// Scale is controlled by the mouse wheel. It affects
+	// only the board, not the pieces off-board.
+	Scale float64
+
 	// UI size: typically the Window size, but could be
-	// larger, in case the Window is too little to fit everythin,
+	// larger, in case the Window is too little to fit everything,
 	// in which case things will be drawn off-screen.
 	Width, Height int
-
-	// Scale is controlled by the mouse wheel. It affects
-	// only the board, not the pieces offg.board.
-	Scale float64
 
 	// How much the board has been dragged around.
 	ShiftX, ShiftY float64
@@ -111,6 +115,8 @@ func NewWebUI() *WebUI {
 		ui.onBoardTilesPatterns[playerNum] = svg.SVGPatternElementFromWrapper(Document.GetElementById(playerToTilePatternID(OnBoard, playerNum)))
 		ui.onBoardTilesImages[playerNum] = svg.SVGImageElementFromWrapper(ui.onBoardTilesPatterns[playerNum].FirstElementChild())
 	}
+
+	ui.selectionsInit() // Actions selection mechanism.
 	return ui
 }
 
@@ -131,8 +137,13 @@ func CreateSVG(elemType string, attrs Attrs) *dom.Element {
 }
 
 // SetAttrs allow setting of various attributes at the same time.
+// Setting the value to nil is equivalent to removing it.
 func SetAttrs(elem *dom.Element, attrs Attrs) {
 	for key, value := range attrs {
+		if value == nil {
+			elem.RemoveAttribute(key)
+			continue
+		}
 		switch v := value.(type) {
 		case int:
 			elem.SetAttribute(key, strconv.Itoa(v))
@@ -180,6 +191,7 @@ func (ui *WebUI) OnCanvasResize() {
 	ui.AdjustOffBoardPieces()
 	ui.AdjustOnBoardPieces()
 	ui.MarkNextPlayer()
+	ui.AdjustSelections()
 
 	/*
 		g.AdjustEndGameMessagePosition()
