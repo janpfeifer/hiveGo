@@ -63,7 +63,7 @@ type WebUI struct {
 	tutorialContent, tutorialBox *html.HTMLDivElement
 	tutorialTitle                *html.HTMLSpanElement
 
-	// Game over message:
+	// Game over message box:
 	gameOverBox   *html.HTMLDivElement
 	winnerMessage *html.HTMLParagraphElement
 	restartButton *html.HTMLButtonElement
@@ -76,6 +76,9 @@ type WebUI struct {
 	lastAccountedTime time.Time
 	playersTimes      [2]time.Duration
 	isClockRunning    bool
+
+	// UI Buttons
+	uiButtonsBox *html.HTMLDivElement
 
 	// PixelRatio is a characteristic of the user's display: it gives a sense of how dense are pixels, where
 	// 1.0 is "standard". It affects the scaling of the "standard" size (off-board pieces, and original on-board pieces).
@@ -148,7 +151,7 @@ func NewWebUI() *WebUI {
 	elem = Document.GetElementById("tutorialTitle")
 	ui.tutorialTitle = html.HTMLSpanElementFromWrapper(elem)
 
-	// Game Over message:
+	// Game Over message box:
 	elem = Document.GetElementById("gameOverBox")
 	ui.gameOverBox = html.HTMLDivElementFromWrapper(elem)
 	elem = Document.GetElementById("winnerMessage")
@@ -166,6 +169,29 @@ func NewWebUI() *WebUI {
 	ui.playersClocks[1] = html.HTMLSpanElementFromWrapper(Document.GetElementById("player1Clock"))
 	ui.aiEvalRateDiv = html.HTMLDivElementFromWrapper(Document.GetElementById("aiEvalRate"))
 	ui.aiEvalRateSpan = html.HTMLSpanElementFromWrapper(Document.GetElementById("evalsPerSec"))
+
+	// UI-buttons
+	elem = Document.GetElementById("ui-buttons")
+	ui.uiButtonsBox = html.HTMLDivElementFromWrapper(elem)
+	buttonHome := html.HTMLButtonElementFromWrapper(ui.uiButtonsBox.QuerySelector("#btn-home"))
+	buttonHome.SetOnClick(func(_ *htmlevent.MouseEvent, _ *html.HTMLElement) {
+		ui.Home()
+	})
+	buttonZoomIn := html.HTMLButtonElementFromWrapper(ui.uiButtonsBox.QuerySelector("#btn-zoom-in"))
+	buttonZoomIn.SetOnClick(func(_ *htmlevent.MouseEvent, _ *html.HTMLElement) {
+		ui.Scale *= 1.5
+		ui.OnCanvasResize()
+	})
+	buttonZoomOut := html.HTMLButtonElementFromWrapper(ui.uiButtonsBox.QuerySelector("#btn-zoom-out"))
+	buttonZoomOut.SetOnClick(func(_ *htmlevent.MouseEvent, _ *html.HTMLElement) {
+		ui.Scale *= 1.0 / 1.5
+		ui.OnCanvasResize()
+	})
+	buttonHelp := html.HTMLButtonElementFromWrapper(ui.uiButtonsBox.QuerySelector("#btn-help"))
+	buttonHelp.SetOnClick(func(_ *htmlevent.MouseEvent, _ *html.HTMLElement) {
+		ui.Scale *= 1.0 / 1.5
+		ui.OnCanvasResize()
+	})
 
 	ui.selectionsInit() // Actions selection mechanism.
 	return ui
@@ -243,6 +269,9 @@ func (ui *WebUI) OnCanvasResize() {
 	ui.AdjustOnBoardPieces()
 	ui.MarkNextPlayer()
 	ui.AdjustSelections()
+
+	// Adjust ui-buttons position.
+	ui.uiButtonsBox.Style().SetProperty("top", fmt.Sprintf("%dpx", offboardHeight+20), nil)
 
 	/*
 		g.AdjustEndGameMessagePosition()
@@ -389,7 +418,10 @@ func (ui *WebUI) StartBoard(board *state.Board) {
 		ui.OnCanvasResize()
 	})
 	ui.canvas.Focus(nil)
+
+	// Start other floating boxes:
 	ui.StartStatusBox()
+	ui.uiButtonsBox.Style().SetProperty("display", "flex", nil)
 }
 
 func (ui *WebUI) OnKeyPress(event *htmlevent.KeyboardEvent) {
@@ -399,14 +431,19 @@ func (ui *WebUI) OnKeyPress(event *htmlevent.KeyboardEvent) {
 		return
 	}
 	if event.Key() == "Home" {
-		ui.Scale = 1.0
-		ui.ShiftX = 0
-		ui.ShiftY = 0
-		ui.OnCanvasResize()
+		ui.Home()
 		event.PreventDefault()
 		return
 	}
 	return
+}
+
+// Home centers the board and set the zoom levels back to the default.
+func (ui *WebUI) Home() {
+	ui.Scale = 1.0
+	ui.ShiftX = 0
+	ui.ShiftY = 0
+	ui.OnCanvasResize()
 }
 
 // ZoomOnWheel responds to mouse wheel movement to control zoom.
@@ -440,7 +477,7 @@ func (ui *WebUI) DragOnMouseMove(event *htmlevent.MouseEvent) {
 	ui.dragX, ui.dragY = mouseX, mouseY
 
 	// We only need to repaint the on-board area, the off-board area remains untouched.
-	ui.AdjustOnBoardPieces()
+	ui.OnCanvasResize()
 }
 
 func (ui *WebUI) createBoardRects() {
