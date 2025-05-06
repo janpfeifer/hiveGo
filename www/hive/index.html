@@ -74,11 +74,21 @@
 
     <div id="splashScreen" style="display:none; /* Initially hidden */" tabindex="0">
         <h1 style="">hiveGo</h1>
-        <div id="github_link" style="text-align: center; margin-top: 0px;">
-            <a href="https://github.com/janpfeifer/hiveGo" target="_blank">🔗 github.com/janpfeifer/hiveGo 🔗</a>
+        <div style="text-align: center; margin-top: 0px;">
+            <a href="https://github.com/janpfeifer/hiveGo" id="github-link" target="_blank">🔗 github.com/janpfeifer/hiveGo 🔗</a>
         </div>
         <div id="splash-image-container" class="splash-image-container">
             <img id="splash-image" src="./assets/Grasshopper.png" alt="Splash Screen">
+        </div>
+        <div style="font-family: 'Oswald', sans-serif; text-align: center; margin-top: 0px; margin-bottom: 0px;">
+            <a id="splash-instructions">Instructions</a> or click anywhere to start a new game.
+        </div>
+
+        <div class="floating-video-container">
+            <video class="floating-video" src="./assets/robot.mp4" autoplay loop muted></video>
+            <div class="powered-by">
+                Powered by <a href="https://github.com/gomlx/gomlx" target="_blank" rel="noopener noreferrer">GoMLX</a>
+            </div>
         </div>
     </div>
 

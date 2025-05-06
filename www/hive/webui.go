@@ -40,8 +40,7 @@ type WebUI struct {
 	defs   *svg.SVGDefsElement
 
 	// Splash image:
-	splashDiv       *html.HTMLDivElement
-	hasSplashScreen bool
+	splashDiv *html.HTMLDivElement
 
 	// Game start dialog:
 	gameStartDialog     *html.HTMLDivElement
@@ -189,7 +188,6 @@ func NewWebUI() *WebUI {
 	elem = Document.GetElementById("help-page")
 	ui.helpPage = html.HTMLDivElementFromWrapper(elem)
 	ui.helpPage.SetOnKeyUp(func(event *htmlevent.KeyboardEvent, currentTarget *html.HTMLElement) {
-		fmt.Printf("Key %q pressed in help page\n", event.Key())
 		if event.Key() == "Escape" {
 			ui.CloseHelp()
 		}
@@ -327,27 +325,32 @@ func (ui *WebUI) CreateSplashScreen(onClose func()) {
 	if ui.splashDiv == nil {
 		elem := Document.GetElementById("splashScreen")
 		ui.splashDiv = html.HTMLDivElementFromWrapper(elem)
+
+		instructionsLink := html.HTMLAnchorElementFromWrapper(ui.splashDiv.QuerySelector("#splash-instructions"))
+		instructionsLink.SetOnClick(func(event *htmlevent.MouseEvent, _ *html.HTMLElement) {
+			event.StopPropagation()
+			ui.OpenHelp()
+		})
 	}
 	ui.splashDiv.Style().SetProperty("display", "flex", nil)
 	doneFn := func() {
 		ui.RemoveSplashScreen()
 		onClose()
 	}
-	ui.splashDiv.AddEventListener("click", domcore.NewEventListenerFunc(func(event *domcore.Event) {
-		doneFn()
-	}), nil)
-	ui.splashDiv.AddEventListener("keyup", domcore.NewEventListenerFunc(func(event *domcore.Event) {
+	ui.splashDiv.SetOnClick(func(event *htmlevent.MouseEvent, _ *html.HTMLElement) {
 		event.PreventDefault()
 		doneFn()
-	}), nil)
+	})
+	ui.splashDiv.SetOnKeyPress(func(event *htmlevent.KeyboardEvent, _ *html.HTMLElement) {
+		event.PreventDefault()
+		doneFn()
+	})
 	ui.splashDiv.Focus(nil)
-	ui.hasSplashScreen = true
 }
 
 // RemoveSplashScreen is called when someone clicks on the Splash screen.
 func (ui *WebUI) RemoveSplashScreen() {
 	ui.splashDiv.Style().SetProperty("display", "none", nil)
-	ui.hasSplashScreen = false
 }
 
 // ==================================================================================================================
@@ -355,8 +358,8 @@ func (ui *WebUI) RemoveSplashScreen() {
 // ==================================================================================================================
 
 var levelsConfigs = map[string]string{
-	"easy":   "fnn=#0,ab,max_depth=1,randomness=0.2",              // Easy
-	"medium": "fnn=#0,ab,max_depth=2,randomness=0.05",             // Medium
+	"easy":   "fnn=#0,ab,max_depth=1,randomness=0.8",              // Easy
+	"medium": "fnn=#0,ab,max_depth=2,randomness=0.1",              // Medium
 	"hard":   "a0fnn=#0,mcts,max_traverses=10000,temperature=0.1", // Hard
 }
 
@@ -470,7 +473,6 @@ func (ui *WebUI) StartBoard(board *state.Board) {
 }
 
 func (ui *WebUI) OnKeyPress(event *htmlevent.KeyboardEvent) {
-	fmt.Printf("Key %q pressed in canvas\n", event.Key())
 	if event.Key() == "Escape" && ui.selections.isSelecting {
 		ui.cancelSelection()
 		event.PreventDefault()

@@ -67,18 +67,26 @@ h3 {
     font-size: 3em;
     margin-bottom: -0.3em;
 }
-.github_link { /* Style the GitHub link container */
-}
 
-#splashScreen > div > a {
+#splashScreen #github-link {
     margin-top: 0;
     font-family: 'Roboto', sans-serif;
     font-size: 0.7em;
-    color: #303030; /* Set the default link color to blue */
+    color: #3030F0; /* Set the default link color to blue */
     text-decoration: underline; /* Set the default text decoration to underline */
 }
 
-.github_link a:hover {
+#splashScreen #github-link:hover {
+    color: darkblue;
+}
+
+#splashScreen #splash-instructions {
+    margin-top: 0;
+    color: #3030F0; /* Set the default link color to blue */
+    text-decoration: underline; /* Set the default text decoration to underline */
+}
+
+#splashScreen #splash-instructions:hover {
     color: darkblue;
 }
 
@@ -164,8 +172,8 @@ h3 {
 
 .floating-video-container {
     position: fixed;
-    bottom: 5em;
-    right: 5em;
+    bottom: 2em;
+    right: 2em;
     z-index: 1000;
     width: 128px; /* Set the container width */
     height: auto; /* Maintain aspect ratio based on video's aspect ratio */
