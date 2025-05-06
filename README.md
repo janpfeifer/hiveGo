@@ -20,7 +20,7 @@ It comes with:
 
 It is slower because of WebAssembly and using a pure Go backend for the machine learning, but it is enough to play at the medium level at no wait.
 
-![image](https://github.com/user-attachments/assets/d6531652-bb46-4cbb-b6e1-ef9088354374)
+<img src="https://github.com/user-attachments/assets/d6531652-bb46-4cbb-b6e1-ef9088354374" alt="image" width="800" height="600">
 
 ## Command-line UI
 
