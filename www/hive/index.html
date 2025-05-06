@@ -163,5 +163,67 @@
         <button id="btn-help" title='Help (or "F1" key)'>❓</button>
     </div>
 
+    <div id="help-page" class="floating-help-page" style="display: none;" tabindex="0">
+        <div id="title">
+            <h1>Hive Instructions</h1>
+        </div>
+        <div id="help-content">
+            <img src="./assets/endgame.png" style="width: 12em; height: 12em; float:right;"/>
+            <p>
+                <b>Winning:</b> win by surrounding the opponent's
+                <img src="./assets/Queen.png" alt="Queen" style="width: 2em; height: 2em; display: inline;"/>
+                Queen (bee), like in the image in the side.
+            </p>
+            <p>
+                <b>Placing pieces on the board</b>: You first start placing your "off-board" pieces (in the top for player #1, in the bottom for player #2) on the board.
+                Select the piece to place in the off-board area (they are highlighted with yellow dotted-lines), and then click on the
+                position on any of the highlighted positions on the board.
+                Except for the first piece, you can only place pieces next to your already placed pieces and <b>not touching any opponent's</b> pieces.
+                You can place pieces at any point as a standard move if you still have pieces off-board.
+            </p>
+            <p>
+                <b>The Queen Bee:</b>
+                <img src="./assets/Queen.png" alt="Queen" style="width: 2em; height: 2em; display: inline;"/>
+                At the latest, it has to be your 4th piece to place. And you can't move your pieces on the board until
+                you moved your Queen!
+            </p>
+
+            <p>
+                <b>Moving</b>: Each piece moves differently: no worries, the game will highlight the pieces that you can move and their valid
+                target locations (again with a yellow dotted-line border).
+                Remember you can only start moving pieces once your <b>Queen bee is on the board</b>.
+            </p>
+
+            <p>
+                <b>Never break the hive!</b> One rule that applies to all pieces is that the hive can never be broken: all pieces on board must be
+                touching another piece. You can never place a piece or make a move that would disconnect a piece.
+                You can use this to lock pieces in place.
+            </p>
+            <p>
+                <b>No squeezing:</b> There are some scenarios where there is a small open space, but not big enough for a piece to squeeze through.
+                Pieces don't squeeze through positions, even if otherwise would be a valid move. The exceptions are the Beetle
+                <img src="./assets/Beetle.png" alt="Beetle" style="width: 2em; height: 2em; display: inline;"/>
+                and the Grasshopper
+                <img src="./assets/Grasshopper.png" alt="Grasshopper" style="width: 2em; height: 2em; display: inline;"/>
+                that can move over pieces.
+            </p>
+            <p>
+                Play a few games, and you'll quickly figure out how the 5 different pieces move!
+            </p>
+
+            <p>
+            </p>
+
+            <div style="display: flex; align-items: center; justify-content: center; flex-wrap: nowrap;">
+            <img src="./assets/Queen.png" alt="Queen" style="width: 4em; height: 3em; display: inline;"/>
+            <img src="./assets/Ant.png" alt="Ant" style="width: 3em; height: 3em; display: inline;"/>
+            <img src="./assets/Grasshopper.png" alt="Grasshopper" style="width: 3em; height: 3em; display: inline;"/>
+            <img src="./assets/Beetle.png" alt="Beetle" style="width: 3em; height: 3em; display: inline;"/>
+            <img src="./assets/Spider.png" alt="Spider" style="width: 3em; height: 3em; display: inline;"/>
+            </div>
+        </div>
+        <button id="help-close">×</button>
+    </div>
+
 </body>
 </html>

@@ -372,3 +372,55 @@ h3 {
     background-color: #c0c0c0; /* Darker when clicked */
     box-shadow: inset 1px 1px 3px rgba(0,0,0,0.9); /* Inner shadow effect */
 }
+
+#help-page {
+    position: fixed; /* Keep it fixed so it stays in view */
+    top: 5%; /* Position it at top */
+    left: 50%; /* Center it horizontally */
+    transform: translateX(-50%); /* Adjust for the center */
+    z-index: 1002; /* Higher than the SVG */
+    display: flex;
+    align-items: flex-start;
+    border: 1px solid black;
+    border-radius: 8px;
+    pointer-events: all;
+    user-focus-key: true;
+    width: 85%;
+    height: 90%;
+    flex-direction: column;
+
+    background-color: rgba(0, 0, 0, 0.8);
+    color: #CCC;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.9);
+}
+
+#help-page #title {
+    text-align: center;
+    width: 100%;
+}
+
+#help-page #title div h1 {
+    font-family: 'Indie Flower', cursive;
+    margin-top: 0.2em;
+    margin-bottom: 0.2em;
+}
+
+#help-page #help-content {
+    font-family: 'Oswald', cursive;
+    padding: 2em 1em;
+    width: -webkit-fill-available;
+}
+
+#help-page button {
+    position: fixed; /* Keep it fixed so it stays in view */
+    top: 5px;
+    right: 5px;
+    font-family: Roboto, sans-serif;
+    font-size: 18px;
+    cursor: pointer;
+    line-height: 1;
+    background-color: rgba(255, 255, 255, 0.5);
+    border-radius: 5px;
+    padding: 1px 5px;
+    border: 1px solid transparent;
+}

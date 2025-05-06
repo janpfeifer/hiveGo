@@ -20,8 +20,19 @@ import (
 // WebUI ------------------------------------------------------------------------------------------------------------
 // ==================================================================================================================
 
+type UIState int
+
+const (
+	StateSplashScreen UIState = iota
+	StateConfig
+	StateGame
+)
+
 // WebUI implements the Hive Wasm UI
 type WebUI struct {
+	state UIState
+
+	// board is the current board being displayed if in game.
 	board *state.Board
 
 	// HTML/SVG elements in the page
@@ -79,6 +90,10 @@ type WebUI struct {
 
 	// UI Buttons
 	uiButtonsBox *html.HTMLDivElement
+
+	// Help page
+	isHelpOpen bool
+	helpPage   *html.HTMLDivElement
 
 	// PixelRatio is a characteristic of the user's display: it gives a sense of how dense are pixels, where
 	// 1.0 is "standard". It affects the scaling of the "standard" size (off-board pieces, and original on-board pieces).
@@ -170,6 +185,21 @@ func NewWebUI() *WebUI {
 	ui.aiEvalRateDiv = html.HTMLDivElementFromWrapper(Document.GetElementById("aiEvalRate"))
 	ui.aiEvalRateSpan = html.HTMLSpanElementFromWrapper(Document.GetElementById("evalsPerSec"))
 
+	// Help page
+	elem = Document.GetElementById("help-page")
+	ui.helpPage = html.HTMLDivElementFromWrapper(elem)
+	ui.helpPage.SetOnKeyUp(func(event *htmlevent.KeyboardEvent, currentTarget *html.HTMLElement) {
+		fmt.Printf("Key %q pressed in help page\n", event.Key())
+		if event.Key() == "Escape" {
+			ui.CloseHelp()
+		}
+		event.PreventDefault()
+	})
+	closeHelpBtn := html.HTMLButtonElementFromWrapper(ui.helpPage.QuerySelector("button"))
+	closeHelpBtn.SetOnClick(func(_ *htmlevent.MouseEvent, _ *html.HTMLElement) {
+		ui.CloseHelp()
+	})
+
 	// UI-buttons
 	elem = Document.GetElementById("ui-buttons")
 	ui.uiButtonsBox = html.HTMLDivElementFromWrapper(elem)
@@ -189,8 +219,11 @@ func NewWebUI() *WebUI {
 	})
 	buttonHelp := html.HTMLButtonElementFromWrapper(ui.uiButtonsBox.QuerySelector("#btn-help"))
 	buttonHelp.SetOnClick(func(_ *htmlevent.MouseEvent, _ *html.HTMLElement) {
-		ui.Scale *= 1.0 / 1.5
-		ui.OnCanvasResize()
+		if ui.isHelpOpen {
+			ui.CloseHelp()
+		} else {
+			ui.OpenHelp()
+		}
 	})
 
 	ui.selectionsInit() // Actions selection mechanism.
@@ -289,6 +322,8 @@ func (ui *WebUI) OnCanvasResize() {
 // CreateSplashScreen and position it accordingly.
 // onClose is called once the splash screen is closed.
 func (ui *WebUI) CreateSplashScreen(onClose func()) {
+	ui.state = StateSplashScreen
+
 	if ui.splashDiv == nil {
 		elem := Document.GetElementById("splashScreen")
 		ui.splashDiv = html.HTMLDivElementFromWrapper(elem)
@@ -327,6 +362,8 @@ var levelsConfigs = map[string]string{
 
 // OpenGameStartDialog and manages the game dialog.
 func (ui *WebUI) OpenGameStartDialog(onStart func()) {
+	ui.state = StateConfig
+
 	if ui.gameStartDialog == nil {
 		ui.gameStartDialog = html.HTMLDivElementFromWrapper(Document.GetElementById("new_game"))
 		ui.gameStartAIConfig = html.HTMLInputElementFromWrapper(ui.gameStartDialog.QuerySelector("input#ai_config"))
@@ -390,6 +427,8 @@ func (ui *WebUI) AIStarts() bool { return ui.aiStarts }
 // StartBoard (the UI) with the given board (the state).
 // It initializes the off-board
 func (ui *WebUI) StartBoard(board *state.Board) {
+	ui.state = StateGame
+
 	ui.board = board
 	ui.canvas.Style().SetProperty("display", "block", nil)
 	ui.canvas.Style().SetProperty("pointer-events", "all", nil)
@@ -409,6 +448,12 @@ func (ui *WebUI) StartBoard(board *state.Board) {
 	ui.canvas.SetOnMouseMove(func(event *htmlevent.MouseEvent, currentTarget *svg.SVGElement) {
 		ui.DragOnMouseMove(event)
 	})
+	ui.canvas.SetOnKeyDown(func(event *htmlevent.KeyboardEvent, currentTarget *svg.SVGElement) {
+		if event.Key() == "F1" {
+			event.PreventDefault()
+			ui.OnKeyPress(event)
+		}
+	})
 	ui.canvas.SetOnKeyUp(func(event *htmlevent.KeyboardEvent, currentTarget *svg.SVGElement) {
 		ui.OnKeyPress(event)
 	})
@@ -425,6 +470,7 @@ func (ui *WebUI) StartBoard(board *state.Board) {
 }
 
 func (ui *WebUI) OnKeyPress(event *htmlevent.KeyboardEvent) {
+	fmt.Printf("Key %q pressed in canvas\n", event.Key())
 	if event.Key() == "Escape" && ui.selections.isSelecting {
 		ui.cancelSelection()
 		event.PreventDefault()
@@ -432,6 +478,11 @@ func (ui *WebUI) OnKeyPress(event *htmlevent.KeyboardEvent) {
 	}
 	if event.Key() == "Home" {
 		ui.Home()
+		event.PreventDefault()
+		return
+	}
+	if event.Key() == "F1" {
+		ui.OpenHelp()
 		event.PreventDefault()
 		return
 	}
@@ -625,5 +676,31 @@ func (ui *WebUI) UpdateTime() {
 		ui.playersClocks[playerNum].SetInnerHTML(fmt.Sprintf("%d:%02d:%02d", hours, minutes, seconds))
 	} else {
 		ui.playersClocks[playerNum].SetInnerHTML(fmt.Sprintf("%02d:%02d", minutes, seconds))
+	}
+}
+
+// ==================================================================================================================
+// Help Page --------------------------------------------------------------------------------------------------------
+// ==================================================================================================================
+
+func (ui *WebUI) OpenHelp() {
+	ui.isHelpOpen = true
+	ui.helpPage.Style().SetProperty("display", "flex", nil)
+	ui.helpPage.Focus(nil)
+}
+
+func (ui *WebUI) CloseHelp() {
+	ui.isHelpOpen = false
+	ui.helpPage.Style().SetProperty("display", "none", nil)
+
+	switch ui.state {
+	case StateSplashScreen:
+		ui.splashDiv.Focus(nil)
+	case StateConfig:
+		ui.gameStartDialog.Focus(nil)
+	case StateGame:
+		ui.canvas.Focus(nil)
+	default:
+		// No focus.
 	}
 }
