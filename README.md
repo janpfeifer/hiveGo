@@ -5,7 +5,20 @@
 [Hive game (wikipedia)](https://en.wikipedia.org/wiki/Hive_(game)), backed by an [AlphaZero (wikipedia)](https://en.wikipedia.org/wiki/AlphaZero) 
 based AI, using [GoMLX (an ML framework for Go)](https://github.com/gomlx/gomlx) .
 
-<img align="right" src="images/Ant.png" alt="Ant" width="100px"/>
+<img align="right" src="www/hive/assets/endgame.png" alt="Ant" width="100px"/>
+
+Hive is a small fun board game played with two people, where each one is trying to surround the other one's Queen Bee.
+For a quick match, with instructions and a tutorial, 
+[try a web version here (janpfeifer.github.io)](https://janpfeifer.github.io/hiveGo/www/hive/).
+
+It is also a great platform to play around with game algorithms, like [AlphaZero (wikipedia)](https://en.wikipedia.org/wiki/AlphaZero) and demo [GoMLX](https://github.com/gomlx/gomlx),
+a machine learning framework for Go.
+
+It comes with:
+
+## [Web Version: compiling Go to WebAssembly](https://janpfeifer.github.io/hiveGo/www/hive/)
+
+It is slower (WebAssembly and using a pure Go backend for the machine learning)
 
 ## Command-line UI
 
@@ -46,18 +59,6 @@ TODO: use Fyne to make it portable?
 
 ![image](https://github.com/user-attachments/assets/87fe827c-14b8-4367-91d9-98a9be067f89)
 
-
-## Web Version
-
-> [!WARNING]
-> 🚧🛠 Currently broken 🚧🛠 <br/>
-> This has to be updated from the 2018 version.
-
-<img align="right" src="images/Spider.png" alt="Spider" width="100px"/>
-
-The Gnome version works nicely ... but asking anyone to install it is cruel. And I wouldn't want to distribute a binary -- then I would have to try to compile everything statically.
-So instead, why not a web version ... duh, I should have done this first, but I wanted to try out coding for Gnome.
-
 ## About The Project
 
 This is an experimental / educative project to learn the AlphaZero algorithm and RL in general.
@@ -69,13 +70,15 @@ What is working right now:
 
 1. The command-line UI, see below.
 2. AIs, using a basic set of features for the board (lots that can be improved here)
-   a. AlphaBeta-Pruning: using a straight forward FNN (Feedforward Neural Network) model.
-   b. Alpha-Zero: using a tiny GNN (Graph Neural Network) model. Still, very simple features.
+   a. AlphaBeta-Pruning ([code](https://github.com/janpfeifer/hiveGo/blob/main/internal/searchers/alphabeta/alphabeta.go)): 
+      using a straight forward [FNN (Feedforward Neural Network) model](https://github.com/janpfeifer/hiveGo/blob/main/internal/ai/gomlx/fnn.go).
+   b. Alpha-Zero ([code](https://github.com/janpfeifer/hiveGo/blob/main/internal/searchers/mcts/mcts.go)): 
+      using [a tiny GNN (Graph Neural Network) model](https://github.com/janpfeifer/hiveGo/blob/main/internal/ai/gomlx/alphazerofnn.go).
 
 It already beats me every time, and when I pitched it against some commercially available Hive game, both AIs won
 every time.
 
-## Trainers
+## Trainers: [`cmd/a0-trainer`](https://github.com/janpfeifer/hiveGo/tree/main/cmd/a0-trainer) and [`cmd/ab-trainer](https://github.com/janpfeifer/hiveGo/tree/main/cmd/ab-trainer)
 
 Allows playing games among AI's automatically. 
 
