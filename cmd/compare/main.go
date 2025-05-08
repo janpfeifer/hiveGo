@@ -64,7 +64,7 @@ func main() {
 	must.M(runMatches(globalCtx, aiPlayers))
 }
 
-func createAIPlayers() (aiPlayers [2]players.Player, err error) {
+func createAIPlayers() (aiPlayers [2]*players.SearcherScorer, err error) {
 	for playerIdx, config := range [2]string{*flagPlayer1Config, *flagPlayer2Config} {
 		klog.V(1).Infof("Creating AI for player #%d from %q", playerIdx, config)
 		aiPlayers[playerIdx], err = players.New(config)
@@ -81,6 +81,10 @@ type Results struct {
 	winsAs1st, winsAs2nd [2]int
 	draws                [2]int
 	played, total        int
+	evalsRatio           [2]float64
+
+	lastRatioUpdate time.Time
+	evalsCount      [2]int
 }
 
 func (r *Results) String() string {
@@ -88,8 +92,8 @@ func (r *Results) String() string {
 	parts = append(parts, fmt.Sprintf("Played %d of %d: ", r.played, r.total))
 	for playerIdx := range 2 {
 		parts = append(parts,
-			fmt.Sprintf("AI-%d: %d Wins (1st: %d, 2nd: %d) / ",
-				playerIdx+1, r.winsAs1st[playerIdx]+r.winsAs2nd[playerIdx],
+			fmt.Sprintf("AI-%d (%.1f evals/s): %d Wins (1st: %d, 2nd: %d) / ",
+				playerIdx+1, r.evalsRatio[playerIdx], r.winsAs1st[playerIdx]+r.winsAs2nd[playerIdx],
 				r.winsAs1st[playerIdx], r.winsAs2nd[playerIdx]))
 	}
 	parts = append(parts, fmt.Sprintf("%d draws (%d AI-1 as 1st, %d AI-2 as 1st) - ",
@@ -99,7 +103,35 @@ func (r *Results) String() string {
 	return strings.Join(parts, "")
 }
 
-func runMatches(ctx context.Context, aiPlayers [2]players.Player) error {
+func (r *Results) EvalCallback(playerIdx state.PlayerNum) {
+	r.mu.Lock()
+	r.evalsCount[playerIdx]++
+	if r.lastRatioUpdate.IsZero() {
+		r.lastRatioUpdate = time.Now()
+		r.mu.Unlock()
+		return
+	}
+
+	now := time.Now()
+	elapsed := now.Sub(r.lastRatioUpdate)
+	if elapsed < time.Second {
+		r.mu.Unlock()
+		return
+	}
+	r.lastRatioUpdate = now
+
+	// Updated evals ratio with last second of updates.
+	for ratioIdx := range 2 {
+		r.evalsRatio[ratioIdx] = float64(r.evalsCount[ratioIdx]) / elapsed.Seconds()
+		r.evalsCount[ratioIdx] = 0
+	}
+
+	// No need to keep the lock while printing.
+	r.mu.Unlock()
+	fmt.Printf("\r%s", r)
+}
+
+func runMatches(ctx context.Context, aiPlayers [2]*players.SearcherScorer) error {
 	r := &Results{
 		start: time.Now(),
 		total: *flagNumMatches,
@@ -108,15 +140,20 @@ func runMatches(ctx context.Context, aiPlayers [2]players.Player) error {
 	parallelism := getParallelism()
 	wg.SetLimit(parallelism)
 	fmt.Printf("\r%s", r)
+	for playerIdx := range state.PlayerNum(2) {
+		aiPlayers[playerIdx].Searcher.SetCooperative(func() { r.EvalCallback(playerIdx) })
+	}
 
 	for matchIdx := range r.total {
 		wg.Go(func() error {
-			matchPlayers := aiPlayers
+			var matchPlayers [2]players.Player
 			isSwapped := matchIdx%2 == 1
 			player1st := 0
 			if isSwapped {
-				matchPlayers[0], matchPlayers[1] = matchPlayers[1], matchPlayers[0]
+				matchPlayers[0], matchPlayers[1] = aiPlayers[1], aiPlayers[0]
 				player1st = 1
+			} else {
+				matchPlayers[0], matchPlayers[1] = aiPlayers[0], aiPlayers[1]
 			}
 			winner, err := runMatch(ctx, matchIdx, matchPlayers)
 			if err != nil || ctx.Err() != nil {
