@@ -13,6 +13,7 @@ import (
 	"k8s.io/klog/v2"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -337,7 +338,10 @@ func (ui *WebUI) CreateSplashScreen(onClose func()) {
 		ui.RemoveSplashScreen()
 		onClose()
 	}
-	ui.splashDiv.SetOnClick(func(event *htmlevent.MouseEvent, _ *html.HTMLElement) {
+	ui.splashDiv.SetOnClick(func(event *htmlevent.MouseEvent, currentTarget *html.HTMLElement) {
+		if strings.ToLower(currentTarget.TagName()) != "div" {
+			return
+		}
 		event.PreventDefault()
 		doneFn()
 	})
