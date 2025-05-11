@@ -339,7 +339,7 @@ func (ui *WebUI) CreateSplashScreen(onClose func()) {
 		onClose()
 	}
 	ui.splashDiv.SetOnClick(func(event *htmlevent.MouseEvent, currentTarget *html.HTMLElement) {
-		if strings.ToLower(currentTarget.TagName()) != "div" {
+		if strings.ToLower(currentTarget.TagName()) == "a" {
 			return
 		}
 		event.PreventDefault()
