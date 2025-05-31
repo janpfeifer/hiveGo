@@ -5,7 +5,7 @@
 [Hive game (wikipedia)](https://en.wikipedia.org/wiki/Hive_(game)), backed by an [AlphaZero (wikipedia)](https://en.wikipedia.org/wiki/AlphaZero) 
 based AI, using [GoMLX (an ML framework for Go)](https://github.com/gomlx/gomlx) .
 
-<img align="right" src="www/hive/assets/endgame.png" alt="Ant" width="100px"/>
+<a href="https://janpfeifer.github.io/hiveGo/www/hive/"><img align="right" src="www/hive/assets/endgame.png" alt="Ant" width="100px"/></a>
 
 Hive is a small fun board game played with two people, where each one is trying to surround the other one's Queen Bee.
 For a quick match, with instructions and a tutorial, 
@@ -20,7 +20,7 @@ It comes with:
 
 It is slower because of WebAssembly and using a pure Go backend for the machine learning, but it is enough to play at the medium level at no wait.
 
-<img src="https://github.com/user-attachments/assets/d6531652-bb46-4cbb-b6e1-ef9088354374" alt="image" width="800" height="600">
+<a href="https://janpfeifer.github.io/hiveGo/www/hive/"><img src="https://github.com/user-attachments/assets/d6531652-bb46-4cbb-b6e1-ef9088354374" alt="image" width="800" height="600"></a>
 
 ## Command-line UI
 
