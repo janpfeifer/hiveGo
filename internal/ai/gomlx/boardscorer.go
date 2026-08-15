@@ -3,29 +3,30 @@ package gomlx
 import (
 	"bytes"
 	"fmt"
-	"github.com/gomlx/gomlx/graph"
-	"github.com/gomlx/gomlx/ml/context"
-	"github.com/gomlx/gomlx/ml/context/checkpoints"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+
+	"github.com/gomlx/gomlx/core/graph"
+	"github.com/gomlx/gomlx/core/tensors"
+	"github.com/gomlx/gomlx/ml/model"
+	"github.com/gomlx/gomlx/ml/model/checkpoint"
 	"github.com/gomlx/gomlx/ml/train"
-	"github.com/gomlx/gomlx/ml/train/optimizers"
-	"github.com/gomlx/gomlx/types/tensors"
+	"github.com/gomlx/gomlx/ml/train/optimizer"
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	"github.com/janpfeifer/hiveGo/internal/parameters"
 	"github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
-	"slices"
-	"strconv"
-	"strings"
-	"sync"
 )
 
 // newBoardScorer returns a gomlx.BoardScorer for the given ValueModel.
-func newBoardScorer(modelType ModelType, filePath string, model ValueModel, params parameters.Params) (*BoardScorer, error) {
+func newBoardScorer(modelType ModelType, filePath string, modelInst ValueModel, params parameters.Params) (*BoardScorer, error) {
 	boardScorer := &BoardScorer{
 		Type:  modelType,
-		model: model,
+		model: modelInst,
 	}
 
 	// Help if requested.
@@ -57,47 +58,55 @@ func newBoardScorer(modelType ModelType, filePath string, model ValueModel, para
 	if err != nil {
 		return nil, err
 	}
-	ctx := boardScorer.model.Context()
-	boardScorer.batchSize = context.GetParamOr(ctx, "batch_size", 100)
+	scope := boardScorer.model.Context()
+	boardScorer.batchSize = model.GetParamOr(scope, "batch_size", 100)
 
 	// Create optimizer to be used in training.
-	boardScorer.optimizer = optimizers.FromContext(ctx)
+	boardScorer.optimizer = optimizer.FromScope(scope)
 
 	// Setup scoreExec executor.
 	muNewClient.Lock()
 	defer muNewClient.Unlock()
-	boardScorer.scoreExec = context.NewExec(backend(), ctx,
-		func(ctx *context.Context, inputs []*graph.Node) *graph.Node {
+	boardScorer.scoreExec, err = model.NewExec(backend(), scope.Store(),
+		func(scope *model.Scope, inputs []*graph.Node) *graph.Node {
 			// Remove last axis with dimension 1.
-			ctx = ctx.Checked(false)
-			return graph.Squeeze(boardScorer.model.ForwardGraph(ctx, inputs), -1)
+			return graph.Squeeze(boardScorer.model.ForwardGraph(scope, inputs), -1)
 		})
-	boardScorer.lossExec = context.NewExec(backend(), ctx,
-		func(ctx *context.Context, inputsAndLabels []*graph.Node) *graph.Node {
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to create scoreExec")
+	}
+	boardScorer.lossExec, err = model.NewExec(backend(), scope.Store(),
+		func(scope *model.Scope, inputsAndLabels []*graph.Node) *graph.Node {
 			inputs := inputsAndLabels[:len(inputsAndLabels)-1]
 			labels := inputsAndLabels[len(inputsAndLabels)-1]
 			if labels.Rank() == 1 {
 				// Add the last axes with dimension 1.
 				labels = graph.ExpandAxes(labels, -1)
 			}
-			loss := boardScorer.model.LossGraph(ctx, inputs, labels)
+			loss := boardScorer.model.LossGraph(scope, inputs, labels)
 			if !loss.IsScalar() {
 				// Some losses may return one value per example of the batch.
 				loss = graph.ReduceAllMean(loss)
 			}
 			return loss
 		})
-	boardScorer.trainStepExec = context.NewExec(backend(), boardScorer.model.Context(),
-		func(ctx *context.Context, inputsAndLabels []*graph.Node) *graph.Node {
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to create lossExec")
+	}
+	boardScorer.trainStepExec, err = model.NewExec(backend(), scope.Store(),
+		func(scope *model.Scope, inputsAndLabels []*graph.Node) *graph.Node {
 			inputs := inputsAndLabels[:len(inputsAndLabels)-1]
 			labels := inputsAndLabels[len(inputsAndLabels)-1]
 			g := labels.Graph()
-			ctx.SetTraining(g, true)
-			loss := boardScorer.model.LossGraph(ctx, inputs, labels)
-			boardScorer.optimizer.UpdateGraph(ctx, g, loss)
-			train.ExecPerStepUpdateGraphFn(ctx, g)
+			scope.Store().SetTraining(g, true)
+			loss := boardScorer.model.LossGraph(scope, inputs, labels)
+			boardScorer.optimizer.UpdateGraph(scope, g, loss)
+			train.ExecPerStepUpdateGraphFn(g)
 			return loss
 		})
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to create trainStepExec")
+	}
 
 	// Force creating/loading of variables without race conditions first.
 	board := state.NewBoard()
@@ -106,7 +115,7 @@ func newBoardScorer(modelType ModelType, filePath string, model ValueModel, para
 	return boardScorer, nil
 }
 
-// BoardScorer implements a generic GoMLX "board scorer" (to use with AlphaBetaPruning or MinMax seachers) for the Hive game.
+// BoardScorer implements a generic GoMLX "board scorer" (to use with AlphaBetaPruning or MinMax searchers) for the Hive game.
 // It only models the estimate of the state value (Q).
 //
 // It implements ai.ValueScorer, ai.BatchValueScorer and ai.ValueLearner.
@@ -115,14 +124,14 @@ func newBoardScorer(modelType ModelType, filePath string, model ValueModel, para
 type BoardScorer struct {
 	Type ModelType
 
-	// model if BoardScorer is a a BoardScorer.
+	// model if BoardScorer is a BoardScorer.
 	model ValueModel
 
 	// Executors.
-	scoreExec, lossExec, trainStepExec *context.Exec
+	scoreExec, lossExec, trainStepExec *model.Exec
 
 	// checkpoint handler, if model is being saved/loaded to/from disk.
-	checkpoint *checkpoints.Handler
+	checkpoint *checkpoint.Handler
 
 	// checkpointsToKeep is the number of copies of older checkpoints to keep around.
 	// Default to 10.
@@ -135,8 +144,7 @@ type BoardScorer struct {
 	muLearning sync.RWMutex
 
 	// optimizer used when training the model.
-	// ?Should this be owned by the model itself?
-	optimizer optimizers.Interface
+	optimizer optimizer.Interface
 
 	// muSave makes saving sequential.
 	muSave sync.Mutex
@@ -173,10 +181,11 @@ func (s *BoardScorer) BatchScore(boards []*state.Board) []float32 {
 	s.muLearning.RLock()
 	defer s.muLearning.RUnlock()
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
-		return graph.DonateTensorBuffer(t, backend())
+		donated, _ := graph.DonateTensorBuffer(t, backend(), 0)
+		return donated
 	})
 
-	scoresT := s.scoreExec.Call(donatedInputs...)[0]
+	scoresT := s.scoreExec.MustCall(donatedInputs...)[0]
 	scores := scoresT.Value().([]float32)
 	// Remove any padding:
 	return scores[:len(boards)]
@@ -185,10 +194,9 @@ func (s *BoardScorer) BatchScore(boards []*state.Board) []float32 {
 // Learn implements ai.ValueLearner, and trains model with the new boards and its labels.
 // It returns the lossExec.
 func (s *BoardScorer) Learn(boards []*state.Board, boardLabels []float32) (loss float32) {
-	//fmt.Printf("Learn(%d boards)\n", len(boards))
 	s.muLearning.Lock()
 	defer s.muLearning.Unlock()
-	lossT := s.trainStepExec.Call(s.createInputsAndLabels(boards, boardLabels)...)[0]
+	lossT := s.trainStepExec.MustCall(s.createInputsAndLabels(boards, boardLabels)...)[0]
 	return tensors.ToScalar[float32](lossT)
 }
 
@@ -196,7 +204,7 @@ func (s *BoardScorer) Learn(boards []*state.Board, boardLabels []float32) (loss 
 func (s *BoardScorer) Loss(boards []*state.Board, boardLabels []float32) (loss float32) {
 	s.muLearning.RLock()
 	defer s.muLearning.RUnlock()
-	lossT := s.lossExec.Call(s.createInputsAndLabels(boards, boardLabels)...)[0]
+	lossT := s.lossExec.MustCall(s.createInputsAndLabels(boards, boardLabels)...)[0]
 	return tensors.ToScalar[float32](lossT)
 }
 
@@ -204,7 +212,8 @@ func (s *BoardScorer) createInputsAndLabels(boards []*state.Board, boardLabels [
 	inputs := s.model.CreateInputs(boards)
 	inputs = append(inputs, s.model.CreateLabels(boardLabels))
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
-		return graph.DonateTensorBuffer(t, backend())
+		donated, _ := graph.DonateTensorBuffer(t, backend(), 0)
+		return donated
 	})
 	return donatedInputs
 }
@@ -230,27 +239,28 @@ func (s *BoardScorer) writeHyperparametersHelp() {
 	_, _ = fmt.Fprintf(buf, "\tfnn=<path_to_model> to use the model saved at the given directory, or\n")
 	_, _ = fmt.Fprintf(buf, "\tfnn=#0 to use pretrained model number 0 (there are %d pretrained models) or\n", len(PretrainedModels[ModelFNN]))
 	_, _ = fmt.Fprintf(buf, "\tfnn=-help to show this help message\n")
-	s.model.Context().EnumerateParams(func(scope, key string, value any) {
-		if scope != context.RootScope {
-			return
+	for fullPath, value := range s.model.Context().IterParams() {
+		scopePath, key := model.SplitPath(fullPath)
+		if scopePath != model.RootScopePath {
+			continue
 		}
 		_, _ = fmt.Fprintf(buf, "\t%q: default value is %v\n", key, value)
-	})
+	}
 	klog.Info(buf)
 }
 
 func (s *BoardScorer) createCheckpoint(filePath string) error {
-	checkpoint, err := genericCreateCheckpoint(s.model.Context(), ModelFNN, filePath)
+	chkpt, err := genericCreateCheckpoint(s.model.Context().Store(), ModelFNN, filePath)
 	if err != nil {
 		return err
 	}
-	s.checkpoint = checkpoint
+	s.checkpoint = chkpt
 	return nil
 }
 
-func genericCreateCheckpoint(ctx *context.Context, modelType ModelType, filePath string) (*checkpoints.Handler, error) {
-	checkpointConfig := checkpoints.
-		Build(ctx).
+func genericCreateCheckpoint(store *model.Store, modelType ModelType, filePath string) (*checkpoint.Handler, error) {
+	checkpointConfig := checkpoint.
+		Build(store).
 		Immediate().
 		Keep(10)
 
@@ -272,6 +282,6 @@ func genericCreateCheckpoint(ctx *context.Context, modelType ModelType, filePath
 		// Load/Save model from/to disk.
 		checkpointConfig = checkpointConfig.Dir(filePath)
 	}
-	checkpoint, err := checkpointConfig.Done()
-	return checkpoint, err
+	chkpt, err := checkpointConfig.Done()
+	return chkpt, err
 }

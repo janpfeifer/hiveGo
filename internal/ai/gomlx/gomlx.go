@@ -6,15 +6,17 @@
 package gomlx
 
 import (
-	"github.com/gomlx/gomlx/backends"
-	"github.com/gomlx/gomlx/ml/context"
+	"sync"
+	"weak"
+
+	"github.com/gomlx/compute"
+	"github.com/gomlx/gomlx/ml/model"
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/parameters"
 	"github.com/janpfeifer/hiveGo/internal/players"
+	"github.com/janpfeifer/must"
 	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
-	"sync"
-	"weak"
 )
 
 type ModelType int
@@ -29,7 +31,7 @@ const (
 
 var (
 	// Backend is a singleton, the same for all players.
-	backend = sync.OnceValue(func() backends.Backend { return backends.New() })
+	backend = sync.OnceValue(func() compute.Backend { return must.M1(compute.New()) })
 
 	// muNewClient is a Mutex used to synchronize access to GoMLX client initialization
 	// or related critical sections.
@@ -92,14 +94,14 @@ func New(params parameters.Params) (ai.ValueScorer, error) {
 		var err error
 		switch modelType {
 		case ModelFNN:
-			model := NewFNN()
-			boardScorer, err = newBoardScorer(modelType, filePath, model, params)
+			modelInst := NewFNN()
+			boardScorer, err = newBoardScorer(modelType, filePath, modelInst, params)
 			if err != nil {
 				return nil, err
 			}
 		case ModelAlphaZeroFNN:
-			model := NewAlphaZeroFNN()
-			policyScorer, err := newPolicyScorer(modelType, filePath, model, params)
+			modelInst := NewAlphaZeroFNN()
+			policyScorer, err := newPolicyScorer(modelType, filePath, modelInst, params)
 			if err != nil {
 				return nil, err
 			}
@@ -129,51 +131,52 @@ func init() {
 }
 
 // extractParams and write them as context hyperparameters
-func extractParams(modelName string, params parameters.Params, ctx *context.Context) error {
+func extractParams(modelName string, params parameters.Params, scope *model.Scope) error {
 	var err error
-	ctx.EnumerateParams(func(scope, key string, valueAny any) {
+	for fullPath, valueAny := range scope.IterParams() {
 		if err != nil {
 			// If error happened skip the rest.
-			return
+			return err
 		}
-		if scope != context.RootScope {
-			return
+		scopePath, key := model.SplitPath(fullPath)
+		if scopePath != model.RootScopePath {
+			continue
 		}
 		switch defaultValue := valueAny.(type) {
 		case string:
 			value, _ := parameters.PopParamOr(params, key, defaultValue)
-			ctx.SetParam(key, value)
+			scope.SetParam(key, value)
 		case int:
 			value, newErr := parameters.PopParamOr(params, key, defaultValue)
 			if newErr != nil {
 				err = errors.WithMessagef(newErr, "parsing %q (int) for model %s", key, modelName)
-				return
+				return err
 			}
-			ctx.SetParam(key, value)
+			scope.SetParam(key, value)
 		case float64:
 			value, newErr := parameters.PopParamOr(params, key, defaultValue)
 			if newErr != nil {
 				err = errors.WithMessagef(newErr, "parsing %q (float64) for model %s", key, modelName)
-				return
+				return err
 			}
-			ctx.SetParam(key, value)
+			scope.SetParam(key, value)
 		case float32:
 			value, newErr := parameters.PopParamOr(params, key, defaultValue)
 			if newErr != nil {
 				err = errors.WithMessagef(newErr, "parsing %q (float32) for model %s", key, modelName)
-				return
+				return err
 			}
-			ctx.SetParam(key, value)
+			scope.SetParam(key, value)
 		case bool:
 			value, newErr := parameters.PopParamOr(params, key, defaultValue)
 			if newErr != nil {
 				err = errors.WithMessagef(newErr, "parsing %q (bool) for model %s", key, modelName)
-				return
+				return err
 			}
-			ctx.SetParam(key, value)
+			scope.SetParam(key, value)
 		default:
 			err = errors.Errorf("model %s parameter %q is of unknown type %T", modelName, key, defaultValue)
 		}
-	})
+	}
 	return err
 }

@@ -1,9 +1,9 @@
 package gomlx
 
 import (
-	"github.com/gomlx/gomlx/graph"
-	"github.com/gomlx/gomlx/ml/context"
-	"github.com/gomlx/gomlx/types/tensors"
+	"github.com/gomlx/gomlx/core/graph"
+	"github.com/gomlx/gomlx/core/tensors"
+	"github.com/gomlx/gomlx/ml/model"
 	"github.com/janpfeifer/hiveGo/internal/state"
 )
 
@@ -11,7 +11,7 @@ import (
 // not the policy (probabilities of actions).
 type ValueModel interface {
 	// Context used by the model: with both it weights and hyperparameters.
-	Context() *context.Context
+	Context() *model.Scope
 
 	// CreateInputs for a batch of boards as tensors.
 	// It should also do the padding.
@@ -23,9 +23,9 @@ type ValueModel interface {
 
 	// ForwardGraph is the GoMLX model graph function with the forward path.
 	// It must return the scores for each board, shaped [board, 1].
-	ForwardGraph(ctx *context.Context, inputs []*graph.Node) *graph.Node
+	ForwardGraph(scope *model.Scope, inputs []*graph.Node) *graph.Node
 
 	// LossGraph should calculate the lossExec given the board inputs and the labels (shaped [batch_size, 1]).
 	// It must return a scalar with the lossExec value.
-	LossGraph(ctx *context.Context, inputs []*graph.Node, labels *graph.Node) *graph.Node
+	LossGraph(scope *model.Scope, inputs []*graph.Node, labels *graph.Node) *graph.Node
 }

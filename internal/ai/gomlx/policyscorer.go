@@ -3,21 +3,22 @@ package gomlx
 import (
 	"bytes"
 	"fmt"
+	"slices"
+	"sync"
+
 	"github.com/gomlx/exceptions"
-	"github.com/gomlx/gomlx/graph"
-	"github.com/gomlx/gomlx/ml/context"
-	"github.com/gomlx/gomlx/ml/context/checkpoints"
+	"github.com/gomlx/gomlx/core/graph"
+	"github.com/gomlx/gomlx/core/tensors"
+	"github.com/gomlx/gomlx/ml/model"
+	"github.com/gomlx/gomlx/ml/model/checkpoint"
 	"github.com/gomlx/gomlx/ml/train"
-	"github.com/gomlx/gomlx/ml/train/optimizers"
-	"github.com/gomlx/gomlx/types/tensors"
+	"github.com/gomlx/gomlx/ml/train/optimizer"
 	"github.com/janpfeifer/hiveGo/internal/ai"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	"github.com/janpfeifer/hiveGo/internal/parameters"
 	"github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/pkg/errors"
 	"k8s.io/klog/v2"
-	"slices"
-	"sync"
 )
 
 // PolicyScorer implements a generic GoMLX "board scorer" (to use with AlphaBetaPruning or MinMax searchers) for the Hive game.
@@ -36,7 +37,7 @@ type PolicyScorer struct {
 	model PolicyModel
 
 	// Executors.
-	valueScoreExec, policyScoreExec, lossExec, trainStepExec *context.Exec
+	valueScoreExec, policyScoreExec, lossExec, trainStepExec *model.Exec
 
 	// Number of input tensors for the executors: they are defined at the first call to
 	// PolicyModel.CreatePolicyInputs and PolicyModel.CreatePolicyLabels, and must remain constant.
@@ -44,7 +45,7 @@ type PolicyScorer struct {
 	numPolicyInputTensors, numLabelTensors int
 
 	// checkpoint handler, if model is being saved/loaded to/from disk.
-	checkpoint *checkpoints.Handler
+	checkpoint *checkpoint.Handler
 
 	// checkpointsToKeep is the number of copies of older checkpoints to keep around.
 	// Default to 10.
@@ -57,8 +58,7 @@ type PolicyScorer struct {
 	muLearning sync.RWMutex
 
 	// optimizer used when training the model.
-	// ?Should this be owned by the model itself?
-	optimizer optimizers.Interface
+	optimizer optimizer.Interface
 
 	// numCompilations of computation graphs.
 	NumCompilations int
@@ -74,11 +74,11 @@ var (
 )
 
 // newPolicyScorer returns a gomlx.PolicyScorer for the given ValueModel.
-func newPolicyScorer(modelType ModelType, filePath string, model PolicyModel, params parameters.Params) (*PolicyScorer, error) {
+func newPolicyScorer(modelType ModelType, filePath string, modelInst PolicyModel, params parameters.Params) (*PolicyScorer, error) {
 	s := &PolicyScorer{
 		Type:                  modelType,
 		filePath:              filePath,
-		model:                 model,
+		model:                 modelInst,
 		numPolicyInputTensors: -1,
 		numLabelTensors:       -1,
 	}
@@ -108,11 +108,11 @@ func newPolicyScorer(modelType ModelType, filePath string, model PolicyModel, pa
 	if err != nil {
 		return nil, err
 	}
-	ctx := s.model.Context()
-	s.batchSize = context.GetParamOr(ctx, "batch_size", 100)
+	scope := s.model.Context()
+	s.batchSize = model.GetParamOr(scope, "batch_size", 100)
 
 	// Create optimizer to be used in training.
-	s.optimizer = optimizers.FromContext(ctx)
+	s.optimizer = optimizer.FromScope(scope)
 	s.createExecutors()
 	return s, nil
 }
@@ -131,44 +131,57 @@ func (s *PolicyScorer) connectCheckpointHandler() error {
 func (s *PolicyScorer) createExecutors() {
 	muNewClient.Lock()
 	defer muNewClient.Unlock()
-	ctx := s.model.Context().Checked(false)
-	s.valueScoreExec = context.NewExec(backend(), ctx,
-		func(ctx *context.Context, valueInputs []*graph.Node) *graph.Node {
+	scope := s.model.Context()
+	var err error
+	s.valueScoreExec, err = model.NewExec(backend(), scope.Store(),
+		func(scope *model.Scope, valueInputs []*graph.Node) *graph.Node {
 			// Reshape to a scalar.
 			s.NumCompilations++
-			return graph.Reshape(s.model.ForwardValueGraph(ctx, valueInputs))
+			return graph.Reshape(s.model.ForwardValueGraph(scope, valueInputs))
 		})
-	s.policyScoreExec = context.NewExec(backend(), ctx,
-		func(ctx *context.Context, policyInputs []*graph.Node) []*graph.Node {
+	if err != nil {
+		exceptions.Panicf("failed to create valueScoreExec: %v", err)
+	}
+	s.policyScoreExec, err = model.NewExec(backend(), scope.Store(),
+		func(scope *model.Scope, policyInputs []*graph.Node) []*graph.Node {
 			s.NumCompilations++
-			value, policy := s.model.ForwardPolicyGraph(ctx, policyInputs)
+			value, policy := s.model.ForwardPolicyGraph(scope, policyInputs)
 			return []*graph.Node{value, policy}
 		})
-	s.lossExec = context.NewExec(backend(), ctx,
-		func(ctx *context.Context, inputsAndLabels []*graph.Node) *graph.Node {
+	if err != nil {
+		exceptions.Panicf("failed to create policyScoreExec: %v", err)
+	}
+	s.lossExec, err = model.NewExec(backend(), scope.Store(),
+		func(scope *model.Scope, inputsAndLabels []*graph.Node) *graph.Node {
 			s.NumCompilations++
 			inputs := inputsAndLabels[:s.numPolicyInputTensors]
 			labels := inputsAndLabels[s.numPolicyInputTensors:]
-			loss := s.model.LossGraph(ctx, inputs, labels)
+			loss := s.model.LossGraph(scope, inputs, labels)
 			if !loss.IsScalar() {
 				// Some losses may return one value per example of the batch.
 				loss = graph.ReduceAllMean(loss)
 			}
 			return loss
 		})
+	if err != nil {
+		exceptions.Panicf("failed to create lossExec: %v", err)
+	}
 	s.lossExec.SetMaxCache(100)
-	s.trainStepExec = context.NewExec(backend(), s.model.Context(),
-		func(ctx *context.Context, inputsAndLabels []*graph.Node) *graph.Node {
+	s.trainStepExec, err = model.NewExec(backend(), scope.Store(),
+		func(scope *model.Scope, inputsAndLabels []*graph.Node) *graph.Node {
 			s.NumCompilations++
 			g := inputsAndLabels[0].Graph()
-			ctx.SetTraining(g, true)
+			scope.Store().SetTraining(g, true)
 			inputs := inputsAndLabels[:s.numPolicyInputTensors]
 			labels := inputsAndLabels[s.numPolicyInputTensors:]
-			loss := s.model.LossGraph(ctx, inputs, labels)
-			s.optimizer.UpdateGraph(ctx, g, loss)
-			train.ExecPerStepUpdateGraphFn(ctx, g)
+			loss := s.model.LossGraph(scope, inputs, labels)
+			s.optimizer.UpdateGraph(scope, g, loss)
+			train.ExecPerStepUpdateGraphFn(g)
 			return loss
 		})
+	if err != nil {
+		exceptions.Panicf("failed to create trainStepExec: %v", err)
+	}
 	s.trainStepExec.SetMaxCache(100)
 
 	// Force creating/loading of variables without race conditions first.
@@ -228,10 +241,11 @@ func (s *PolicyScorer) Score(board *state.Board) float32 {
 	s.muLearning.RLock()
 	defer s.muLearning.RUnlock()
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
-		return graph.DonateTensorBuffer(t, backend())
+		donated, _ := graph.DonateTensorBuffer(t, backend(), 0)
+		return donated
 	})
 
-	scoreT := s.valueScoreExec.Call(donatedInputs...)[0]
+	scoreT := s.valueScoreExec.MustCall(donatedInputs...)[0]
 	return tensors.ToScalar[float32](scoreT)
 }
 
@@ -264,10 +278,11 @@ func (s *PolicyScorer) PolicyScore(board *state.Board) []float32 {
 	s.muLearning.RLock()
 	defer s.muLearning.RUnlock()
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
-		return graph.DonateTensorBuffer(t, backend())
+		donated, _ := graph.DonateTensorBuffer(t, backend(), 0)
+		return donated
 	})
-	policyScoresT := s.policyScoreExec.Call(donatedInputs...)[1]
-	paddedPolicyScores := tensors.CopyFlatData[float32](policyScoresT)
+	policyScoresT := s.policyScoreExec.MustCall(donatedInputs...)[1]
+	paddedPolicyScores := tensors.MustCopyFlatData[float32](policyScoresT)
 	// Notice this works because we are scoring only one board, if it were a batch, we would need to deal with the
 	// ragged actions tensor.
 	return paddedPolicyScores[:board.NumActions()]
@@ -279,11 +294,10 @@ func (s *PolicyScorer) PolicyScore(board *state.Board) []float32 {
 //
 // It returns the lossExec.
 func (s *PolicyScorer) Learn(boards []*state.Board, valueLabels []float32, policyLabels [][]float32) (loss float32) {
-	//fmt.Printf("Learn(%d boards)\n", len(boards))
 	inputsAndLabels := s.createInputsAndLabels(boards, valueLabels, policyLabels)
 	s.muLearning.Lock()
 	defer s.muLearning.Unlock()
-	lossT := s.trainStepExec.Call(inputsAndLabels...)[0]
+	lossT := s.trainStepExec.MustCall(inputsAndLabels...)[0]
 	return tensors.ToScalar[float32](lossT)
 }
 
@@ -291,9 +305,9 @@ func (s *PolicyScorer) Learn(boards []*state.Board, valueLabels []float32, polic
 func (s *PolicyScorer) ClearOptimizer() {
 	s.muLearning.Lock()
 	defer s.muLearning.Unlock()
-	ctx := s.model.Context()
-	optimizers.DeleteGlobalStep(ctx)
-	s.optimizer.Clear(ctx)
+	scope := s.model.Context()
+	_ = optimizer.DeleteGlobalStep(scope)
+	_ = s.optimizer.Clear(scope)
 }
 
 // Loss returns a measure of lossExec for the model -- whatever it is.
@@ -301,7 +315,7 @@ func (s *PolicyScorer) Loss(boards []*state.Board, valueLabels []float32, policy
 	inputsAndLabels := s.createInputsAndLabels(boards, valueLabels, policyLabels)
 	s.muLearning.RLock()
 	defer s.muLearning.RUnlock()
-	lossT := s.lossExec.Call(inputsAndLabels...)[0]
+	lossT := s.lossExec.MustCall(inputsAndLabels...)[0]
 	return tensors.ToScalar[float32](lossT)
 }
 
@@ -317,7 +331,8 @@ func (s *PolicyScorer) createInputsAndLabels(boards []*state.Board, valueLabels 
 	}
 	inputs = append(inputs, labels...)
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
-		return graph.DonateTensorBuffer(t, backend())
+		donated, _ := graph.DonateTensorBuffer(t, backend(), 0)
+		return donated
 	})
 	return donatedInputs
 }
@@ -343,22 +358,23 @@ func (s *PolicyScorer) writeHyperparametersHelp() {
 	_, _ = fmt.Fprintf(buf, "\ta0fnn=<path_to_model> to use the model saved at the given directory, or\n")
 	_, _ = fmt.Fprintf(buf, "\ta0fnn=#0 to use pretrained model number 0 (there are %d pretrained models) or\n", len(PretrainedModels[ModelAlphaZeroFNN]))
 	_, _ = fmt.Fprintf(buf, "\ta0fnn=-help to show this help message\n")
-	s.model.Context().EnumerateParams(func(scope, key string, value any) {
-		if scope != context.RootScope {
-			return
+	for fullPath, value := range s.model.Context().IterParams() {
+		scopePath, key := model.SplitPath(fullPath)
+		if scopePath != model.RootScopePath {
+			continue
 		}
 		_, _ = fmt.Fprintf(buf, "\t%q: default value is %v\n", key, value)
-	})
+	}
 
 	klog.Info(buf)
 }
 
 func (s *PolicyScorer) createCheckpoint(filePath string) error {
-	checkpoint, err := genericCreateCheckpoint(s.model.Context(), ModelAlphaZeroFNN, filePath)
+	chkpt, err := genericCreateCheckpoint(s.model.Context().Store(), ModelAlphaZeroFNN, filePath)
 	if err != nil {
 		return err
 	}
-	s.checkpoint = checkpoint
+	s.checkpoint = chkpt
 	return nil
 }
 
@@ -368,5 +384,5 @@ func (s *PolicyScorer) Finalize() {
 	s.policyScoreExec.Finalize()
 	s.lossExec.Finalize()
 	s.trainStepExec.Finalize()
-	s.model.Context().Finalize()
+	s.model.Context().Store().Finalize()
 }

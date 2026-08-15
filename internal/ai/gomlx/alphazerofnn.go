@@ -1,27 +1,28 @@
 package gomlx
 
 import (
-	. "github.com/gomlx/gomlx/graph"
-	"github.com/gomlx/gomlx/ml/context"
+	. "github.com/gomlx/gomlx/core/graph"
+	"github.com/gomlx/compute/shapes"
+	"github.com/gomlx/gomlx/core/tensors"
 	"github.com/gomlx/gomlx/ml/layers"
-	"github.com/gomlx/gomlx/ml/layers/activations"
+	"github.com/gomlx/gomlx/ml/layers/activation"
 	fnnLayer "github.com/gomlx/gomlx/ml/layers/fnn"
 	"github.com/gomlx/gomlx/ml/layers/kan"
-	"github.com/gomlx/gomlx/ml/layers/regularizers"
-	"github.com/gomlx/gomlx/ml/train/losses"
-	"github.com/gomlx/gomlx/ml/train/optimizers"
-	"github.com/gomlx/gomlx/ml/train/optimizers/cosineschedule"
-	"github.com/gomlx/gomlx/types/shapes"
-	"github.com/gomlx/gomlx/types/tensors"
-	"github.com/gomlx/gopjrt/dtypes"
+	"github.com/gomlx/gomlx/ml/layers/regularizer"
+	"github.com/gomlx/gomlx/ml/model"
+	"github.com/gomlx/gomlx/ml/train/loss"
+	"github.com/gomlx/gomlx/ml/train/optimizer"
+	"github.com/gomlx/gomlx/ml/train/optimizer/cosineschedule"
+	"github.com/gomlx/compute/dtypes"
 	"github.com/janpfeifer/hiveGo/internal/features"
 	"github.com/janpfeifer/hiveGo/internal/state"
+	"github.com/pkg/errors"
 )
 
 // AlphaZeroFNN implement a feed-forward model for scoring a board and its actions.
 // It implements a PolicyModel.
 type AlphaZeroFNN struct {
-	ctx *context.Context
+	scope *model.Scope
 }
 
 // Compile-time assert that AlphaZeroFNN implements PolicyModel.
@@ -29,24 +30,25 @@ var _ PolicyModel = &AlphaZeroFNN{}
 
 // NewAlphaZeroFNN creates an AlphaZeroFNN model with a fresh context, initialized with hyperparameters set to their defaults.
 func NewAlphaZeroFNN() *AlphaZeroFNN {
-	fnn := &AlphaZeroFNN{ctx: context.New()}
-	fnn.ctx.RngStateReset()
-	fnn.ctx.SetParams(map[string]any{
+	store := model.NewStore()
+	scope := store.RootScope()
+	_ = store.ResetRNGState()
+	scope.SetParams(map[string]any{
 		"batch_size": 128,
 
 		// Number of board features to extract.
 		// This allows backward compatibility, otherwise better leave as is.
 		"features_version": features.BoardFeaturesDim,
 
-		optimizers.ParamOptimizer:       "adam",
-		optimizers.ParamLearningRate:    0.001,
-		optimizers.ParamAdamEpsilon:     1e-7,
-		optimizers.ParamAdamDType:       "",
+		optimizer.ParamOptimizer:       "adam",
+		optimizer.ParamLearningRate:    0.001,
+		optimizer.ParamAdamEpsilon:     1e-7,
+		optimizer.ParamAdamDType:       "",
 		cosineschedule.ParamPeriodSteps: 0,
-		activations.ParamActivation:     "sigmoid",
+		activation.ParamActivation:     "sigmoid",
 		layers.ParamDropoutRate:         0.0,
-		regularizers.ParamL2:            1e-5,
-		regularizers.ParamL1:            1e-5,
+		regularizer.ParamL2:            1e-5,
+		regularizer.ParamL1:            1e-5,
 
 		// AlphaZeroFNN network parameters:
 		fnnLayer.ParamNumHiddenLayers: 1,
@@ -69,17 +71,20 @@ func NewAlphaZeroFNN() *AlphaZeroFNN {
 		kan.ParamDiscreteSplitPointsTrainable: true,
 		kan.ParamResidual:                     true,
 	})
-	fnn.ctx = fnn.ctx.Checked(false)
-	return fnn
+	return &AlphaZeroFNN{scope: scope}
 }
 
-// Clone model. Notice the associated checkpoints.Handler is not copied, and have to be set again.
+// Clone model. Notice the associated checkpoint.Handler is not copied, and have to be set again.
 func (fnn *AlphaZeroFNN) Clone() PolicyModel {
-	return &AlphaZeroFNN{ctx: fnn.ctx.Clone()}
+	clonedStore, err := fnn.scope.Store().Clone()
+	if err != nil {
+		panic(errors.Wrap(err, "failed to clone AlphaZeroFNN store"))
+	}
+	return &AlphaZeroFNN{scope: clonedStore.RootScope()}
 }
 
-func (fnn *AlphaZeroFNN) Context() *context.Context {
-	return fnn.ctx
+func (fnn *AlphaZeroFNN) Context() *model.Scope {
+	return fnn.scope
 }
 
 // paddedSize returns a padded batchSize for the given numBoards.
@@ -90,7 +95,7 @@ func (fnn *AlphaZeroFNN) paddedSize(numBoards int) int {
 		return numBoards
 	}
 	// Make sure the default batchSize is supported without padding.
-	defaultBatchSize := context.GetParamOr(fnn.ctx, "batch_size", 128)
+	defaultBatchSize := model.GetParamOr(fnn.scope, "batch_size", 128)
 	if numBoards == defaultBatchSize {
 		return numBoards
 	}
@@ -115,7 +120,7 @@ func (fnn *AlphaZeroFNN) CreateValueInputs(board *state.Board) []*tensors.Tensor
 // Create raw features for a set of boards (not its actions), maybe with padding.
 // minPadding is the minimal amount of padding to make sure is included.
 func (fnn *AlphaZeroFNN) createBoardsFeatures(boards []*state.Board, minPadding int) *tensors.Tensor {
-	version := context.GetParamOr(fnn.ctx, "features_version", features.BoardFeaturesDim)
+	version := model.GetParamOr(fnn.scope, "features_version", features.BoardFeaturesDim)
 	numBoards := len(boards)
 	paddedBatchSize := fnn.paddedSize(numBoards + minPadding)
 	boardFeatures := tensors.FromShape(shapes.Make(dtypes.Float32, paddedBatchSize, version))
@@ -166,23 +171,23 @@ func (fnn *AlphaZeroFNN) CreatePolicyInputs(boards []*state.Board) []*tensors.Te
 	return []*tensors.Tensor{boardFeatures, numBoardsT, actionsFeatures, actionsToBoardIdx, numActionsT}
 }
 
-func (fnn *AlphaZeroFNN) ForwardValueGraph(ctx *context.Context, valueInputs []*Node) (values *Node) {
+func (fnn *AlphaZeroFNN) ForwardValueGraph(scope *model.Scope, valueInputs []*Node) (values *Node) {
 	boardsFeatures, numBoards := valueInputs[0], valueInputs[1]
-	boardEmbed := fnn.boardEmbedding(ctx, boardsFeatures, numBoards)
-	return fnn.boardValues(ctx, boardEmbed)
+	boardEmbed := fnn.boardEmbedding(scope, boardsFeatures, numBoards)
+	return fnn.boardValues(scope, boardEmbed)
 }
 
-func (fnn *AlphaZeroFNN) ForwardPolicyGraph(ctx *context.Context, policyInputs []*Node) (values *Node, policy *Node) {
+func (fnn *AlphaZeroFNN) ForwardPolicyGraph(scope *model.Scope, policyInputs []*Node) (values *Node, policy *Node) {
 	boardFeatures, numBoards, actionsFeatures, actionsToBoardIdx, numActions := policyInputs[0], policyInputs[1], policyInputs[2], policyInputs[3], policyInputs[4]
 	numPaddedBoards := boardFeatures.Shape().Dim(0)
 	numPaddedActions := actionsFeatures.Shape().Dim(0)
 
 	// Base board tower is shared between value and actions (policy) logits.
-	boardEmbed := fnn.boardEmbedding(ctx, boardFeatures, numBoards)
-	actionsEmbed := fnn.boardEmbedding(ctx, actionsFeatures, numActions)
+	boardEmbed := fnn.boardEmbedding(scope, boardFeatures, numBoards)
+	actionsEmbed := fnn.boardEmbedding(scope, actionsFeatures, numActions)
 
 	// One-layer from board embeddings to its values (scores).
-	values = fnn.boardValues(ctx, boardEmbed)
+	values = fnn.boardValues(scope, boardEmbed)
 
 	// Send message (like a MPNN, a type of graph neural network) from boards to actions.
 	actionsBoardEmbed := Gather(boardEmbed, ExpandAxes(actionsToBoardIdx, -1))
@@ -190,14 +195,14 @@ func (fnn *AlphaZeroFNN) ForwardPolicyGraph(ctx *context.Context, policyInputs [
 	actionsEmbed = Concatenate([]*Node{actionsEmbed, actionsBoardEmbed}, -1)
 
 	// actions (policy) tower
-	actionsCtx := ctx.In("actions")
+	actionsCtx := scope.At("actions")
 	var actionsLogits *Node
-	if context.GetParamOr(ctx, "kan", false) {
+	if model.GetParamOr(scope, "kan", false) {
 		// Use KAN, all configured by context hyperparameters. See createDefaultContext for defaults.
-		actionsLogits = kan.New(actionsCtx.In("kan"), actionsEmbed, 1).Done()
+		actionsLogits = kan.New(actionsCtx.At("kan"), actionsEmbed, 1).Done()
 	} else {
 		// Normal AlphaZeroFNN, all configured by context hyperparameters. See createDefaultContext for defaults.
-		actionsLogits = fnnLayer.New(actionsCtx.In("fnn"), actionsEmbed, 1).Done()
+		actionsLogits = fnnLayer.New(actionsCtx.At("fnn"), actionsEmbed, 1).Done()
 	}
 	actionsLogits = Reshape(actionsLogits, -1) // Flatten
 	policyRagged := MakeRagged2D(numPaddedBoards, actionsLogits, actionsToBoardIdx).Softmax()
@@ -205,17 +210,17 @@ func (fnn *AlphaZeroFNN) ForwardPolicyGraph(ctx *context.Context, policyInputs [
 	return
 }
 
-func (fnn *AlphaZeroFNN) boardEmbedding(ctx *context.Context, boardFeatures, numBoards *Node) *Node {
-	ctx = ctx.In("base_board_tower")
+func (fnn *AlphaZeroFNN) boardEmbedding(scope *model.Scope, boardFeatures, numBoards *Node) *Node {
+	scope = scope.At("base_board_tower")
 	embeddings := boardFeatures
-	boardEmbedDim := context.GetParamOr(ctx, fnnLayer.ParamNumHiddenNodes, 4)
+	boardEmbedDim := model.GetParamOr(scope, fnnLayer.ParamNumHiddenNodes, 4)
 	// ValueModel itself is an AlphaZeroFNN or a KAN.
-	if context.GetParamOr(ctx, "kan", false) {
+	if model.GetParamOr(scope, "kan", false) {
 		// Use KAN, all configured by context hyperparameters. See createDefaultContext for defaults.
-		embeddings = kan.New(ctx.In("kan"), embeddings, boardEmbedDim).Done()
+		embeddings = kan.New(scope.At("kan"), embeddings, boardEmbedDim).Done()
 	} else {
 		// Normal AlphaZeroFNN, all configured by context hyperparameters. See createDefaultContext for defaults.
-		embeddings = fnnLayer.New(ctx.In("fnn"), embeddings, boardEmbedDim).Done()
+		embeddings = fnnLayer.New(scope.At("fnn"), embeddings, boardEmbedDim).Done()
 	}
 
 	// Zero masked out elements.
@@ -229,16 +234,16 @@ func (fnn *AlphaZeroFNN) boardEmbedding(ctx *context.Context, boardFeatures, num
 	return embeddings
 }
 
-func (fnn *AlphaZeroFNN) boardValues(ctx *context.Context, boardEmbed *Node) *Node {
-	ctx = ctx.In("board_output")
+func (fnn *AlphaZeroFNN) boardValues(scope *model.Scope, boardEmbed *Node) *Node {
+	scope = scope.At("board_output")
 	var logits *Node
-	if context.GetParamOr(ctx, "kan", false) {
+	if model.GetParamOr(scope, "kan", false) {
 		// Use KAN, all configured by context hyperparameters. See createDefaultContext for defaults.
-		logits = kan.New(ctx.In("kan"), boardEmbed, 1).
+		logits = kan.New(scope.At("kan"), boardEmbed, 1).
 			NumHiddenLayers(0, 0).Done()
 	} else {
 		// Normal AlphaZeroFNN, all configured by context hyperparameters. See createDefaultContext for defaults.
-		logits = fnnLayer.New(ctx.In("kan"), boardEmbed, 1).
+		logits = fnnLayer.New(scope.At("kan"), boardEmbed, 1).
 			NumHiddenLayers(0, 0).Done()
 	}
 	return Tanh(logits)
@@ -270,24 +275,24 @@ func (fnn *AlphaZeroFNN) CreatePolicyLabels(boardLabels []float32, policyLabels 
 	return []*tensors.Tensor{boardLabelsT, policyLabelsT}
 }
 
-func (fnn *AlphaZeroFNN) LossGraph(ctx *context.Context, inputs []*Node, labels []*Node) *Node {
+func (fnn *AlphaZeroFNN) LossGraph(scope *model.Scope, inputs []*Node, labels []*Node) *Node {
 	numBoards, numActions := inputs[1], inputs[4]
-	predictedValues, predictedPolicies := fnn.ForwardPolicyGraph(ctx, inputs)
+	predictedValues, predictedPolicies := fnn.ForwardPolicyGraph(scope, inputs)
 	boardLabels, policyLabels := labels[0], labels[1]
 	if boardLabels.Rank() == 1 {
 		boardLabels = ExpandAxes(boardLabels, -1)
 	}
 
 	// Board labels part:
-	boardsMask := fnn.getMask(predictedValues, numBoards)
-	boardLosses := ReduceAllMean(losses.MeanSquaredError([]*Node{boardLabels, boardsMask}, []*Node{predictedValues}))
+	boardsMask := Squeeze(fnn.getMask(predictedValues, numBoards), -1)
+	boardLosses := ReduceAllMean(loss.MeanSquaredError([]*Node{boardLabels, boardsMask}, []*Node{predictedValues}))
 
 	// Policy losses: we do the cross-entropy loss manually, to handle the raggedness in the mean.
 	// We want each board to have the same weight on the final loss.
 	policiesMask := Squeeze(fnn.getMask(policyLabels, numActions), -1)
 	predictedPolicies = ExpandAxes(predictedPolicies, -1)
 	policyLabels = ExpandAxes(policyLabels, -1)
-	policyLosses := losses.CategoricalCrossEntropy([]*Node{policyLabels, policiesMask},
+	policyLosses := loss.CategoricalCrossEntropy([]*Node{policyLabels, policiesMask},
 		[]*Node{predictedPolicies})
 	return Add(boardLosses, policyLosses)
 }
