@@ -15,7 +15,7 @@ import (
 	"github.com/janpfeifer/hiveGo/internal/searchers/alphabeta"
 	"github.com/janpfeifer/hiveGo/internal/searchers/mcts"
 
-	_ "github.com/gomlx/gomlx/backends/simplego"
+	_ "github.com/gomlx/gomlx/backends/default"
 	_ "github.com/janpfeifer/hiveGo/internal/ai/gomlx"
 )
 
