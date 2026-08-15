@@ -38,11 +38,10 @@ Tested on Linux and Windows, probably work in most platforms:
 ![image](https://github.com/user-attachments/assets/f67d8ad5-f047-4154-843e-4319aa55b794)
 
 It uses the [GoMLX](https://github.com/gomlx/gomlx) Go backend  by default, so nothing else is needed to install. 
-If you want the "accelerated" version, based on [OpenXLA](https://openxla.org/), including GPU support, install the XLA
-libraries (see [GoMLX Installation](https://github.com/gomlx/gomlx?tab=readme-ov-file#installation)), and install **hive** command with:
+It will use a GPU for the AI if available.
 
 ```
-    go install -tags xla github/janpfeifer/hiveGo/cmd/hive@latest
+    go install github/janpfeifer/hiveGo/cmd/hive@latest
 ```
 
 
@@ -88,7 +87,7 @@ Allows playing games among AI's automatically.
 * Load and rescore old games.
 * Compare AIs
 * Train models while playing the game.
-* Can train TF models.
+* Can train GoMLX models.
 * Can distill from previous models: very handy to quickly ramp up a new model to a moderate quality model.
 * Two trainers: ab-trainer (for AlphaBeta Pruning) and a0-trainer (for the AlphaZero models).
 
@@ -98,8 +97,6 @@ During training with larger models you may want to use GoMLX with a GPU.
 
 > [!WARNING]
 > 🚧🛠 Currently broken 🚧🛠 <br/>
-> The GoMLX version doesn't yet implemented the convolutional model.
-> But also, the better idea would be to do a transformer based model.
 
 The latest, more fancy model, uses the full board as input to the NN, and
 runs a bunch of layers of convolution on that, with residual connections.

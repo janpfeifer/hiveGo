@@ -12,7 +12,7 @@ import (
 	"github.com/janpfeifer/hiveGo/internal/state"
 	"k8s.io/klog/v2"
 
-	_ "github.com/gomlx/gomlx/backends/simplego"
+	_ "github.com/gomlx/compute/gobackend"
 	_ "github.com/janpfeifer/hiveGo/internal/players/default"
 )
 

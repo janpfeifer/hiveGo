@@ -1,19 +1,19 @@
 package gomlx
 
 import (
-	. "github.com/gomlx/gomlx/graph"
-	"github.com/gomlx/gomlx/ml/context"
+	. "github.com/gomlx/gomlx/core/graph"
+	"github.com/gomlx/compute/shapes"
+	"github.com/gomlx/gomlx/core/tensors"
 	"github.com/gomlx/gomlx/ml/layers"
-	"github.com/gomlx/gomlx/ml/layers/activations"
+	"github.com/gomlx/gomlx/ml/layers/activation"
 	fnnLayer "github.com/gomlx/gomlx/ml/layers/fnn"
 	"github.com/gomlx/gomlx/ml/layers/kan"
-	"github.com/gomlx/gomlx/ml/layers/regularizers"
-	"github.com/gomlx/gomlx/ml/train/losses"
-	"github.com/gomlx/gomlx/ml/train/optimizers"
-	"github.com/gomlx/gomlx/ml/train/optimizers/cosineschedule"
-	"github.com/gomlx/gomlx/types/shapes"
-	"github.com/gomlx/gomlx/types/tensors"
-	"github.com/gomlx/gopjrt/dtypes"
+	"github.com/gomlx/gomlx/ml/layers/regularizer"
+	"github.com/gomlx/gomlx/ml/model"
+	"github.com/gomlx/gomlx/ml/train/loss"
+	"github.com/gomlx/gomlx/ml/train/optimizer"
+	"github.com/gomlx/gomlx/ml/train/optimizer/cosineschedule"
+	"github.com/gomlx/compute/dtypes"
 	"github.com/janpfeifer/hiveGo/internal/features"
 	"github.com/janpfeifer/hiveGo/internal/state"
 )
@@ -21,29 +21,30 @@ import (
 // FNN implement a feed-forward model on the board features.
 // It's the simpler GoMLX model.
 type FNN struct {
-	ctx *context.Context
+	scope *model.Scope
 }
 
 // NewFNN creates an FNN model with a fresh context, initialized with hyperparameters set to their defaults.
 func NewFNN() *FNN {
-	fnn := &FNN{ctx: context.New()}
-	fnn.ctx.RngStateReset()
-	fnn.ctx.SetParams(map[string]any{
+	store := model.NewStore()
+	scope := store.RootScope()
+	_ = store.ResetRNGState()
+	scope.SetParams(map[string]any{
 		"batch_size": 128,
 
 		// Number of board features to extract.
 		// This allows backward compatibility, otherwise better leave as is.
 		"features_version": features.BoardFeaturesDim,
 
-		optimizers.ParamOptimizer:       "adam",
-		optimizers.ParamLearningRate:    0.001,
-		optimizers.ParamAdamEpsilon:     1e-7,
-		optimizers.ParamAdamDType:       "",
+		optimizer.ParamOptimizer:       "adam",
+		optimizer.ParamLearningRate:    0.001,
+		optimizer.ParamAdamEpsilon:     1e-7,
+		optimizer.ParamAdamDType:       "",
 		cosineschedule.ParamPeriodSteps: 0,
-		activations.ParamActivation:     "sigmoid",
+		activation.ParamActivation:     "sigmoid",
 		layers.ParamDropoutRate:         0.0,
-		regularizers.ParamL2:            1e-5,
-		regularizers.ParamL1:            1e-5,
+		regularizer.ParamL2:            1e-5,
+		regularizer.ParamL1:            1e-5,
 
 		// FNN network parameters:
 		fnnLayer.ParamNumHiddenLayers: 1,
@@ -66,19 +67,18 @@ func NewFNN() *FNN {
 		kan.ParamDiscreteSplitPointsTrainable: true,
 		kan.ParamResidual:                     true,
 	})
-	fnn.ctx = fnn.ctx.Checked(false)
-	return fnn
+	return &FNN{scope: scope}
 }
 
-func (fnn *FNN) Context() *context.Context {
-	return fnn.ctx
+func (fnn *FNN) Context() *model.Scope {
+	return fnn.scope
 }
 
 // paddedBatchSize returns a padded batchSize for the given numBoards.
 // This is important so we don't have too many different versions of the program for every different batch size.
 func (fnn *FNN) paddedBatchSize(numBoards int) int {
 	// Make sure the default batchSize is supported without padding.
-	defaultBatchSize := context.GetParamOr(fnn.ctx, "batch_size", 128)
+	defaultBatchSize := model.GetParamOr(fnn.scope, "batch_size", 128)
 	if numBoards == defaultBatchSize {
 		return numBoards
 	}
@@ -93,7 +93,7 @@ func (fnn *FNN) paddedBatchSize(numBoards int) int {
 
 // CreateInputs implements ValueModel.CreateInputs.
 func (fnn *FNN) CreateInputs(boards []*state.Board) []*tensors.Tensor {
-	version := context.GetParamOr(fnn.ctx, "features_version", features.BoardFeaturesDim)
+	version := model.GetParamOr(fnn.scope, "features_version", features.BoardFeaturesDim)
 	numBoards := len(boards)
 	paddedBatchSize := fnn.paddedBatchSize(numBoards)
 	boardFeatures := tensors.FromShape(shapes.Make(dtypes.Float32, paddedBatchSize, version))
@@ -127,17 +127,17 @@ func (fnn *FNN) getBatchMask(inputs []*Node) *Node {
 }
 
 // ForwardGraph calculates the scores of the board.
-func (fnn *FNN) ForwardGraph(ctx *context.Context, inputs []*Node) *Node {
+func (fnn *FNN) ForwardGraph(scope *model.Scope, inputs []*Node) *Node {
 	logits := inputs[0]
 	batchSize := logits.Shape().Dim(0)
 
 	// ValueModel itself is an FNN or a KAN.
-	if context.GetParamOr(ctx, "kan", false) {
+	if model.GetParamOr(scope, "kan", false) {
 		// Use KAN, all configured by context hyperparameters. See createDefaultContext for defaults.
-		logits = kan.New(ctx.In("kan"), logits, 1).Done()
+		logits = kan.New(scope.At("kan"), logits, 1).Done()
 	} else {
 		// Normal FNN, all configured by context hyperparameters. See createDefaultContext for defaults.
-		logits = fnnLayer.New(ctx.In("fnn"), logits, 1).Done()
+		logits = fnnLayer.New(scope.At("fnn"), logits, 1).Done()
 	}
 	logits.AssertDims(batchSize, 1) // 2-dim tensor, with batch size as the leading dimension.
 	predictions := MulScalar(Tanh(logits), 0.99)
@@ -145,8 +145,8 @@ func (fnn *FNN) ForwardGraph(ctx *context.Context, inputs []*Node) *Node {
 }
 
 // LossGraph calculates the lossExec.
-func (fnn *FNN) LossGraph(ctx *context.Context, inputs []*Node, labels *Node) *Node {
-	predictions := fnn.ForwardGraph(ctx, inputs)
-	batchMask := fnn.getBatchMask(inputs)
-	return losses.MeanSquaredError([]*Node{labels, batchMask}, []*Node{predictions})
+func (fnn *FNN) LossGraph(scope *model.Scope, inputs []*Node, labels *Node) *Node {
+	predictions := fnn.ForwardGraph(scope, inputs)
+	batchMask := Squeeze(fnn.getBatchMask(inputs), -1)
+	return loss.MeanSquaredError([]*Node{labels, batchMask}, []*Node{predictions})
 }

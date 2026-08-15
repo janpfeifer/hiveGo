@@ -2,16 +2,17 @@ package gomlx
 
 import (
 	"fmt"
-	"github.com/gomlx/gomlx/graph"
-	"github.com/gomlx/gomlx/graph/graphtest"
-	"github.com/gomlx/gomlx/ml/context"
-	"github.com/gomlx/gomlx/types/tensors"
+	"testing"
+
+	"github.com/gomlx/gomlx/core/graph"
+	"github.com/gomlx/gomlx/core/graph/graphtest"
+	"github.com/gomlx/gomlx/core/tensors"
+	"github.com/gomlx/gomlx/ml/model"
 	"github.com/janpfeifer/hiveGo/internal/generics"
 	. "github.com/janpfeifer/hiveGo/internal/state"
 	"github.com/stretchr/testify/require"
-	"testing"
 
-	_ "github.com/gomlx/gomlx/backends/xla"
+	_ "github.com/gomlx/gomlx/backends/default"
 )
 
 // PieceOnBoard represents a position and ownership of a piece in the board.
@@ -88,7 +89,7 @@ func TestAlphaZeroFNN_Inputs(t *testing.T) {
 	// Indices from actions back to the board number.
 	// Notice that the padded space at the end points to the dummy board #3 (one past end).
 	actionsToBoardIdx := []int32{0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3}
-	require.Equal(t, actionsToBoardIdx, tensors.CopyFlatData[int32](actionsToBoardIdxT))
+	require.Equal(t, actionsToBoardIdx, tensors.MustCopyFlatData[int32](actionsToBoardIdxT))
 }
 
 func TestAlphaZeroFNN_ForwardPolicyGraph(t *testing.T) {
@@ -99,8 +100,8 @@ func TestAlphaZeroFNN_ForwardPolicyGraph(t *testing.T) {
 	inputs := fnn.CreatePolicyInputs(boards)
 	inputsAny := generics.SliceMap(inputs, func(t *tensors.Tensor) any { return t })
 	backend := graphtest.BuildTestBackend()
-	outputs := context.ExecOnceN(backend, fnn.Context(), func(ctx *context.Context, inputs []*graph.Node) []*graph.Node {
-		values, policies := fnn.ForwardPolicyGraph(ctx, inputs)
+	outputs := model.MustExecOnceN(backend, fnn.Context().Store(), func(scope *model.Scope, inputs []*graph.Node) []*graph.Node {
+		values, policies := fnn.ForwardPolicyGraph(scope, inputs)
 		return []*graph.Node{values, policies}
 	}, inputsAny...)
 	valuesT, policiesT := outputs[0], outputs[1]
@@ -109,7 +110,7 @@ func TestAlphaZeroFNN_ForwardPolicyGraph(t *testing.T) {
 
 	valuesT.Shape().AssertDims(numPaddedBoards, 1)
 	policiesT.Shape().AssertDims(numPaddedActions)
-	policies := tensors.CopyFlatData[float32](policiesT)
+	policies := tensors.MustCopyFlatData[float32](policiesT)
 
 	// Makes sure policies sum to 1
 	var actionIdx int
@@ -136,10 +137,10 @@ func TestAlphaZeroFNN_LossGraph(t *testing.T) {
 	labelsInputs := fnn.CreatePolicyLabels(valuesLabels, policyLabels)
 	inputsAny := generics.SliceMap(append(policyInputs, labelsInputs...), func(t *tensors.Tensor) any { return t })
 	backend := graphtest.BuildTestBackend()
-	lossT := context.ExecOnce(backend, fnn.Context(), func(ctx *context.Context, inputs []*graph.Node) *graph.Node {
+	lossT := model.MustExecOnce(backend, fnn.Context().Store(), func(scope *model.Scope, inputs []*graph.Node) *graph.Node {
 		policyInputsN := inputs[:len(policyInputs)]
 		labelsInputsN := inputs[len(policyInputs):]
-		return fnn.LossGraph(ctx, policyInputsN, labelsInputsN)
+		return fnn.LossGraph(scope, policyInputsN, labelsInputsN)
 	}, inputsAny...)
 	fmt.Printf("Loss: %s\n", lossT)
 	lossT.Shape().AssertScalar()
