@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/gomlx/compute"
 	"github.com/gomlx/exceptions"
 	"github.com/gomlx/gomlx/core/graph"
 	"github.com/gomlx/gomlx/core/tensors"
@@ -28,7 +29,8 @@ import (
 //
 // It is just a wrapper around on of the models implemented.
 type PolicyScorer struct {
-	Type ModelType
+	Type    ModelType
+	backend compute.Backend
 
 	// filePath passed to the model, where it is saved.
 	filePath string
@@ -73,10 +75,16 @@ var (
 	_ ai.PolicyLearner = (*PolicyScorer)(nil)
 )
 
-// newPolicyScorer returns a gomlx.PolicyScorer for the given ValueModel.
-func newPolicyScorer(modelType ModelType, filePath string, modelInst PolicyModel, params parameters.Params) (*PolicyScorer, error) {
+// NewPolicyScorer returns a gomlx.PolicyScorer for the given ValueModel.
+func NewPolicyScorer(modelType ModelType, filePath string, modelInst PolicyModel, params parameters.Params) (*PolicyScorer, error) {
+	return NewPolicyScorerWithBackend(modelType, filePath, modelInst, params, backend())
+}
+
+// NewPolicyScorerWithBackend returns a gomlx.PolicyScorer for the given ValueModel using a specified backend.
+func NewPolicyScorerWithBackend(modelType ModelType, filePath string, modelInst PolicyModel, params parameters.Params, be compute.Backend) (*PolicyScorer, error) {
 	s := &PolicyScorer{
 		Type:                  modelType,
+		backend:               be,
 		filePath:              filePath,
 		model:                 modelInst,
 		numPolicyInputTensors: -1,
@@ -99,9 +107,6 @@ func newPolicyScorer(modelType ModelType, filePath string, modelInst PolicyModel
 	if err != nil {
 		return nil, err
 	}
-
-	// Create the backend.
-	_ = backend()
 
 	// Overwrite hyperparameters from given params.
 	err = extractParams(s.Type.String(), params, s.model.Context())
@@ -132,8 +137,12 @@ func (s *PolicyScorer) createExecutors() {
 	muNewClient.Lock()
 	defer muNewClient.Unlock()
 	scope := s.model.Context()
+	be := s.backend
+	if be == nil {
+		be = backend()
+	}
 	var err error
-	s.valueScoreExec, err = model.NewExec(backend(), scope.Store(),
+	s.valueScoreExec, err = model.NewExec(be, scope.Store(),
 		func(scope *model.Scope, valueInputs []*graph.Node) *graph.Node {
 			// Reshape to a scalar.
 			s.NumCompilations++
@@ -142,7 +151,7 @@ func (s *PolicyScorer) createExecutors() {
 	if err != nil {
 		exceptions.Panicf("failed to create valueScoreExec: %v", err)
 	}
-	s.policyScoreExec, err = model.NewExec(backend(), scope.Store(),
+	s.policyScoreExec, err = model.NewExec(be, scope.Store(),
 		func(scope *model.Scope, policyInputs []*graph.Node) []*graph.Node {
 			s.NumCompilations++
 			value, policy := s.model.ForwardPolicyGraph(scope, policyInputs)
@@ -151,7 +160,7 @@ func (s *PolicyScorer) createExecutors() {
 	if err != nil {
 		exceptions.Panicf("failed to create policyScoreExec: %v", err)
 	}
-	s.lossExec, err = model.NewExec(backend(), scope.Store(),
+	s.lossExec, err = model.NewExec(be, scope.Store(),
 		func(scope *model.Scope, inputsAndLabels []*graph.Node) *graph.Node {
 			s.NumCompilations++
 			inputs := inputsAndLabels[:s.numPolicyInputTensors]
@@ -167,7 +176,7 @@ func (s *PolicyScorer) createExecutors() {
 		exceptions.Panicf("failed to create lossExec: %v", err)
 	}
 	s.lossExec.SetMaxCache(100)
-	s.trainStepExec, err = model.NewExec(backend(), scope.Store(),
+	s.trainStepExec, err = model.NewExec(be, scope.Store(),
 		func(scope *model.Scope, inputsAndLabels []*graph.Node) *graph.Node {
 			s.NumCompilations++
 			g := inputsAndLabels[0].Graph()
@@ -227,7 +236,11 @@ func (s *PolicyScorer) String() string {
 	if s == nil {
 		return "<nil>[GoMLX]"
 	}
-	gomlxName := fmt.Sprintf("[GoMLX/%s]", backend().Name())
+	be := s.backend
+	if be == nil {
+		be = backend()
+	}
+	gomlxName := fmt.Sprintf("[GoMLX/%s]", be.Name())
 	if s.checkpoint == nil || s.checkpoint.Dir() == "" {
 		return fmt.Sprintf("%s%s", s.Type, gomlxName)
 	}
@@ -240,8 +253,12 @@ func (s *PolicyScorer) Score(board *state.Board) float32 {
 	inputs := s.model.CreateValueInputs(board)
 	s.muLearning.RLock()
 	defer s.muLearning.RUnlock()
+	be := s.backend
+	if be == nil {
+		be = backend()
+	}
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
-		donated, _ := graph.DonateTensorBuffer(t, backend(), 0)
+		donated, _ := graph.DonateTensorBuffer(t, be, 0)
 		return donated
 	})
 
@@ -277,8 +294,12 @@ func (s *PolicyScorer) PolicyScore(board *state.Board) []float32 {
 	inputs := s.createPolicyInputs([]*state.Board{board})
 	s.muLearning.RLock()
 	defer s.muLearning.RUnlock()
+	be := s.backend
+	if be == nil {
+		be = backend()
+	}
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
-		donated, _ := graph.DonateTensorBuffer(t, backend(), 0)
+		donated, _ := graph.DonateTensorBuffer(t, be, 0)
 		return donated
 	})
 	policyScoresT := s.policyScoreExec.MustCall(donatedInputs...)[1]
@@ -349,6 +370,21 @@ func (s *PolicyScorer) Save() error {
 // BatchSize returns the recommended batch size and implements ai.ValueLearner.
 func (s *PolicyScorer) BatchSize() int {
 	return s.batchSize
+}
+
+// Model returns the underlying PolicyModel.
+func (s *PolicyScorer) Model() PolicyModel {
+	return s.model
+}
+
+// ValueScoreExec returns the underlying value score executor.
+func (s *PolicyScorer) ValueScoreExec() *model.Exec {
+	return s.valueScoreExec
+}
+
+// PolicyScoreExec returns the underlying policy score executor.
+func (s *PolicyScorer) PolicyScoreExec() *model.Exec {
+	return s.policyScoreExec
 }
 
 // writeHyperparametersHelp enumerates all the hyperparameters set in the context.

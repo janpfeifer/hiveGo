@@ -95,13 +95,13 @@ func New(params parameters.Params) (ai.ValueScorer, error) {
 		switch modelType {
 		case ModelFNN:
 			modelInst := NewFNN()
-			boardScorer, err = newBoardScorer(modelType, filePath, modelInst, params)
+			boardScorer, err = NewBoardScorer(modelType, filePath, modelInst, params)
 			if err != nil {
 				return nil, err
 			}
 		case ModelAlphaZeroFNN:
 			modelInst := NewAlphaZeroFNN()
-			policyScorer, err := newPolicyScorer(modelType, filePath, modelInst, params)
+			policyScorer, err := NewPolicyScorer(modelType, filePath, modelInst, params)
 			if err != nil {
 				return nil, err
 			}

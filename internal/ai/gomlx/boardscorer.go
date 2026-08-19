@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gomlx/compute"
 	"github.com/gomlx/gomlx/core/graph"
 	"github.com/gomlx/gomlx/core/tensors"
 	"github.com/gomlx/gomlx/ml/model"
@@ -22,11 +23,17 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// newBoardScorer returns a gomlx.BoardScorer for the given ValueModel.
-func newBoardScorer(modelType ModelType, filePath string, modelInst ValueModel, params parameters.Params) (*BoardScorer, error) {
+// NewBoardScorer returns a gomlx.BoardScorer for the given ValueModel.
+func NewBoardScorer(modelType ModelType, filePath string, modelInst ValueModel, params parameters.Params) (*BoardScorer, error) {
+	return NewBoardScorerWithBackend(modelType, filePath, modelInst, params, backend())
+}
+
+// NewBoardScorerWithBackend returns a gomlx.BoardScorer for the given ValueModel using a specified backend.
+func NewBoardScorerWithBackend(modelType ModelType, filePath string, modelInst ValueModel, params parameters.Params, be compute.Backend) (*BoardScorer, error) {
 	boardScorer := &BoardScorer{
-		Type:  modelType,
-		model: modelInst,
+		Type:    modelType,
+		model:   modelInst,
+		backend: be,
 	}
 
 	// Help if requested.
@@ -50,9 +57,6 @@ func newBoardScorer(modelType ModelType, filePath string, modelInst ValueModel, 
 		}
 	}
 
-	// Create the backend.
-	_ = backend()
-
 	// Overwrite hyperparameters from given params.
 	err = extractParams(boardScorer.Type.String(), params, boardScorer.model.Context())
 	if err != nil {
@@ -67,7 +71,7 @@ func newBoardScorer(modelType ModelType, filePath string, modelInst ValueModel, 
 	// Setup scoreExec executor.
 	muNewClient.Lock()
 	defer muNewClient.Unlock()
-	boardScorer.scoreExec, err = model.NewExec(backend(), scope.Store(),
+	boardScorer.scoreExec, err = model.NewExec(be, scope.Store(),
 		func(scope *model.Scope, inputs []*graph.Node) *graph.Node {
 			// Remove last axis with dimension 1.
 			return graph.Squeeze(boardScorer.model.ForwardGraph(scope, inputs), -1)
@@ -75,7 +79,7 @@ func newBoardScorer(modelType ModelType, filePath string, modelInst ValueModel, 
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to create scoreExec")
 	}
-	boardScorer.lossExec, err = model.NewExec(backend(), scope.Store(),
+	boardScorer.lossExec, err = model.NewExec(be, scope.Store(),
 		func(scope *model.Scope, inputsAndLabels []*graph.Node) *graph.Node {
 			inputs := inputsAndLabels[:len(inputsAndLabels)-1]
 			labels := inputsAndLabels[len(inputsAndLabels)-1]
@@ -93,7 +97,7 @@ func newBoardScorer(modelType ModelType, filePath string, modelInst ValueModel, 
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to create lossExec")
 	}
-	boardScorer.trainStepExec, err = model.NewExec(backend(), scope.Store(),
+	boardScorer.trainStepExec, err = model.NewExec(be, scope.Store(),
 		func(scope *model.Scope, inputsAndLabels []*graph.Node) *graph.Node {
 			inputs := inputsAndLabels[:len(inputsAndLabels)-1]
 			labels := inputsAndLabels[len(inputsAndLabels)-1]
@@ -122,7 +126,8 @@ func newBoardScorer(modelType ModelType, filePath string, modelInst ValueModel, 
 //
 // It is just a wrapper around on of the models implemented.
 type BoardScorer struct {
-	Type ModelType
+	Type    ModelType
+	backend compute.Backend
 
 	// model if BoardScorer is a BoardScorer.
 	model ValueModel
@@ -162,7 +167,11 @@ func (s *BoardScorer) String() string {
 	if s == nil {
 		return "<nil>[GoMLX]"
 	}
-	gomlxName := fmt.Sprintf("[GoMLX/%s]", backend().Name())
+	be := s.backend
+	if be == nil {
+		be = backend()
+	}
+	gomlxName := fmt.Sprintf("[GoMLX/%s]", be.Name())
 	if s.checkpoint == nil {
 		return fmt.Sprintf("%s%s", s.Type, gomlxName)
 	}
@@ -180,8 +189,12 @@ func (s *BoardScorer) BatchScore(boards []*state.Board) []float32 {
 
 	s.muLearning.RLock()
 	defer s.muLearning.RUnlock()
+	be := s.backend
+	if be == nil {
+		be = backend()
+	}
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
-		donated, _ := graph.DonateTensorBuffer(t, backend(), 0)
+		donated, _ := graph.DonateTensorBuffer(t, be, 0)
 		return donated
 	})
 
@@ -230,6 +243,16 @@ func (s *BoardScorer) Save() error {
 // BatchSize returns the recommended batch size and implements ai.ValueLearner.
 func (s *BoardScorer) BatchSize() int {
 	return s.batchSize
+}
+
+// Model returns the underlying ValueModel.
+func (s *BoardScorer) Model() ValueModel {
+	return s.model
+}
+
+// ScoreExec returns the underlying inference executor.
+func (s *BoardScorer) ScoreExec() *model.Exec {
+	return s.scoreExec
 }
 
 // writeHyperparametersHelp enumerates all the hyperparameters set in the context.
