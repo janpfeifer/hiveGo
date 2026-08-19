@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/gomlx/exceptions"
+	"github.com/janpfeifer/hiveGo/internal/ai/gomlx"
+	"github.com/janpfeifer/hiveGo/internal/ai/gomlx/bench"
 	"github.com/janpfeifer/hiveGo/internal/players"
 	_ "github.com/janpfeifer/hiveGo/internal/players/default"
 	. "github.com/janpfeifer/hiveGo/internal/state"
@@ -28,7 +30,8 @@ var (
 	flagAIConfig2 = flag.String("config2", "a0fnn=#0,mcts,max_time=3s,temperature=0.2", "Second AI configuration, if playing AI vs AI with --watch")
 	flagMaxMoves  = flag.Int(
 		"max_moves", DefaultMaxMoves, "Max moves before game is considered a draw.")
-	flagQuiet = flag.Bool("quiet", false, "Quiet mode for when watching AI play, only the actions and the last board position is printed.")
+	flagQuiet        = flag.Bool("quiet", false, "Quiet mode for when watching AI play, only the actions and the last board position is printed.")
+	flagSaveFeatures = flag.String("save_features", "", "Path to save extracted benchmark dataset features from the match.")
 
 	// aiPlayers: if nil, it's a human playing.
 	aiPlayers = [2]players.Player{nil, nil}
@@ -59,12 +62,43 @@ func main() {
 	board.MaxMoves = *flagMaxMoves
 	ui := cli.New(true, false)
 
+	var recordedDataset *bench.MatchDataset
+	var fnnModel *gomlx.FNN
+	var a0Model *gomlx.AlphaZeroFNN
+
+	if *flagSaveFeatures != "" {
+		recordedDataset = &bench.MatchDataset{}
+		fnnModel = gomlx.NewFNN()
+		a0Model = gomlx.NewAlphaZeroFNN()
+	}
+
 	// Loop over match.
 	for !board.IsFinished() && globalCtx.Err() == nil {
 		if newBoard, skip := ui.CheckNoAvailableAction(board); skip {
 			board = newBoard
 			continue
 		}
+
+		if recordedDataset != nil {
+			step := bench.StepFeatures{}
+			// Capture FNN inputs for this board
+			fnnTensors := fnnModel.CreateInputs([]*Board{board})
+			for _, t := range fnnTensors {
+				step.FNNInputs = append(step.FNNInputs, bench.FromTensor(t))
+			}
+			// Capture A0FNN value inputs
+			a0ValTensors := a0Model.CreateValueInputs(board)
+			for _, t := range a0ValTensors {
+				step.A0ValInputs = append(step.A0ValInputs, bench.FromTensor(t))
+			}
+			// Capture A0FNN policy inputs
+			a0PolTensors := a0Model.CreatePolicyInputs([]*Board{board})
+			for _, t := range a0PolTensors {
+				step.A0PolInputs = append(step.A0PolInputs, bench.FromTensor(t))
+			}
+			recordedDataset.Steps = append(recordedDataset.Steps, step)
+		}
+
 		aiPlayer := aiPlayers[board.NextPlayer]
 		if aiPlayer == nil {
 			newBoard, err := ui.RunNextMove(board)
@@ -98,6 +132,15 @@ func main() {
 	if globalCtx.Err() != nil {
 		fmt.Printf("\nMatch interrupted: %s\n", globalCtx.Err())
 		return
+	}
+
+	if recordedDataset != nil && len(recordedDataset.Steps) > 0 {
+		err := recordedDataset.Save(*flagSaveFeatures)
+		if err != nil {
+			klog.Errorf("Failed to save recorded dataset to %q: %+v", *flagSaveFeatures, err)
+		} else {
+			fmt.Printf("Successfully saved %d step features to %q\n", len(recordedDataset.Steps), *flagSaveFeatures)
+		}
 	}
 
 	fmt.Printf("> %s\n", lipgloss.NewStyle().Bold(true).Render(board.FinishReason()))
