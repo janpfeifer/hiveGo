@@ -1,6 +1,6 @@
 <img align="left" src="images/Queen.png" alt="Queen Bee" width="64px"/>
 
-# hiveGo <br/>
+# hiveGo &nbsp; [![Play!](https://img.shields.io/badge/▶_Play!-green?style=for-the-badge&logoColor=white&labelColor=2ea44f)](https://janpfeifer.github.io/hiveGo/www/hive/) <br/>
 
 [Hive game (wikipedia)](https://en.wikipedia.org/wiki/Hive_(game)), backed by an [AlphaZero (wikipedia)](https://en.wikipedia.org/wiki/AlphaZero) 
 based AI, using [GoMLX (an ML framework for Go)](https://github.com/gomlx/gomlx) .
