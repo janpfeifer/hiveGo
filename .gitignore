@@ -7,7 +7,6 @@ v?.*
 wins*.bin
 wins*.bin~
 v[0-9]-*
-bench*
 cpuprof.out
 tf_model*
 .idea
