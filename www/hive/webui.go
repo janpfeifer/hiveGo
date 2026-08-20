@@ -431,8 +431,9 @@ func (ui *WebUI) OpenGameStartDialog(onStart func()) {
 		// Disable dialog.
 		ui.gameStartDialog.Style().SetProperty("display", "none", nil)
 
-		// Start caller's onStart.
-		onStart()
+		// Start caller's onStart in a goroutine so the DOM event callback
+		// yields back to the browser JS event loop (required for JS Promises to resolve in Wasm).
+		go onStart()
 	})
 
 	// Focus the first input element of the form.
