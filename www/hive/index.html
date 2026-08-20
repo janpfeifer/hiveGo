@@ -29,7 +29,7 @@
                 const go = new Go();
                 const importObject = go.importObject;
 
-                const response = await fetch('./wasm/main.wasm?version=60357c93708dc79c33683e0d537aa345ec336f3d');
+                const response = await fetch('./wasm/main.wasm?version=d20b3be58e8c98bde6726614fb96035007e51a83');
                 const result = await WebAssembly.instantiateStreaming(response, importObject);
                 go.run(result.instance);
 
