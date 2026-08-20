@@ -6,8 +6,9 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/chewxy/math32 v1.11.2
 	github.com/gomlx/compute v0.1.3
+	github.com/gomlx/compute-onnx v0.1.2
 	github.com/gomlx/exceptions v0.0.3
-	github.com/gomlx/gomlx v0.28.3
+	github.com/gomlx/gomlx v0.28.4
 	github.com/gopherjs/gopherjs v1.21.0
 	github.com/gopherjs/jquery v0.0.0-20191017083323-73f4c7416038
 	github.com/gotk3/gotk3 v0.6.4
@@ -38,14 +39,13 @@ require (
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/gofrs/flock v0.13.0 // indirect
 	github.com/gomlx/bsplines v0.2.0 // indirect
-	github.com/gomlx/compute-onnx v0.1.0 // indirect
-	github.com/gomlx/go-xla v0.4.1 // indirect
+	github.com/gomlx/go-xla v0.4.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/mattn/go-runewidth v0.0.27 // indirect
+	github.com/mattn/go-runewidth v0.0.28 // indirect
 	github.com/msvitok77/goembed v0.3.5 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/neelance/astrewrite v0.0.0-20160511093645-99348263ae86 // indirect

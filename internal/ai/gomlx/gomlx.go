@@ -74,15 +74,29 @@ func New(params parameters.Params) (ai.ValueScorer, error) {
 			continue
 		}
 
+		backendName, _ := parameters.PopParamOr(params, "backend", "")
+		var be compute.Backend
+		if backendName != "" {
+			var err error
+			be, err = compute.NewWithConfig(backendName)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to create backend %q", backendName)
+			}
+		} else {
+			be = backend()
+		}
+
+		cacheKey := filePath + "|" + be.Name()
+
 		// Check cache for previously created models.
 		cachePerModelType, found := modelsCache[key]
 		if found {
-			if weakPtr, found := cachePerModelType[filePath]; found {
+			if weakPtr, found := cachePerModelType[cacheKey]; found {
 				if strongPtr := weakPtr.Value(); strongPtr != nil {
 					return *strongPtr, nil
 				}
 				// weak scorer has been collected.
-				delete(cachePerModelType, filePath)
+				delete(cachePerModelType, cacheKey)
 			}
 		} else {
 			cachePerModelType = make(map[string]weak.Pointer[ai.ValueScorer])
@@ -95,13 +109,13 @@ func New(params parameters.Params) (ai.ValueScorer, error) {
 		switch modelType {
 		case ModelFNN:
 			modelInst := NewFNN()
-			boardScorer, err = newBoardScorer(modelType, filePath, modelInst, params)
+			boardScorer, err = NewBoardScorerWithBackend(modelType, filePath, modelInst, params, be)
 			if err != nil {
 				return nil, err
 			}
 		case ModelAlphaZeroFNN:
 			modelInst := NewAlphaZeroFNN()
-			policyScorer, err := newPolicyScorer(modelType, filePath, modelInst, params)
+			policyScorer, err := NewPolicyScorerWithBackend(modelType, filePath, modelInst, params, be)
 			if err != nil {
 				return nil, err
 			}
@@ -111,7 +125,7 @@ func New(params parameters.Params) (ai.ValueScorer, error) {
 		}
 
 		// Cache resulting scorer: some awkward casting, but it works.
-		cachePerModelType[filePath] = weak.Make(&boardScorer)
+		cachePerModelType[cacheKey] = weak.Make(&boardScorer)
 		klog.V(1).Infof("Created new scorer %s", boardScorer)
 		return boardScorer, nil
 	}

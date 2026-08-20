@@ -62,7 +62,7 @@ type Game struct {
 
 // NewGame creates and starts a new game using the provided UI.
 func NewGame(ui *WebUI) *Game {
-	klog.Infof("NewGame(): hotseat=%v, aiStarts=%v, aiConfig=%q\n", ui.IsHotseat(), ui.AIStarts(), ui.gameStartAIConfig.Value())
+	klog.Infof("NewGame(): hotseat=%v, aiStarts=%v, aiConfig=%q\n", ui.IsHotseat(), ui.AIStarts(), ui.AIConfig())
 	g := &Game{
 		board:      state.NewBoard(),
 		ui:         ui,
@@ -72,7 +72,7 @@ func NewGame(ui *WebUI) *Game {
 	g.ui.StartBoard(g.board)
 	if !ui.IsHotseat() {
 		var err error
-		g.aiPlayer, err = players.New(ui.gameStartAIConfig.Value())
+		g.aiPlayer, err = players.New(ui.AIConfig())
 		if err != nil {
 			msg := fmt.Sprintf("Failed to created: %+v\n\nReload to start again.", err)
 			klog.Error(msg)
