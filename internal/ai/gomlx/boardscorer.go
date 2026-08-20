@@ -224,8 +224,12 @@ func (s *BoardScorer) Loss(boards []*state.Board, boardLabels []float32) (loss f
 func (s *BoardScorer) createInputsAndLabels(boards []*state.Board, boardLabels []float32) []any {
 	inputs := s.model.CreateInputs(boards)
 	inputs = append(inputs, s.model.CreateLabels(boardLabels))
+	be := s.backend
+	if be == nil {
+		be = backend()
+	}
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
-		donated, _ := graph.DonateTensorBuffer(t, backend(), 0)
+		donated, _ := graph.DonateTensorBuffer(t, be, 0)
 		return donated
 	})
 	return donatedInputs

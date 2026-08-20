@@ -353,8 +353,12 @@ func (s *PolicyScorer) createInputsAndLabels(boards []*state.Board, valueLabels 
 		}
 	}
 	inputs = append(inputs, labels...)
+	be := s.backend
+	if be == nil {
+		be = backend()
+	}
 	donatedInputs := generics.SliceMap(inputs, func(t *tensors.Tensor) any {
-		donated, _ := graph.DonateTensorBuffer(t, backend(), 0)
+		donated, _ := graph.DonateTensorBuffer(t, be, 0)
 		return donated
 	})
 	return donatedInputs

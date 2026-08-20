@@ -30,7 +30,7 @@ func getBackend(backendName string) (compute.Backend, error) {
 }
 
 func BenchmarkInference(b *testing.B) {
-	for _, backendName := range benchmarkBackends {
+	for _, backendName := range gomlx.SupportedBackends {
 		b.Run(fmt.Sprintf("Backend=%s", backendName), func(b *testing.B) {
 			backend, err := getBackend(backendName)
 			if err != nil {

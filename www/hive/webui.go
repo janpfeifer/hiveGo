@@ -9,6 +9,7 @@ import (
 	"github.com/gowebapi/webapi/graphics/svg"
 	"github.com/gowebapi/webapi/html"
 	"github.com/gowebapi/webapi/html/htmlevent"
+	"github.com/janpfeifer/hiveGo/internal/ai/gomlx"
 	"github.com/janpfeifer/hiveGo/internal/state"
 	"k8s.io/klog/v2"
 	"math"
@@ -46,6 +47,7 @@ type WebUI struct {
 	// Game start dialog:
 	gameStartDialog     *html.HTMLDivElement
 	gameStartAIConfig   *html.HTMLInputElement
+	backendSelect       *html.HTMLSelectElement
 	aiConfig            string
 	isHotseat, aiStarts bool
 
@@ -374,6 +376,15 @@ func (ui *WebUI) OpenGameStartDialog(onStart func()) {
 	if ui.gameStartDialog == nil {
 		ui.gameStartDialog = html.HTMLDivElementFromWrapper(Document.GetElementById("new_game"))
 		ui.gameStartAIConfig = html.HTMLInputElementFromWrapper(ui.gameStartDialog.QuerySelector("input#ai_config"))
+		if selElem := ui.gameStartDialog.QuerySelector("select#backend_select"); selElem != nil {
+			ui.backendSelect = html.HTMLSelectElementFromWrapper(selElem)
+			for _, beName := range gomlx.SupportedBackends {
+				opt := html.HTMLOptionElementFromJS(Document.CreateElement("option", nil).JSValue())
+				opt.SetValue(beName)
+				opt.SetText(beName)
+				ui.backendSelect.AppendChild(&opt.HTMLElement.Element.Node)
+			}
+		}
 	}
 
 	ui.gameStartAIConfig.SetValue(levelsConfigs["easy"])
@@ -388,7 +399,20 @@ func (ui *WebUI) OpenGameStartDialog(onStart func()) {
 	form := html.HTMLFormElementFromWrapper(ui.gameStartDialog.QuerySelector("form"))
 	form.SetOnSubmit(func(event *domcore.Event, currentTarget *html.HTMLElement) {
 		// Collect inputs:
-		ui.aiConfig = ui.gameStartAIConfig.Value()
+		cfg := ui.gameStartAIConfig.Value()
+		if ui.backendSelect != nil && ui.backendSelect.Value() != "" {
+			selectedBe := ui.backendSelect.Value()
+			// If not already in config, append backend=<selected>
+			if !strings.Contains(cfg, "backend=") {
+				if cfg != "" {
+					cfg += ",backend=" + selectedBe
+				} else {
+					cfg = "backend=" + selectedBe
+				}
+			}
+		}
+		ui.aiConfig = cfg
+		ui.gameStartAIConfig.SetValue(cfg)
 
 		event.PreventDefault()
 		elem := ui.gameStartDialog.QuerySelector("#hotseat")
