@@ -12,7 +12,8 @@ import (
 	"github.com/janpfeifer/hiveGo/internal/state"
 	"k8s.io/klog/v2"
 
-	_ "github.com/gomlx/compute/gobackend"
+	_ "github.com/gomlx/gomlx/backends/default"
+	_ "github.com/gomlx/compute-onnx"
 	_ "github.com/janpfeifer/hiveGo/internal/players/default"
 )
 
