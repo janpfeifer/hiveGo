@@ -11,7 +11,7 @@ import (
 func TestPolicyScorer_Clone(t *testing.T) {
 	model := NewAlphaZeroFNN()
 	params := parameters.NewFromConfigString("a0fnn,max_traverses=100")
-	s0, err := newPolicyScorer(ModelAlphaZeroFNN, "", model, params)
+	s0, err := NewPolicyScorer(ModelAlphaZeroFNN, "", model, params)
 	require.NoError(t, err)
 	b := state.NewBoard()
 	require.NotPanics(t, func() { s0.PolicyScore(b) })

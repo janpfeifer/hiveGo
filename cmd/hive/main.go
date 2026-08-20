@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/gomlx/exceptions"
+	"github.com/gomlx/gomlx/core/tensors"
 	"github.com/janpfeifer/hiveGo/internal/ai/gomlx"
 	"github.com/janpfeifer/hiveGo/internal/ai/gomlx/bench"
 	"github.com/janpfeifer/hiveGo/internal/players"
@@ -81,15 +82,25 @@ func main() {
 
 		if recordedDataset != nil {
 			step := bench.StepFeatures{}
-			// Capture FNN inputs for this board
-			fnnTensors := fnnModel.CreateInputs([]*Board{board})
-			for _, t := range fnnTensors {
-				step.FNNInputs = append(step.FNNInputs, bench.FromTensor(t))
-			}
-			// Capture A0FNN value inputs
-			a0ValTensors := a0Model.CreateValueInputs(board)
-			for _, t := range a0ValTensors {
-				step.A0ValInputs = append(step.A0ValInputs, bench.FromTensor(t))
+			nextBoards := board.TakeAllActions()
+			if len(nextBoards) > 0 {
+				// Capture FNN inputs for all next legal boards (batched like AlphaBeta search)
+				fnnTensors := fnnModel.CreateInputs(nextBoards)
+				for _, t := range fnnTensors {
+					step.FNNInputs = append(step.FNNInputs, bench.FromTensor(t))
+				}
+				// Capture A0FNN value inputs for all next legal boards
+				a0ValTensors := a0Model.CreateValueInputs(nextBoards[0])
+				if len(a0ValTensors) == 2 {
+					// Update batch size for all next boards
+					a0ValTensors = []*tensors.Tensor{
+						a0Model.CreateBoardsFeatures(nextBoards, 0),
+						tensors.FromScalar(int32(len(nextBoards))),
+					}
+				}
+				for _, t := range a0ValTensors {
+					step.A0ValInputs = append(step.A0ValInputs, bench.FromTensor(t))
+				}
 			}
 			// Capture A0FNN policy inputs
 			a0PolTensors := a0Model.CreatePolicyInputs([]*Board{board})

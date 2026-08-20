@@ -144,9 +144,8 @@ func (s *PolicyScorer) createExecutors() {
 	var err error
 	s.valueScoreExec, err = model.NewExec(be, scope.Store(),
 		func(scope *model.Scope, valueInputs []*graph.Node) *graph.Node {
-			// Reshape to a scalar.
 			s.NumCompilations++
-			return graph.Reshape(s.model.ForwardValueGraph(scope, valueInputs))
+			return graph.Squeeze(s.model.ForwardValueGraph(scope, valueInputs), -1)
 		})
 	if err != nil {
 		exceptions.Panicf("failed to create valueScoreExec: %v", err)
@@ -263,7 +262,10 @@ func (s *PolicyScorer) Score(board *state.Board) float32 {
 	})
 
 	scoreT := s.valueScoreExec.MustCall(donatedInputs...)[0]
-	return tensors.ToScalar[float32](scoreT)
+	if scoreT.Rank() == 0 {
+		return tensors.ToScalar[float32](scoreT)
+	}
+	return scoreT.Value().([]float32)[0]
 }
 
 // BatchScore implements ai.BatchPolicyScorer.

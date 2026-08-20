@@ -112,14 +112,14 @@ func (fnn *AlphaZeroFNN) paddedSize(numBoards int) int {
 
 // CreateValueInputs implements PolicyModel.CreateValueInputs.
 func (fnn *AlphaZeroFNN) CreateValueInputs(board *state.Board) []*tensors.Tensor {
-	boardsFeatures := fnn.createBoardsFeatures([]*state.Board{board}, 0)
+	boardsFeatures := fnn.CreateBoardsFeatures([]*state.Board{board}, 0)
 	numBoards := tensors.FromScalar(int32(1))
 	return []*tensors.Tensor{boardsFeatures, numBoards}
 }
 
-// Create raw features for a set of boards (not its actions), maybe with padding.
+// CreateBoardsFeatures creates raw features for a set of boards (not its actions), maybe with padding.
 // minPadding is the minimal amount of padding to make sure is included.
-func (fnn *AlphaZeroFNN) createBoardsFeatures(boards []*state.Board, minPadding int) *tensors.Tensor {
+func (fnn *AlphaZeroFNN) CreateBoardsFeatures(boards []*state.Board, minPadding int) *tensors.Tensor {
 	version := model.GetParamOr(fnn.scope, "features_version", features.BoardFeaturesDim)
 	numBoards := len(boards)
 	paddedBatchSize := fnn.paddedSize(numBoards + minPadding)
@@ -136,7 +136,7 @@ func (fnn *AlphaZeroFNN) createBoardsFeatures(boards []*state.Board, minPadding 
 // CreatePolicyInputs implements PolicyModel.
 func (fnn *AlphaZeroFNN) CreatePolicyInputs(boards []*state.Board) []*tensors.Tensor {
 	// Board features:
-	boardFeatures := fnn.createBoardsFeatures(boards, 1)
+	boardFeatures := fnn.CreateBoardsFeatures(boards, 1)
 	numBoardsT := tensors.FromScalar(int32(len(boards)))
 
 	// Action features: calculated from the boards after playing each action.
@@ -150,7 +150,7 @@ func (fnn *AlphaZeroFNN) CreatePolicyInputs(boards []*state.Board) []*tensors.Te
 	for _, board := range boards {
 		actionsBoards = append(actionsBoards, board.TakeAllActions()...)
 	}
-	actionsFeatures := fnn.createBoardsFeatures(actionsBoards, 0)
+	actionsFeatures := fnn.CreateBoardsFeatures(actionsBoards, 0)
 	// Create edges: a mapping from actionsIdx to boardIdx.
 	numPaddedActions := actionsFeatures.Shape().Dim(0)
 	actionsToBoardIdx := tensors.FromShape(shapes.Make(dtypes.Int32, numPaddedActions))
